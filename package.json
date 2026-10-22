@@ -8,8 +8,10 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/node.ts",
+    "dev:node": "tsx watch src/node.ts",
     "dev:worker": "wrangler dev",
     "build": "tsc",
+    "start": "node dist/node.js",
     "deploy": "wrangler deploy",
     "test": "vitest run",
     "test:watch": "vitest",
