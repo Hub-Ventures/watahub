@@ -205,3 +205,52 @@ describe('Input validation keeps caller input out of Graph paths', () => {
     ).toBe(422)
   })
 })
+
+describe('Graph passthrough proxy allowlist', () => {
+  const originalEnv = process.env
+  const KEY = 'wk_test_0123456789abcdef0123456789abcdef'
+  const auth = { 'X-API-Key': KEY, 'Content-Type': 'application/json' }
+
+  beforeEach(() => {
+    process.env = { ...originalEnv, WATAHUB_API_KEY: KEY, META_SYSTEM_USER_TOKEN: 'EAAG-system-token' }
+  })
+
+  afterEach(() => {
+    process.env = originalEnv
+    vi.restoreAllMocks()
+  })
+
+  it('forwards the documented routes to graph.facebook.com/v24.0', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({ messages: [{ id: 'wamid.X' }] }), { status: 200 }))
+
+    const res = await app.request('/v24.0/123456/messages', { method: 'POST', headers: auth, body: '{}' })
+    expect(res.status).toBe(200)
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(String(fetchSpy.mock.calls[0][0])).toBe('https://graph.facebook.com/v24.0/123456/messages')
+  })
+
+  it.each([
+    ['DELETE', '/v24.0/123456'],
+    ['GET', '/v24.0/123456/phone_numbers'],
+    ['POST', '/v24.0/123456/subscribed_apps'],
+    ['POST', '/v24.0/123456/register'],
+    ['GET', '/v24.0/me'],
+    ['POST', '/v24.0/123456'],
+  ])('refuses %s %s without calling Meta', async (method, path) => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const res = await app.request(path, { method, headers: auth, body: method === 'GET' ? undefined : '{}' })
+    expect(res.status).toBe(403)
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('returns a generic 502 without leaking the network error message', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('connect ECONNREFUSED 10.0.0.5:443 internal-host'))
+
+    const res = await app.request('/v24.0/123456', { headers: auth })
+    expect(res.status).toBe(502)
+    expect(await res.text()).not.toContain('10.0.0.5')
+  })
+})
