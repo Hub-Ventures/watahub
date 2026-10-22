@@ -76,4 +76,18 @@ describe('HTTP Route Endpoints', () => {
 
     expect(res.status).toBe(401)
   })
+
+  it('POST /v24.0/PHONE_123/messages enforces API Key when configured', async () => {
+    process.env.WATAHUB_API_KEY = 'wh_secret_key_999'
+
+    const res = await app.request('/v24.0/PHONE_123/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ messaging_product: 'whatsapp' }),
+    })
+
+    expect(res.status).toBe(401)
+  })
 })

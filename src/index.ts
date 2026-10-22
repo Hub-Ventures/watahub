@@ -6,6 +6,7 @@ import { webhookRouter } from './routes/webhook.js'
 import { messagesRouter } from './routes/messages.js'
 import { templatesRouter } from './routes/templates.js'
 import { onboardingRouter } from './routes/onboarding.js'
+import { proxyRouter } from './routes/proxy.js'
 
 export const app = new Hono()
 
@@ -19,6 +20,7 @@ app.route('/', webhookRouter)
 app.route('/', messagesRouter)
 app.route('/', templatesRouter)
 app.route('/', onboardingRouter)
+app.route('/', proxyRouter)
 
 // Fallback 404 handler
 app.notFound((c) => {
