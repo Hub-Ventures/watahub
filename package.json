@@ -1,0 +1,43 @@
+{
+  "name": "watahub",
+  "version": "0.1.0",
+  "description": "The open-source, self-hostable WhatsApp Cloud API Gateway & Infrastructure (IaaS)",
+  "author": "Hub Ventures <tech@hubventures.co>",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/node.ts",
+    "dev:worker": "wrangler dev",
+    "build": "tsc",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.8",
+    "hono": "^4.7.4",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.8",
+    "wrangler": "^3.114.0"
+  },
+  "keywords": [
+    "whatsapp",
+    "whatsapp-cloud-api",
+    "meta-graph-api",
+    "gateway",
+    "iaas",
+    "hono",
+    "cloudflare-workers",
+    "open-source"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
