@@ -18,7 +18,8 @@ export async function verifyMetaSignature(
   if (!signatureHeader.startsWith(prefix)) return false
 
   const expectedSigHex = signatureHeader.slice(prefix.length).trim()
-  if (!expectedSigHex) return false
+  // HMAC-SHA256 digests are exactly 32 bytes (64 hex chars); reject anything else up front
+  if (!/^[0-9a-fA-F]{64}$/.test(expectedSigHex)) return false
 
   try {
     const encoder = new TextEncoder()
@@ -71,6 +72,37 @@ export async function signSubscriberPayload(
   )
 
   return 'sha256=' + bytesToHex(new Uint8Array(signatureBuffer))
+}
+
+/**
+ * Constant-time string comparison for secrets (API keys, verify tokens).
+ * Both inputs are hashed first so the comparison never short-circuits on
+ * length or on the first differing character.
+ */
+export async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const encoder = new TextEncoder()
+  const [digestA, digestB] = await Promise.all([
+    crypto.subtle.digest('SHA-256', encoder.encode(a) as unknown as BufferSource),
+    crypto.subtle.digest('SHA-256', encoder.encode(b) as unknown as BufferSource),
+  ])
+  const bytesA = new Uint8Array(digestA)
+  const bytesB = new Uint8Array(digestB)
+  let diff = 0
+  for (let i = 0; i < bytesA.length; i++) {
+    diff |= bytesA[i] ^ bytesB[i]
+  }
+  return diff === 0
+}
+
+/**
+ * Hex-encoded SHA-256 digest. Used to derive stable idempotency keys.
+ */
+export async function sha256Hex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(input) as unknown as BufferSource
+  )
+  return bytesToHex(new Uint8Array(digest))
 }
 
 function hexToBytes(hex: string): Uint8Array {

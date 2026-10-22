@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { getEnvVar } from '../utils/env.js'
-import { verifyMetaSignature, signSubscriberPayload } from '../services/crypto.js'
+import { verifyMetaSignature, signSubscriberPayload, timingSafeEqual } from '../services/crypto.js'
 import { normalizeMetaWebhook } from '../services/normalizer.js'
 import type { MetaWebhookPayload } from '../types/meta.js'
 
@@ -10,7 +10,7 @@ export const webhookRouter = new Hono()
  * Meta Webhook Verification Handshake
  * GET /webhook
  */
-webhookRouter.get('/webhook', (c) => {
+webhookRouter.get('/webhook', async (c) => {
   const query = c.req.query()
   const mode = query['hub.mode']
   const token = query['hub.verify_token']
@@ -18,7 +18,7 @@ webhookRouter.get('/webhook', (c) => {
 
   const expectedToken = getEnvVar(c, 'META_WEBHOOK_VERIFY_TOKEN')
 
-  if (mode === 'subscribe' && token && expectedToken && token === expectedToken) {
+  if (mode === 'subscribe' && token && expectedToken && (await timingSafeEqual(token, expectedToken))) {
     return c.text(challenge || '', 200)
   }
 
@@ -34,12 +34,16 @@ webhookRouter.post('/webhook', async (c) => {
   const signature = c.req.header('x-hub-signature-256')
   const appSecret = getEnvVar(c, 'META_APP_SECRET')
 
-  // Verify HMAC-SHA256 signature if META_APP_SECRET is configured
-  if (appSecret) {
-    const isValid = await verifyMetaSignature(rawBody, signature, appSecret)
-    if (!isValid) {
-      return c.json({ error: 'Invalid HMAC signature' }, 401)
-    }
+  // Fail closed: without META_APP_SECRET there is no way to authenticate Meta,
+  // so unsigned payloads must never be accepted or forwarded.
+  if (!appSecret) {
+    console.error('[watahub] META_APP_SECRET is not set; rejecting webhook delivery')
+    return c.json({ error: 'Gateway misconfigured: webhook signature secret is not set' }, 503)
+  }
+
+  const isValid = await verifyMetaSignature(rawBody, signature, appSecret)
+  if (!isValid) {
+    return c.json({ error: 'Invalid HMAC signature' }, 401)
   }
 
   let payload: MetaWebhookPayload
