@@ -49,17 +49,7 @@ const SendMessageSchema = z.object({
  * POST /v1/messages
  */
 messagesRouter.post('/v1/messages', async (c) => {
-  // 1. Check Gateway API Key if configured
-  const apiKey = getEnvVar(c, 'WATAHUB_API_KEY')
-  if (apiKey) {
-    const authHeader = c.req.header('authorization')
-    const headerKey = c.req.header('x-api-key')
-    const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
-
-    if (bearer !== apiKey && headerKey !== apiKey) {
-      return c.json({ error: 'Unauthorized: Invalid Watahub API key' }, 401)
-    }
-  }
+  // 1. Gateway API key is enforced by requireApiKey (src/middleware/auth.ts)
 
   // 2. Parse & Validate Body
   let body: unknown

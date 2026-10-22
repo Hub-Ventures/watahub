@@ -46,10 +46,13 @@ describe('HTTP Route Endpoints', () => {
   })
 
   it('POST /v1/messages rejects invalid schema (missing required fields)', async () => {
+    process.env.WATAHUB_API_KEY = 'wh_secret_key_999'
+
     const res = await app.request('/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'X-API-Key': 'wh_secret_key_999',
       },
       body: JSON.stringify({}),
     })

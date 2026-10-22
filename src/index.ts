@@ -7,12 +7,17 @@ import { messagesRouter } from './routes/messages.js'
 import { templatesRouter } from './routes/templates.js'
 import { onboardingRouter } from './routes/onboarding.js'
 import { proxyRouter } from './routes/proxy.js'
+import { requireApiKey } from './middleware/auth.js'
 
 export const app = new Hono()
 
 // Middlewares
 app.use('*', logger())
 app.use('*', cors())
+
+// Every machine-to-machine surface requires the gateway API key (fail closed)
+app.use('/v1/*', requireApiKey)
+app.use('/v24.0/*', requireApiKey)
 
 // Mount sub-routers
 app.route('/', healthRouter)

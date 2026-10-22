@@ -90,3 +90,61 @@ describe('timingSafeEqual', () => {
     expect(await timingSafeEqual('', 'a')).toBe(false)
   })
 })
+
+describe('Gateway API key enforcement (fail closed)', () => {
+  const originalEnv = process.env
+  const KEY = 'wk_test_0123456789abcdef0123456789abcdef'
+
+  beforeEach(() => {
+    process.env = { ...originalEnv }
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    process.env = originalEnv
+    vi.restoreAllMocks()
+  })
+
+  const protectedRequests: Array<[string, RequestInit]> = [
+    ['/v1/messages', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } }],
+    ['/v1/templates/123', { method: 'GET' }],
+    ['/v1/onboarding/exchange', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } }],
+    ['/v1/onboarding/subscribe', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } }],
+    ['/v1/onboarding/override-callback', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } }],
+    ['/v24.0/123/messages', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } }],
+  ]
+
+  it.each(protectedRequests)('%s returns 503 when WATAHUB_API_KEY is unset', async (path, init) => {
+    delete process.env.WATAHUB_API_KEY
+    process.env.META_SYSTEM_USER_TOKEN = 'EAAG-system-token'
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    const res = await app.request(path, init)
+    expect(res.status).toBe(503)
+    // The system user token must never reach Meta for an unauthenticated caller
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it.each(protectedRequests)('%s returns 401 with a wrong key', async (path, init) => {
+    process.env.WATAHUB_API_KEY = KEY
+    const headers = { ...(init.headers as Record<string, string>), 'X-API-Key': `${KEY}x` }
+    const res = await app.request(path, { ...init, headers })
+    expect(res.status).toBe(401)
+  })
+
+  it('accepts the key via Authorization: Bearer and via X-API-Key', async () => {
+    process.env.WATAHUB_API_KEY = KEY
+    delete process.env.META_DEFAULT_WABA_ID
+
+    // Past auth, the route fails on its own validation (missing wabaId) → 400
+    const viaBearer = await app.request('/v1/templates', { headers: { Authorization: `Bearer ${KEY}` } })
+    const viaHeader = await app.request('/v1/templates', { headers: { 'X-API-Key': KEY } })
+    expect(viaBearer.status).toBe(400)
+    expect(viaHeader.status).toBe(400)
+  })
+
+  it('leaves /health and the Meta webhook handshake public', async () => {
+    delete process.env.WATAHUB_API_KEY
+    expect((await app.request('/health')).status).toBe(200)
+  })
+})

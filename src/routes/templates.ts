@@ -10,17 +10,6 @@ export const templatesRouter = new Hono()
  * GET /v1/templates or GET /v1/templates/:wabaId
  */
 templatesRouter.get('/v1/templates/:wabaId?', async (c) => {
-  const apiKey = getEnvVar(c, 'WATAHUB_API_KEY')
-  if (apiKey) {
-    const authHeader = c.req.header('authorization')
-    const headerKey = c.req.header('x-api-key')
-    const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
-
-    if (bearer !== apiKey && headerKey !== apiKey) {
-      return c.json({ error: 'Unauthorized: Invalid Watahub API key' }, 401)
-    }
-  }
-
   const wabaId =
     c.req.param('wabaId') ||
     c.req.query('wabaId') ||

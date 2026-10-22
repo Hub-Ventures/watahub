@@ -1,4 +1,4 @@
-import { Hono, type Context } from 'hono'
+import { Hono } from 'hono'
 import { z } from 'zod'
 import { getEnvVar } from '../utils/env.js'
 import { MetaClient } from '../services/meta-client.js'
@@ -22,26 +22,11 @@ const OverrideCallbackSchema = z.object({
   verifyToken: z.string().min(1, 'verifyToken is required'),
 })
 
-function checkApiKey(c: Context): boolean {
-  const apiKey = getEnvVar(c, 'WATAHUB_API_KEY')
-  if (!apiKey) return true
-
-  const authHeader = c.req.header('authorization')
-  const headerKey = c.req.header('x-api-key')
-  const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
-
-  return bearer === apiKey || headerKey === apiKey
-}
-
 /**
  * Exchange Meta Embedded Signup OAuth Code
  * POST /v1/onboarding/exchange
  */
 onboardingRouter.post('/v1/onboarding/exchange', async (c) => {
-  if (!checkApiKey(c)) {
-    return c.json({ error: 'Unauthorized: Invalid Watahub API key' }, 401)
-  }
-
   let body: unknown
   try {
     body = await c.req.json()
@@ -95,10 +80,6 @@ onboardingRouter.post('/v1/onboarding/exchange', async (c) => {
  * POST /v1/onboarding/subscribe
  */
 onboardingRouter.post('/v1/onboarding/subscribe', async (c) => {
-  if (!checkApiKey(c)) {
-    return c.json({ error: 'Unauthorized: Invalid Watahub API key' }, 401)
-  }
-
   let body: unknown
   try {
     body = await c.req.json()
@@ -136,10 +117,6 @@ onboardingRouter.post('/v1/onboarding/subscribe', async (c) => {
  * POST /v1/onboarding/override-callback
  */
 onboardingRouter.post('/v1/onboarding/override-callback', async (c) => {
-  if (!checkApiKey(c)) {
-    return c.json({ error: 'Unauthorized: Invalid Watahub API key' }, 401)
-  }
-
   let body: unknown
   try {
     body = await c.req.json()

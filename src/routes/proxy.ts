@@ -12,17 +12,7 @@ export const proxyRouter = new Hono()
  *   GET  /v24.0/:mediaId
  */
 proxyRouter.all('/v24.0/*', async (c) => {
-  const apiKey = getEnvVar(c, 'WATAHUB_API_KEY')
-  if (apiKey) {
-    const authHeader = c.req.header('authorization')
-    const headerKey = c.req.header('x-api-key')
-    const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
-
-    if (bearer !== apiKey && headerKey !== apiKey) {
-      return c.json({ error: 'Unauthorized: Invalid Watahub API key' }, 401)
-    }
-  }
-
+  // Gateway API key is enforced by requireApiKey (src/middleware/auth.ts)
   const defaultToken = getEnvVar(c, 'META_SYSTEM_USER_TOKEN')
   const overrideToken = c.req.header('x-meta-access-token')
   const accessToken = overrideToken || defaultToken
