@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { getEnvVar } from '../utils/env.js'
-import { verifyMetaSignature, signSubscriberPayload, timingSafeEqual } from '../services/crypto.js'
+import { verifyMetaSignature, sha256Hex, timingSafeEqual } from '../services/crypto.js'
+import { deliverToSubscriber } from '../services/delivery.js'
 import { normalizeMetaWebhook } from '../services/normalizer.js'
 import type { MetaWebhookPayload } from '../types/meta.js'
 
@@ -60,7 +61,10 @@ webhookRouter.post('/webhook', async (c) => {
   const subscriberUrl = getEnvVar(c, 'SUBSCRIBER_WEBHOOK_URL')
   const subscriberSecret = getEnvVar(c, 'SUBSCRIBER_WEBHOOK_SECRET')
 
-  if (subscriberUrl && normalizedEvents.length > 0) {
+  if (subscriberUrl && normalizedEvents.length > 0 && !subscriberSecret) {
+    // Fail closed: subscribers must be able to verify that events came from this gateway
+    console.error('[watahub] SUBSCRIBER_WEBHOOK_SECRET is not set; not forwarding unsigned events')
+  } else if (subscriberUrl && subscriberSecret && normalizedEvents.length > 0) {
     const forwardPayload = {
       timestamp: Date.now(),
       events: normalizedEvents,
@@ -68,38 +72,26 @@ webhookRouter.post('/webhook', async (c) => {
     }
 
     const forwardPromise = (async () => {
-      try {
-        const bodyStr = JSON.stringify(forwardPayload)
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-          'User-Agent': 'Watahub-Gateway/0.1.0',
-        }
+      // Derived from Meta's signed raw body, so a Meta redelivery of the same
+      // payload produces the same ID and the subscriber can drop the duplicate
+      const deliveryId = await sha256Hex(rawBody)
+      await deliverToSubscriber({
+        url: subscriberUrl,
+        body: JSON.stringify(forwardPayload),
+        secret: subscriberSecret,
+        deliveryId,
+      })
+    })().catch((err) => console.error('[watahub] Async dispatch error:', err instanceof Error ? err.name : 'unknown'))
 
-        if (subscriberSecret) {
-          const sig = await signSubscriberPayload(bodyStr, subscriberSecret)
-          headers['x-watahub-signature'] = sig
-        }
-
-        const res = await fetch(subscriberUrl, {
-          method: 'POST',
-          headers,
-          body: bodyStr,
-        })
-
-        if (!res.ok) {
-          console.error(`[watahub] Subscriber webhook returned HTTP ${res.status}`)
-        }
-      } catch (err) {
-        console.error('[watahub] Failed to forward webhook to subscriber:', err)
-      }
-    })()
-
-    // Non-blocking execution for Cloudflare Workers / Node
-    if (c.executionCtx?.waitUntil) {
-      c.executionCtx.waitUntil(forwardPromise)
-    } else {
-      forwardPromise.catch((err) => console.error('[watahub] Async dispatch error:', err))
+    // Non-blocking execution. Hono's executionCtx getter throws outside Workers,
+    // which used to turn every forwarded webhook on Node into a 500 (and a Meta retry).
+    let executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined
+    try {
+      executionCtx = c.executionCtx
+    } catch {
+      executionCtx = undefined
     }
+    executionCtx?.waitUntil(forwardPromise)
   }
 
   // Meta expects an immediate 200 OK
