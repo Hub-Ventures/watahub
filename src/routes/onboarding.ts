@@ -3,23 +3,24 @@ import { z } from 'zod'
 import { getEnvVar } from '../utils/env.js'
 import { MetaClient } from '../services/meta-client.js'
 import { WatahubApiError, classifyMetaError } from '../services/errors.js'
+import { GraphIdSchema, HttpsUrlSchema } from '../utils/validation.js'
 
 export const onboardingRouter = new Hono()
 
 const ExchangeCodeSchema = z.object({
-  code: z.string().min(1, 'Embedded signup code is required'),
-  appId: z.string().optional(),
-  appSecret: z.string().optional(),
+  code: z.string().min(1, 'Embedded signup code is required').max(2048),
+  appId: GraphIdSchema.optional(),
+  appSecret: z.string().max(256).optional(),
 })
 
 const SubscribeWabaSchema = z.object({
-  wabaId: z.string().min(1, 'wabaId is required'),
+  wabaId: GraphIdSchema,
 })
 
 const OverrideCallbackSchema = z.object({
-  phoneNumberId: z.string().min(1, 'phoneNumberId is required'),
-  callbackUrl: z.string().url('callbackUrl must be a valid URL'),
-  verifyToken: z.string().min(1, 'verifyToken is required'),
+  phoneNumberId: GraphIdSchema,
+  callbackUrl: HttpsUrlSchema,
+  verifyToken: z.string().min(1, 'verifyToken is required').max(256),
 })
 
 /**

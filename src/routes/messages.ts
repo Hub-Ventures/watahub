@@ -3,46 +3,62 @@ import { z } from 'zod'
 import { getEnvVar } from '../utils/env.js'
 import { MetaClient } from '../services/meta-client.js'
 import { WatahubApiError, classifyMetaError } from '../services/errors.js'
+import { GraphIdSchema, isGraphId } from '../utils/validation.js'
 import type { SendMessagePayload } from '../types/gateway.js'
 
 export const messagesRouter = new Hono()
 
-const SendMessageSchema = z.object({
-  to: z.string().min(1, 'Recipient phone number is required'),
-  phoneNumberId: z.string().optional(),
-  tenantId: z.string().optional(),
-  kind: z.enum(['text', 'template', 'image', 'audio', 'video', 'document', 'reaction', 'interactive']),
-  text: z
-    .object({
-      body: z.string().min(1, 'Text body cannot be empty'),
-    })
-    .optional(),
-  template: z
-    .object({
-      name: z.string().min(1),
-      language: z.object({
-        code: z.string().min(2),
-      }),
-      components: z.array(z.record(z.unknown())).optional(),
-    })
-    .optional(),
-  media: z
-    .object({
-      id: z.string().optional(),
-      link: z.string().optional(),
-      caption: z.string().optional(),
-      filename: z.string().optional(),
-    })
-    .optional(),
-  reaction: z
-    .object({
-      messageId: z.string().min(1),
-      emoji: z.string().min(1),
-    })
-    .optional(),
-  interactive: z.record(z.unknown()).optional(),
-  replyToMessageId: z.string().optional(),
-})
+const MEDIA_KINDS = ['image', 'audio', 'video', 'document'] as const
+
+const SendMessageSchema = z
+  .object({
+    to: z.string().min(1, 'Recipient phone number is required').max(64),
+    phoneNumberId: GraphIdSchema.optional(),
+    tenantId: z.string().max(128).optional(),
+    kind: z.enum(['text', 'template', 'image', 'audio', 'video', 'document', 'reaction', 'interactive']),
+    text: z
+      .object({
+        // Meta's hard limit for text message bodies
+        body: z.string().min(1, 'Text body cannot be empty').max(4096),
+      })
+      .optional(),
+    template: z
+      .object({
+        name: z.string().min(1).max(512),
+        language: z.object({
+          code: z.string().min(2).max(16),
+        }),
+        components: z.array(z.record(z.unknown())).optional(),
+      })
+      .optional(),
+    media: z
+      .object({
+        id: GraphIdSchema.optional(),
+        link: z.string().url().optional(),
+        caption: z.string().max(1024).optional(),
+        filename: z.string().max(240).optional(),
+      })
+      .optional(),
+    reaction: z
+      .object({
+        messageId: z.string().min(1).max(256),
+        emoji: z.string().min(1).max(16),
+      })
+      .optional(),
+    interactive: z.record(z.unknown()).optional(),
+    replyToMessageId: z.string().max(256).optional(),
+  })
+  .superRefine((value, ctx) => {
+    // Each kind needs its matching content object; otherwise an empty message reaches Meta
+    const isMedia = (MEDIA_KINDS as readonly string[]).includes(value.kind)
+    const contentKey = isMedia ? 'media' : value.kind
+    if (!value[contentKey as keyof typeof value]) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [contentKey], message: `${contentKey} is required for kind "${value.kind}"` })
+    }
+    if (isMedia && value.media && !value.media.id && !value.media.link) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['media'], message: 'media.id or media.link is required' })
+    }
+  })
 
 /**
  * Send WhatsApp Message
@@ -85,6 +101,11 @@ messagesRouter.post('/v1/messages', async (c) => {
       },
       400
     )
+  }
+
+  // The header path bypasses the body schema, so re-check the resolved ID
+  if (!isGraphId(phoneNumberId)) {
+    return c.json({ error: 'Validation failed', details: { phoneNumberId: ['Must be a numeric Meta Graph ID'] } }, 422)
   }
 
   const defaultToken = getEnvVar(c, 'META_SYSTEM_USER_TOKEN')

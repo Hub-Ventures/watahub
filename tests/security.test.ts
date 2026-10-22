@@ -148,3 +148,60 @@ describe('Gateway API key enforcement (fail closed)', () => {
     expect((await app.request('/health')).status).toBe(200)
   })
 })
+
+describe('Input validation keeps caller input out of Graph paths', () => {
+  const originalEnv = process.env
+  const KEY = 'wk_test_0123456789abcdef0123456789abcdef'
+  const auth = { 'X-API-Key': KEY, 'Content-Type': 'application/json' }
+
+  beforeEach(() => {
+    process.env = { ...originalEnv, WATAHUB_API_KEY: KEY, META_SYSTEM_USER_TOKEN: 'EAAG-system-token' }
+  })
+
+  afterEach(() => {
+    process.env = originalEnv
+    vi.restoreAllMocks()
+  })
+
+  it('rejects a path-traversal wabaId on /v1/templates before calling Meta', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    // Decodes to "../../me?fields=id#", which used to resolve to https://graph.facebook.com/me
+    const res = await app.request('/v1/templates/..%2F..%2Fme%3Ffields%3Did%23', { headers: auth })
+    expect(res.status).toBe(422)
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('rejects a non-numeric X-Phone-Number-Id header on /v1/messages', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const res = await app.request('/v1/messages', {
+      method: 'POST',
+      headers: { ...auth, 'X-Phone-Number-Id': '../123456/subscribed_apps' },
+      body: JSON.stringify({ to: '573001234567', kind: 'text', text: { body: 'hi' } }),
+    })
+    expect(res.status).toBe(422)
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('requires the content object that matches the message kind', async () => {
+    const send = (body: unknown) =>
+      app.request('/v1/messages', { method: 'POST', headers: auth, body: JSON.stringify(body) })
+
+    expect((await send({ to: '573001234567', phoneNumberId: '123', kind: 'text' })).status).toBe(422)
+    expect((await send({ to: '573001234567', phoneNumberId: '123', kind: 'image', media: {} })).status).toBe(422)
+    expect((await send({ to: '573001234567', phoneNumberId: '123', kind: 'template' })).status).toBe(422)
+  })
+
+  it('rejects onboarding IDs that are not numeric and non-https callback URLs', async () => {
+    const post = (path: string, body: unknown) =>
+      app.request(path, { method: 'POST', headers: auth, body: JSON.stringify(body) })
+
+    expect((await post('/v1/onboarding/subscribe', { wabaId: 'me' })).status).toBe(422)
+    expect(
+      (await post('/v1/onboarding/override-callback', {
+        phoneNumberId: '123',
+        callbackUrl: 'http://attacker.example/hook',
+        verifyToken: 'x',
+      })).status
+    ).toBe(422)
+  })
+})

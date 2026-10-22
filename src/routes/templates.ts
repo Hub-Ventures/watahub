@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { getEnvVar } from '../utils/env.js'
 import { MetaClient } from '../services/meta-client.js'
 import { WatahubApiError, classifyMetaError } from '../services/errors.js'
+import { isGraphId } from '../utils/validation.js'
 
 export const templatesRouter = new Hono()
 
@@ -22,6 +23,11 @@ templatesRouter.get('/v1/templates/:wabaId?', async (c) => {
       },
       400
     )
+  }
+
+  // wabaId becomes a Graph path segment; anything non-numeric could address other Graph objects
+  if (!isGraphId(wabaId)) {
+    return c.json({ error: 'Validation failed', details: { wabaId: ['Must be a numeric Meta Graph ID'] } }, 422)
   }
 
   const defaultToken = getEnvVar(c, 'META_SYSTEM_USER_TOKEN')
