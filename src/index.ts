@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
+import { HTTPException } from 'hono/http-exception'
 import { healthRouter } from './routes/health.js'
 import { webhookRouter } from './routes/webhook.js'
 import { messagesRouter } from './routes/messages.js'
@@ -8,11 +9,13 @@ import { templatesRouter } from './routes/templates.js'
 import { onboardingRouter } from './routes/onboarding.js'
 import { proxyRouter } from './routes/proxy.js'
 import { requireApiKey } from './middleware/auth.js'
+import { redactSecrets } from './utils/redact.js'
 
 export const app = new Hono()
 
 // Middlewares
-app.use('*', logger())
+// Request lines include the query string (e.g. hub.verify_token), so redact before printing
+app.use('*', logger((line, ...rest) => console.log(redactSecrets(line), ...rest)))
 app.use('*', cors())
 
 // Every machine-to-machine surface requires the gateway API key (fail closed)
@@ -34,15 +37,14 @@ app.notFound((c) => {
 
 // Global error handler
 app.onError((err, c) => {
-  console.error('[watahub-error]', err)
-  return c.json(
-    {
-      error: {
-        message: err.message || 'Internal Server Error',
-      },
-    },
-    500
-  )
+  // Hono's HTTPException (e.g. body limit) carries an intentional status and response
+  if (err instanceof HTTPException) {
+    return err.getResponse()
+  }
+
+  console.error('[watahub-error]', redactSecrets(err.stack || String(err)))
+  // Internal error details stay in the logs; callers only get a generic message
+  return c.json({ error: { message: 'Internal Server Error' } }, 500)
 })
 
 export default app

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import app from '../src/index.js'
 import { signSubscriberPayload, timingSafeEqual, verifyMetaSignature } from '../src/services/crypto.js'
+import { redactSecrets } from '../src/utils/redact.js'
 
 const APP_SECRET = 'meta-app-secret-for-tests'
 
@@ -252,5 +253,51 @@ describe('Graph passthrough proxy allowlist', () => {
     const res = await app.request('/v24.0/123456', { headers: auth })
     expect(res.status).toBe(502)
     expect(await res.text()).not.toContain('10.0.0.5')
+  })
+})
+
+describe('Secrets and internals stay out of logs and responses', () => {
+  const originalEnv = process.env
+
+  beforeEach(() => {
+    process.env = { ...originalEnv }
+  })
+
+  afterEach(() => {
+    process.env = originalEnv
+    vi.restoreAllMocks()
+  })
+
+  it('redacts hub.verify_token from the request log line', async () => {
+    process.env.META_WEBHOOK_VERIFY_TOKEN = 'super-secret-verify-token'
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await app.request('/webhook?hub.mode=subscribe&hub.verify_token=super-secret-verify-token&hub.challenge=42')
+
+    const logged = logSpy.mock.calls.map((args) => args.join(' ')).join('\n')
+    expect(logged).toContain('/webhook')
+    expect(logged).not.toContain('super-secret-verify-token')
+    expect(logged).toContain('hub.verify_token=[REDACTED]')
+  })
+
+  it('returns a generic 500 for unexpected errors instead of the exception message', async () => {
+    process.env.META_APP_SECRET = APP_SECRET
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    // A signed payload with a null entry makes the normalizer throw a TypeError
+    const body = JSON.stringify({ entry: [null] })
+    const res = await postWebhook(body, await signSubscriberPayload(body, APP_SECRET))
+
+    expect(res.status).toBe(500)
+    const text = await res.text()
+    expect(text).toContain('Internal Server Error')
+    expect(text).not.toContain('Cannot read properties')
+  })
+})
+
+describe('redactSecrets', () => {
+  it('redacts every secret-bearing query parameter and keeps the rest', () => {
+    expect(redactSecrets('GET /x?code=abc&client_secret=s3cr3t&state=ok&access_token=EAAG')).toBe(
+      'GET /x?code=[REDACTED]&client_secret=[REDACTED]&state=ok&access_token=[REDACTED]'
+    )
   })
 })
