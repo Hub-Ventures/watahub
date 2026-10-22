@@ -1,4 +1,5 @@
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
+import { bodyLimit } from 'hono/body-limit'
 import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
 import { HTTPException } from 'hono/http-exception'
@@ -21,6 +22,23 @@ app.use('*', cors())
 // Every machine-to-machine surface requires the gateway API key (fail closed)
 app.use('/v1/*', requireApiKey)
 app.use('/v24.0/*', requireApiKey)
+
+// Request body size limits (checked against Content-Length and enforced while streaming)
+const MB = 1024 * 1024
+const tooLarge = (c: Context) => c.json({ error: 'Payload too large' }, 413)
+export const BODY_LIMITS = {
+  // Meta batches up to ~1000 updates per delivery; real payloads stay far below this
+  webhook: 3 * MB,
+  json: 1 * MB,
+  // WhatsApp's largest media type (documents) is capped at 100 MB
+  media: 100 * MB,
+}
+const jsonLimit = bodyLimit({ maxSize: BODY_LIMITS.json, onError: tooLarge })
+const mediaLimit = bodyLimit({ maxSize: BODY_LIMITS.media, onError: tooLarge })
+
+app.use('/webhook', bodyLimit({ maxSize: BODY_LIMITS.webhook, onError: tooLarge }))
+app.use('/v1/*', jsonLimit)
+app.use('/v24.0/*', (c, next) => (c.req.path.endsWith('/media') ? mediaLimit(c, next) : jsonLimit(c, next)))
 
 // Mount sub-routers
 app.route('/', healthRouter)

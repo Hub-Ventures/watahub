@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import app from '../src/index.js'
+import app, { BODY_LIMITS } from '../src/index.js'
 import { signSubscriberPayload, timingSafeEqual, verifyMetaSignature } from '../src/services/crypto.js'
 import { redactSecrets } from '../src/utils/redact.js'
 
@@ -299,5 +299,45 @@ describe('redactSecrets', () => {
     expect(redactSecrets('GET /x?code=abc&client_secret=s3cr3t&state=ok&access_token=EAAG')).toBe(
       'GET /x?code=[REDACTED]&client_secret=[REDACTED]&state=ok&access_token=[REDACTED]'
     )
+  })
+})
+
+describe('Request body size limits', () => {
+  const originalEnv = process.env
+  const KEY = 'wk_test_0123456789abcdef0123456789abcdef'
+
+  beforeEach(() => {
+    process.env = { ...originalEnv, WATAHUB_API_KEY: KEY, META_APP_SECRET: APP_SECRET, META_SYSTEM_USER_TOKEN: 'EAAG-system-token' }
+  })
+
+  afterEach(() => {
+    process.env = originalEnv
+    vi.restoreAllMocks()
+  })
+
+  it('rejects webhook bodies above the limit with 413 before verifying them', async () => {
+    const huge = 'x'.repeat(BODY_LIMITS.webhook + 1)
+    const res = await postWebhook(huge, 'sha256=' + '0'.repeat(64))
+    expect(res.status).toBe(413)
+  })
+
+  it('rejects /v1 JSON bodies above 1 MB with 413', async () => {
+    const huge = JSON.stringify({ to: '1', kind: 'text', text: { body: 'x'.repeat(BODY_LIMITS.json) } })
+    const res = await app.request('/v1/messages', {
+      method: 'POST',
+      headers: { 'X-API-Key': KEY, 'Content-Type': 'application/json' },
+      body: huge,
+    })
+    expect(res.status).toBe(413)
+  })
+
+  it('allows media uploads above the JSON limit on /v24.0/:id/media', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ id: '1' }), { status: 200 }))
+    const res = await app.request('/v24.0/123/media', {
+      method: 'POST',
+      headers: { 'X-API-Key': KEY, 'Content-Type': 'application/octet-stream' },
+      body: new Uint8Array(BODY_LIMITS.json + 1024),
+    })
+    expect(res.status).toBe(200)
   })
 })
