@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { getEnvVar } from '../utils/env.js'
 import { MetaClient } from '../services/meta-client.js'
-import { WatahubApiError, classifyMetaError } from '../services/errors.js'
+import { WatahubApiError, classifyMetaError, transportFailure } from '../services/errors.js'
 import { isGraphId } from '../utils/validation.js'
 
 export const templatesRouter = new Hono()
@@ -67,7 +67,7 @@ templatesRouter.get('/v1/templates/:wabaId?', async (c) => {
       )
     }
 
-    const message = err instanceof Error ? err.message : 'Unknown gateway error'
-    return c.json({ error: { message } }, 500)
+    const failure = transportFailure(err)
+    return c.json({ error: { message: failure.message } }, failure.status)
   }
 })

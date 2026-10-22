@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { getEnvVar } from '../utils/env.js'
+import { transportFailure } from '../services/errors.js'
 
 export const proxyRouter = new Hono()
 
@@ -11,6 +12,9 @@ const ALLOWED_PROXY_ROUTES: Array<{ method: string; pattern: RegExp }> = [
   { method: 'POST', pattern: /^\d+\/media$/ },
   { method: 'GET', pattern: /^\d+$/ },
 ]
+
+// GET /:mediaId accepts phone_number_id to scope the lookup; nothing else is needed by the drop-in routes
+const FORWARDED_QUERY_PARAMS = new Set(['phone_number_id'])
 
 export function isAllowedProxyRoute(method: string, subPath: string): boolean {
   return ALLOWED_PROXY_ROUTES.some((route) => route.method === method && route.pattern.test(subPath))
@@ -43,7 +47,14 @@ proxyRouter.all('/v24.0/*', async (c) => {
   if (!isAllowedProxyRoute(c.req.method, subPath)) {
     return c.json({ error: 'Endpoint not allowed through the Watahub proxy' }, 403)
   }
-  const query = c.req.url.includes('?') ? c.req.url.slice(c.req.url.indexOf('?')) : ''
+  // Forward only allowlisted query params. Graph honors ?method=delete (verb tunneling),
+  // ?fields={...} (node expansion) and ?access_token=, any of which would widen the allowlist.
+  const forwardedQuery = new URLSearchParams()
+  for (const [key, value] of new URL(c.req.url).searchParams) {
+    if (FORWARDED_QUERY_PARAMS.has(key)) forwardedQuery.append(key, value)
+  }
+  const queryString = forwardedQuery.toString()
+  const query = queryString ? `?${queryString}` : ''
   const targetUrl = `https://graph.facebook.com/v24.0/${subPath}${query}`
 
   const headers = new Headers()
@@ -76,11 +87,7 @@ proxyRouter.all('/v24.0/*', async (c) => {
       headers: responseHeaders,
     })
   } catch (err: unknown) {
-    const timedOut = err instanceof Error && err.name === 'TimeoutError'
-    console.error('[watahub] Meta proxy request failed:', err instanceof Error ? err.name : 'unknown')
-    return c.json(
-      { error: { message: timedOut ? 'Meta Graph API request timed out' : 'Meta Graph API unreachable' } },
-      timedOut ? 504 : 502
-    )
+    const failure = transportFailure(err)
+    return c.json({ error: { message: failure.message } }, failure.status)
   }
 })

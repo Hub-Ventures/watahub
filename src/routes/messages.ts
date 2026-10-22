@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { getEnvVar } from '../utils/env.js'
 import { MetaClient } from '../services/meta-client.js'
-import { WatahubApiError, classifyMetaError } from '../services/errors.js'
+import { WatahubApiError, classifyMetaError, transportFailure } from '../services/errors.js'
 import { GraphIdSchema, isGraphId } from '../utils/validation.js'
 import type { SendMessagePayload } from '../types/gateway.js'
 
@@ -147,7 +147,7 @@ messagesRouter.post('/v1/messages', async (c) => {
       )
     }
 
-    const message = err instanceof Error ? err.message : 'Unknown gateway error'
-    return c.json({ error: { message } }, 500)
+    const failure = transportFailure(err)
+    return c.json({ error: { message: failure.message } }, failure.status)
   }
 })

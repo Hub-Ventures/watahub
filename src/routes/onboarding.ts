@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { getEnvVar } from '../utils/env.js'
 import { MetaClient } from '../services/meta-client.js'
-import { WatahubApiError, classifyMetaError } from '../services/errors.js'
+import { WatahubApiError, classifyMetaError, transportFailure } from '../services/errors.js'
 import { GraphIdSchema, HttpsUrlSchema } from '../utils/validation.js'
 
 export const onboardingRouter = new Hono()
@@ -71,8 +71,8 @@ onboardingRouter.post('/v1/onboarding/exchange', async (c) => {
       )
     }
 
-    const message = err instanceof Error ? err.message : 'Unknown gateway error'
-    return c.json({ error: { message } }, 500)
+    const failure = transportFailure(err)
+    return c.json({ error: { message: failure.message } }, failure.status)
   }
 })
 
@@ -108,8 +108,8 @@ onboardingRouter.post('/v1/onboarding/subscribe', async (c) => {
     const success = await client.subscribeAppToWaba(parsed.data.wabaId)
     return c.json({ success, wabaId: parsed.data.wabaId }, 200)
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown gateway error'
-    return c.json({ error: { message } }, 500)
+    const failure = transportFailure(err)
+    return c.json({ error: { message: failure.message } }, failure.status)
   }
 })
 
@@ -149,7 +149,7 @@ onboardingRouter.post('/v1/onboarding/override-callback', async (c) => {
     )
     return c.json({ success, phoneNumberId: parsed.data.phoneNumberId }, 200)
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown gateway error'
-    return c.json({ error: { message } }, 500)
+    const failure = transportFailure(err)
+    return c.json({ error: { message: failure.message } }, failure.status)
   }
 })

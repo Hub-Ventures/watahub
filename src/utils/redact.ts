@@ -2,7 +2,15 @@
  * Query parameters that carry secrets. Meta sends hub.verify_token on the
  * webhook handshake, and Graph accepts access_token / client_secret / code.
  */
-const SECRET_QUERY_PARAMS = ['hub.verify_token', 'access_token', 'client_secret', 'code', 'input_token']
+const SECRET_QUERY_PARAMS = [
+  'hub.verify_token',
+  'access_token',
+  'client_secret',
+  'code',
+  'input_token',
+  'appsecret_proof',
+  'refresh_token',
+]
 
 const SECRET_PARAM_PATTERN = new RegExp(
   `([?&](?:${SECRET_QUERY_PARAMS.map((p) => p.replace('.', '\\.')).join('|')})=)[^&\\s#]*`,

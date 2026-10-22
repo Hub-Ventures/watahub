@@ -106,3 +106,21 @@ export function classifyMetaError(err: WatahubApiError): ErrorClassification {
     action: 'Inspect error code and payload details in Meta developer documentation',
   }
 }
+
+export interface TransportFailure {
+  status: 502 | 504
+  message: string
+}
+
+/**
+ * Maps a non-Meta failure (timeout, DNS, connection reset...) to a generic
+ * response. The underlying error is logged by name only; its message can carry
+ * internal hostnames or addresses and is never returned to the caller.
+ */
+export function transportFailure(err: unknown): TransportFailure {
+  const name = err instanceof Error ? err.name : 'unknown'
+  console.error(`[watahub] Meta Graph API call failed: ${name}`)
+  return name === 'TimeoutError'
+    ? { status: 504, message: 'Meta Graph API request timed out' }
+    : { status: 502, message: 'Meta Graph API unreachable' }
+}

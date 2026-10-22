@@ -375,3 +375,57 @@ describe('API key hardening (review follow-ups)', () => {
     }
   )
 })
+
+describe('Review follow-ups: proxy query string and transport errors', () => {
+  const originalEnv = process.env
+  const KEY = 'wk_test_0123456789abcdef0123456789abcdef'
+  const auth = { 'X-API-Key': KEY, 'Content-Type': 'application/json' }
+
+  beforeEach(() => {
+    process.env = { ...originalEnv, WATAHUB_API_KEY: KEY, META_SYSTEM_USER_TOKEN: 'EAAG-system-token' }
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    process.env = originalEnv
+    vi.restoreAllMocks()
+  })
+
+  it('strips verb tunneling, field expansion and token overrides from proxied query strings', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+
+    await app.request(
+      '/v24.0/123456?method=delete&fields=owner_business%7Bsystem_users%7D&access_token=x&phone_number_id=987',
+      { headers: auth }
+    )
+
+    expect(String(fetchSpy.mock.calls[0][0])).toBe('https://graph.facebook.com/v24.0/123456?phone_number_id=987')
+  })
+
+  it('maps a Graph timeout on /v1/messages to a generic 504', async () => {
+    const timeout = new DOMException('The operation was aborted due to timeout', 'TimeoutError')
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(timeout)
+
+    const res = await app.request('/v1/messages', {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ to: '573001234567', phoneNumberId: '123', kind: 'text', text: { body: 'hi' } }),
+    })
+
+    expect(res.status).toBe(504)
+    expect(await res.text()).not.toContain('aborted')
+  })
+
+  it('maps network failures on onboarding routes to a generic 502', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('getaddrinfo ENOTFOUND internal.corp'))
+
+    const res = await app.request('/v1/onboarding/subscribe', {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ wabaId: '123' }),
+    })
+
+    expect(res.status).toBe(502)
+    expect(await res.text()).not.toContain('internal.corp')
+  })
+})
