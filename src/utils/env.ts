@@ -30,7 +30,14 @@ export function getEnvVar(c: Context, key: keyof WatahubEnv): string | undefined
   return undefined
 }
 
+const MIN_API_KEY_LENGTH = 32
+
 const PLACEHOLDER_VALUES = new Set(['wata_sk_live_secret_key_here', 'your_secure_verify_token_here', 'changeme'])
+
+/** Same rule validateEnv applies at boot: 32+ characters and not the .env.example placeholder */
+export function isStrongApiKey(value: string): boolean {
+  return value.length >= MIN_API_KEY_LENGTH && notPlaceholder(value)
+}
 
 const numericId = z.string().regex(/^\d+$/, 'must be a numeric Meta Graph ID')
 const notPlaceholder = (value: string) => !PLACEHOLDER_VALUES.has(value)
@@ -56,7 +63,7 @@ const EnvSchema = z
     SUBSCRIBER_WEBHOOK_SECRET: z.string().min(32, 'must be at least 32 characters').optional(),
     WATAHUB_API_KEY: z
       .string()
-      .min(32, 'must be at least 32 characters (e.g. openssl rand -hex 32)')
+      .min(MIN_API_KEY_LENGTH, 'must be at least 32 characters (e.g. openssl rand -hex 32)')
       .refine(notPlaceholder, 'still has the .env.example placeholder'),
   })
   .superRefine((env, ctx) => {

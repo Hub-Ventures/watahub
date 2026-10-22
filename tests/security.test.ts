@@ -341,3 +341,37 @@ describe('Request body size limits', () => {
     expect(res.status).toBe(200)
   })
 })
+
+describe('API key hardening (review follow-ups)', () => {
+  const originalEnv = process.env
+  const KEY = 'wk_test_0123456789abcdef0123456789abcdef'
+
+  beforeEach(() => {
+    process.env = { ...originalEnv, META_SYSTEM_USER_TOKEN: 'EAAG-system-token' }
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    process.env = originalEnv
+    vi.restoreAllMocks()
+  })
+
+  it('accepts X-API-Key even when Authorization carries a Meta bearer token (drop-in clients)', async () => {
+    process.env.WATAHUB_API_KEY = KEY
+    delete process.env.META_DEFAULT_WABA_ID
+    const res = await app.request('/v1/templates', {
+      headers: { Authorization: 'Bearer EAAG-some-meta-token', 'X-API-Key': KEY },
+    })
+    // Past auth → missing wabaId
+    expect(res.status).toBe(400)
+  })
+
+  it.each(['too-short-key', 'wata_sk_live_secret_key_here'])(
+    'refuses to serve with a weak WATAHUB_API_KEY (%s), even when the caller presents it',
+    async (weakKey) => {
+      process.env.WATAHUB_API_KEY = weakKey
+      const res = await app.request('/v1/templates/123', { headers: { 'X-API-Key': weakKey } })
+      expect(res.status).toBe(503)
+    }
+  )
+})

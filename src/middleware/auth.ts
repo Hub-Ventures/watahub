@@ -1,5 +1,5 @@
 import type { MiddlewareHandler } from 'hono'
-import { getEnvVar } from '../utils/env.js'
+import { getEnvVar, isStrongApiKey } from '../utils/env.js'
 import { timingSafeEqual } from '../services/crypto.js'
 
 /**
@@ -11,16 +11,20 @@ import { timingSafeEqual } from '../services/crypto.js'
  */
 export const requireApiKey: MiddlewareHandler = async (c, next) => {
   const apiKey = getEnvVar(c, 'WATAHUB_API_KEY')
-  if (!apiKey) {
-    console.error('[watahub] WATAHUB_API_KEY is not set; refusing authenticated route')
-    return c.json({ error: 'Gateway misconfigured: WATAHUB_API_KEY is not set' }, 503)
+  // Workers has no boot step, so the strength rules from validateEnv are enforced here too
+  if (!apiKey || !isStrongApiKey(apiKey)) {
+    console.error('[watahub] WATAHUB_API_KEY is missing, too short or a placeholder; refusing authenticated route')
+    return c.json({ error: 'Gateway misconfigured: WATAHUB_API_KEY is missing or too weak' }, 503)
   }
 
+  // Drop-in Meta clients send `Authorization: Bearer <meta token>` next to X-API-Key,
+  // so either header may carry the gateway key. Both are always compared.
   const authHeader = c.req.header('authorization')
   const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined
-  const provided = bearer ?? c.req.header('x-api-key')
+  const candidates = [bearer, c.req.header('x-api-key')].filter((value): value is string => !!value)
 
-  if (!provided || !(await timingSafeEqual(provided, apiKey))) {
+  const matches = await Promise.all(candidates.map((candidate) => timingSafeEqual(candidate, apiKey)))
+  if (!matches.includes(true)) {
     return c.json({ error: 'Unauthorized: Invalid Watahub API key' }, 401)
   }
 

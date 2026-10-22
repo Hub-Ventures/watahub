@@ -46,13 +46,13 @@ describe('HTTP Route Endpoints', () => {
   })
 
   it('POST /v1/messages rejects invalid schema (missing required fields)', async () => {
-    process.env.WATAHUB_API_KEY = 'wh_secret_key_999'
+    process.env.WATAHUB_API_KEY = 'wh_secret_key_0123456789abcdef0123456789'
 
     const res = await app.request('/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-API-Key': 'wh_secret_key_999',
+        'X-API-Key': 'wh_secret_key_0123456789abcdef0123456789',
       },
       body: JSON.stringify({}),
     })
@@ -63,7 +63,7 @@ describe('HTTP Route Endpoints', () => {
   })
 
   it('POST /v1/messages enforces WATAHUB_API_KEY if configured', async () => {
-    process.env.WATAHUB_API_KEY = 'wh_secret_key_999'
+    process.env.WATAHUB_API_KEY = 'wh_secret_key_0123456789abcdef0123456789'
 
     const res = await app.request('/v1/messages', {
       method: 'POST',
@@ -81,7 +81,7 @@ describe('HTTP Route Endpoints', () => {
   })
 
   it('POST /v24.0/PHONE_123/messages enforces API Key when configured', async () => {
-    process.env.WATAHUB_API_KEY = 'wh_secret_key_999'
+    process.env.WATAHUB_API_KEY = 'wh_secret_key_0123456789abcdef0123456789'
 
     const res = await app.request('/v24.0/PHONE_123/messages', {
       method: 'POST',
