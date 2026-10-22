@@ -83,7 +83,8 @@ export function classifyMetaError(err: WatahubApiError): ErrorClassification {
     }
   }
 
-  if (err.code === 130429) {
+  // 130429 Cloud API throughput, 4 app-level, 80007 WABA-level, or a bare HTTP 429
+  if (err.code === 130429 || err.code === 4 || err.code === 80007 || err.statusCode === 429) {
     return {
       category: 'rate_limit',
       retryable: true,
