@@ -95,7 +95,7 @@ On Node the gateway validates this configuration at boot and refuses to start if
 
 ### Development (Node.js)
 ```bash
-pnpm run dev
+pnpm run dev:node
 ```
 
 ### Development (Cloudflare Workers via Wrangler)
