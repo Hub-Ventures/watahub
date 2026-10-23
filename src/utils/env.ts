@@ -48,7 +48,10 @@ const notPlaceholder = (value: string) => !PLACEHOLDER_VALUES.has(value)
  */
 const EnvSchema = z
   .object({
-    PORT: z.string().regex(/^\d{1,5}$/, 'must be a port number').optional(),
+    PORT: z
+      .string()
+      .regex(/^\d{1,5}$/, 'must be a port number')
+      .optional(),
     META_APP_ID: numericId.optional(),
     META_APP_SECRET: z.string().min(1, 'is required to verify Meta webhook signatures'),
     META_SYSTEM_USER_TOKEN: z.string().min(1).optional(),
@@ -58,7 +61,10 @@ const EnvSchema = z
       .refine(notPlaceholder, 'still has the .env.example placeholder'),
     META_DEFAULT_PHONE_NUMBER_ID: numericId.optional(),
     META_DEFAULT_WABA_ID: numericId.optional(),
-    META_API_VERSION: z.string().regex(/^v\d+\.\d+$/, 'must look like v24.0').optional(),
+    META_API_VERSION: z
+      .string()
+      .regex(/^v\d+\.\d+$/, 'must look like v24.0')
+      .optional(),
     SUBSCRIBER_WEBHOOK_URL: z.string().url().optional(),
     SUBSCRIBER_WEBHOOK_SECRET: z.string().min(32, 'must be at least 32 characters').optional(),
     WATAHUB_API_KEY: z

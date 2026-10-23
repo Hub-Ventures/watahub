@@ -53,7 +53,11 @@ const SendMessageSchema = z
     const isMedia = (MEDIA_KINDS as readonly string[]).includes(value.kind)
     const contentKey = isMedia ? 'media' : value.kind
     if (!value[contentKey as keyof typeof value]) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [contentKey], message: `${contentKey} is required for kind "${value.kind}"` })
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [contentKey],
+        message: `${contentKey} is required for kind "${value.kind}"`,
+      })
     }
     if (isMedia && value.media && !value.media.id && !value.media.link) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['media'], message: 'media.id or media.link is required' })
@@ -90,14 +94,13 @@ messagesRouter.post('/v1/messages', async (c) => {
 
   // 3. Resolve Phone Number ID & Access Token
   const phoneNumberId =
-    payload.phoneNumberId ||
-    c.req.header('x-phone-number-id') ||
-    getEnvVar(c, 'META_DEFAULT_PHONE_NUMBER_ID')
+    payload.phoneNumberId || c.req.header('x-phone-number-id') || getEnvVar(c, 'META_DEFAULT_PHONE_NUMBER_ID')
 
   if (!phoneNumberId) {
     return c.json(
       {
-        error: 'Missing phoneNumberId. Specify it in body, X-Phone-Number-Id header, or META_DEFAULT_PHONE_NUMBER_ID env var.',
+        error:
+          'Missing phoneNumberId. Specify it in body, X-Phone-Number-Id header, or META_DEFAULT_PHONE_NUMBER_ID env var.',
       },
       400
     )

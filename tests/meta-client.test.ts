@@ -99,7 +99,9 @@ describe('backoffDelayMs', () => {
     for (let attempt = 0; attempt < 10; attempt++) {
       const delay = backoffDelayMs(attempt, DEFAULT_RETRY_POLICY)
       expect(delay).toBeGreaterThanOrEqual(0)
-      expect(delay).toBeLessThan(Math.min(DEFAULT_RETRY_POLICY.maxDelayMs, DEFAULT_RETRY_POLICY.baseDelayMs * 2 ** attempt))
+      expect(delay).toBeLessThan(
+        Math.min(DEFAULT_RETRY_POLICY.maxDelayMs, DEFAULT_RETRY_POLICY.baseDelayMs * 2 ** attempt)
+      )
     }
   })
 })

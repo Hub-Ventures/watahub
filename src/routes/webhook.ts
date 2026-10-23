@@ -95,8 +95,11 @@ webhookRouter.post('/webhook', async (c) => {
   }
 
   // Meta expects an immediate 200 OK
-  return c.json({
-    status: 'received',
-    eventsCount: normalizedEvents.length,
-  }, 200)
+  return c.json(
+    {
+      status: 'received',
+      eventsCount: normalizedEvents.length,
+    },
+    200
+  )
 })

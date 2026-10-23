@@ -86,12 +86,19 @@ describe('POST /webhook → subscriber forwarding', () => {
     return app.request('/webhook', {
       method: 'POST',
       body,
-      headers: { 'Content-Type': 'application/json', 'x-hub-signature-256': await signSubscriberPayload(body, APP_SECRET) },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-hub-signature-256': await signSubscriberPayload(body, APP_SECRET),
+      },
     })
   }
 
   beforeEach(() => {
-    process.env = { ...originalEnv, META_APP_SECRET: APP_SECRET, SUBSCRIBER_WEBHOOK_URL: 'https://subscriber.example/hook' }
+    process.env = {
+      ...originalEnv,
+      META_APP_SECRET: APP_SECRET,
+      SUBSCRIBER_WEBHOOK_URL: 'https://subscriber.example/hook',
+    }
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 
@@ -120,7 +127,9 @@ describe('POST /webhook → subscriber forwarding', () => {
     await deliver()
     await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2))
 
-    const ids = fetchSpy.mock.calls.map(([, init]) => (init?.headers as Record<string, string>)['x-watahub-delivery-id'])
+    const ids = fetchSpy.mock.calls.map(
+      ([, init]) => (init?.headers as Record<string, string>)['x-watahub-delivery-id']
+    )
     expect(ids[0]).toBe(ids[1])
   })
 

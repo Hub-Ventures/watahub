@@ -3,14 +3,7 @@
  */
 
 export type OutboundMessageKind =
-  | 'text'
-  | 'template'
-  | 'image'
-  | 'audio'
-  | 'video'
-  | 'document'
-  | 'reaction'
-  | 'interactive'
+  'text' | 'template' | 'image' | 'audio' | 'video' | 'document' | 'reaction' | 'interactive'
 
 export interface SendMessagePayload {
   to: string

@@ -51,10 +51,7 @@ export async function verifyMetaSignature(
  * Signs payload for subscriber webhook delivery with HMAC-SHA256.
  * Generates: sha256=<hex_digest>
  */
-export async function signSubscriberPayload(
-  payloadString: string,
-  secret: string
-): Promise<string> {
+export async function signSubscriberPayload(payloadString: string, secret: string): Promise<string> {
   const encoder = new TextEncoder()
   const keyData = encoder.encode(secret)
   const cryptoKey = await crypto.subtle.importKey(
@@ -98,10 +95,7 @@ export async function timingSafeEqual(a: string, b: string): Promise<boolean> {
  * Hex-encoded SHA-256 digest. Used to derive stable idempotency keys.
  */
 export async function sha256Hex(input: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(input) as unknown as BufferSource
-  )
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input) as unknown as BufferSource)
   return bytesToHex(new Uint8Array(digest))
 }
 

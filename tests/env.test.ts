@@ -50,7 +50,11 @@ describe('validateEnv', () => {
     expect(plainHttp.some((e) => e.startsWith('SUBSCRIBER_WEBHOOK_URL'))).toBe(true)
 
     expect(
-      validateEnv({ ...validEnv, SUBSCRIBER_WEBHOOK_URL: 'http://localhost:4000/hook', SUBSCRIBER_WEBHOOK_SECRET: 's'.repeat(32) })
+      validateEnv({
+        ...validEnv,
+        SUBSCRIBER_WEBHOOK_URL: 'http://localhost:4000/hook',
+        SUBSCRIBER_WEBHOOK_SECRET: 's'.repeat(32),
+      })
     ).toEqual({ ok: true })
   })
 

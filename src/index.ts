@@ -16,7 +16,10 @@ export const app = new Hono()
 
 // Middlewares
 // Request lines include the query string (e.g. hub.verify_token), so redact before printing
-app.use('*', logger((line, ...rest) => console.log(redactSecrets(line), ...rest)))
+app.use(
+  '*',
+  logger((line, ...rest) => console.log(redactSecrets(line), ...rest))
+)
 app.use('*', cors())
 
 // Every machine-to-machine surface requires the gateway API key (fail closed)

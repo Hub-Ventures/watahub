@@ -111,7 +111,10 @@ describe('Gateway API key enforcement (fail closed)', () => {
     ['/v1/templates/123', { method: 'GET' }],
     ['/v1/onboarding/exchange', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } }],
     ['/v1/onboarding/subscribe', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } }],
-    ['/v1/onboarding/override-callback', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } }],
+    [
+      '/v1/onboarding/override-callback',
+      { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } },
+    ],
     ['/v24.0/123/messages', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } }],
   ]
 
@@ -198,11 +201,13 @@ describe('Input validation keeps caller input out of Graph paths', () => {
 
     expect((await post('/v1/onboarding/subscribe', { wabaId: 'me' })).status).toBe(422)
     expect(
-      (await post('/v1/onboarding/override-callback', {
-        phoneNumberId: '123',
-        callbackUrl: 'http://attacker.example/hook',
-        verifyToken: 'x',
-      })).status
+      (
+        await post('/v1/onboarding/override-callback', {
+          phoneNumberId: '123',
+          callbackUrl: 'http://attacker.example/hook',
+          verifyToken: 'x',
+        })
+      ).status
     ).toBe(422)
   })
 })
@@ -307,7 +312,12 @@ describe('Request body size limits', () => {
   const KEY = 'wk_test_0123456789abcdef0123456789abcdef'
 
   beforeEach(() => {
-    process.env = { ...originalEnv, WATAHUB_API_KEY: KEY, META_APP_SECRET: APP_SECRET, META_SYSTEM_USER_TOKEN: 'EAAG-system-token' }
+    process.env = {
+      ...originalEnv,
+      WATAHUB_API_KEY: KEY,
+      META_APP_SECRET: APP_SECRET,
+      META_SYSTEM_USER_TOKEN: 'EAAG-system-token',
+    }
   })
 
   afterEach(() => {

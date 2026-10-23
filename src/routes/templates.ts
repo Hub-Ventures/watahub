@@ -11,10 +11,7 @@ export const templatesRouter = new Hono()
  * GET /v1/templates or GET /v1/templates/:wabaId
  */
 templatesRouter.get('/v1/templates/:wabaId?', async (c) => {
-  const wabaId =
-    c.req.param('wabaId') ||
-    c.req.query('wabaId') ||
-    getEnvVar(c, 'META_DEFAULT_WABA_ID')
+  const wabaId = c.req.param('wabaId') || c.req.query('wabaId') || getEnvVar(c, 'META_DEFAULT_WABA_ID')
 
   if (!wabaId) {
     return c.json(
