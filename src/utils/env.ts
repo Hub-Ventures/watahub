@@ -13,6 +13,7 @@ export interface WatahubEnv {
   SUBSCRIBER_WEBHOOK_URL?: string
   SUBSCRIBER_WEBHOOK_SECRET?: string
   WATAHUB_API_KEY?: string
+  META_WEBHOOK_MAX_AGE_SECONDS?: string
 }
 
 export function getEnvVar(c: Context, key: keyof WatahubEnv): string | undefined {
@@ -61,6 +62,7 @@ const EnvSchema = z
     META_API_VERSION: z.string().regex(/^v\d+\.\d+$/, 'must look like v24.0').optional(),
     SUBSCRIBER_WEBHOOK_URL: z.string().url().optional(),
     SUBSCRIBER_WEBHOOK_SECRET: z.string().min(32, 'must be at least 32 characters').optional(),
+    META_WEBHOOK_MAX_AGE_SECONDS: z.string().regex(/^[1-9]\d*$/, 'must be a positive number of seconds').optional(),
     WATAHUB_API_KEY: z
       .string()
       .min(MIN_API_KEY_LENGTH, 'must be at least 32 characters (e.g. openssl rand -hex 32)')

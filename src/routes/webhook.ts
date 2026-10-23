@@ -3,6 +3,7 @@ import { getEnvVar } from '../utils/env.js'
 import { verifyMetaSignature, sha256Hex, timingSafeEqual } from '../services/crypto.js'
 import { deliverToSubscriber } from '../services/delivery.js'
 import { normalizeMetaWebhook } from '../services/normalizer.js'
+import { DEFAULT_WEBHOOK_MAX_AGE_SECONDS, isStale, webhookDeliveryIds } from '../services/replay.js'
 import type { MetaWebhookPayload } from '../types/meta.js'
 
 export const webhookRouter = new Hono()
@@ -54,6 +55,21 @@ webhookRouter.post('/webhook', async (c) => {
     return c.json({ error: 'Invalid JSON payload' }, 400)
   }
 
+  // Derived from Meta's signed raw body, so a Meta redelivery of the same
+  // payload produces the same ID and the subscriber can drop the duplicate
+  const deliveryId = await sha256Hex(rawBody)
+
+  // Replay protection (src/services/replay.ts). Both cases answer 200 so Meta
+  // stops retrying, but nothing is forwarded.
+  const maxAgeSeconds = Number(getEnvVar(c, 'META_WEBHOOK_MAX_AGE_SECONDS')) || DEFAULT_WEBHOOK_MAX_AGE_SECONDS
+  if (isStale(payload, maxAgeSeconds)) {
+    console.error(`[watahub] Ignoring webhook ${deliveryId}: events older than ${maxAgeSeconds}s (possible replay)`)
+    return c.json({ status: 'ignored', reason: 'stale', eventsCount: 0 }, 200)
+  }
+  if (!webhookDeliveryIds.remember(deliveryId)) {
+    return c.json({ status: 'ignored', reason: 'duplicate', eventsCount: 0 }, 200)
+  }
+
   // Normalize incoming messages and statuses
   const normalizedEvents = normalizeMetaWebhook(payload)
 
@@ -71,17 +87,12 @@ webhookRouter.post('/webhook', async (c) => {
       raw: payload,
     }
 
-    const forwardPromise = (async () => {
-      // Derived from Meta's signed raw body, so a Meta redelivery of the same
-      // payload produces the same ID and the subscriber can drop the duplicate
-      const deliveryId = await sha256Hex(rawBody)
-      await deliverToSubscriber({
-        url: subscriberUrl,
-        body: JSON.stringify(forwardPayload),
-        secret: subscriberSecret,
-        deliveryId,
-      })
-    })().catch((err) => console.error('[watahub] Async dispatch error:', err instanceof Error ? err.name : 'unknown'))
+    const forwardPromise = deliverToSubscriber({
+      url: subscriberUrl,
+      body: JSON.stringify(forwardPayload),
+      secret: subscriberSecret,
+      deliveryId,
+    }).catch((err) => console.error('[watahub] Async dispatch error:', err instanceof Error ? err.name : 'unknown'))
 
     // Non-blocking execution. Hono's executionCtx getter throws outside Workers,
     // which used to turn every forwarded webhook on Node into a 500 (and a Meta retry).
