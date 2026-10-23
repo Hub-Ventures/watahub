@@ -3,9 +3,13 @@ import app, { BODY_LIMITS } from '../src/index.js'
 import { signSubscriberPayload, timingSafeEqual, verifyMetaSignature } from '../src/services/crypto.js'
 import { redactSecrets } from '../src/utils/redact.js'
 import { webhookDeliveryIds } from '../src/services/replay.js'
+import { resetRateLimits } from '../src/middleware/rate-limit.js'
 
-// Identical signed bodies are deduplicated across requests; every test starts clean
-beforeEach(() => webhookDeliveryIds.clear())
+// Replay cache and auth-failure counters persist across requests; every test starts clean
+beforeEach(() => {
+  webhookDeliveryIds.clear()
+  resetRateLimits()
+})
 
 const APP_SECRET = 'meta-app-secret-for-tests'
 

@@ -11,6 +11,7 @@ import { onboardingRouter } from './routes/onboarding.js'
 import { proxyRouter } from './routes/proxy.js'
 import { requireApiKey } from './middleware/auth.js'
 import { corsFromEnv } from './middleware/cors.js'
+import { rateLimitFromEnv } from './middleware/rate-limit.js'
 import { redactSecrets } from './utils/redact.js'
 
 export const app = new Hono()
@@ -28,6 +29,10 @@ app.use(
 )
 // Off by default; CORS_ALLOWED_ORIGINS opts specific origins in (src/middleware/cors.ts)
 app.use('*', corsFromEnv)
+
+// Optional per-client limit (RATE_LIMIT_PER_MINUTE), counted before auth so floods are cheap to refuse
+app.use('/v1/*', rateLimitFromEnv)
+app.use('/v24.0/*', rateLimitFromEnv)
 
 // Every machine-to-machine surface requires the gateway API key (fail closed)
 app.use('/v1/*', requireApiKey)

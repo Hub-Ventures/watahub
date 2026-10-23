@@ -1,6 +1,7 @@
 import type { MiddlewareHandler } from 'hono'
 import { getEnvVar, isStrongApiKey } from '../utils/env.js'
 import { timingSafeEqual } from '../services/crypto.js'
+import { authFailures, clientAddress, tooManyRequests } from './rate-limit.js'
 
 /**
  * Gateway API key guard for every authenticated surface (/v1/*, /v24.0/*).
@@ -17,6 +18,11 @@ export const requireApiKey: MiddlewareHandler = async (c, next) => {
     return c.json({ error: 'Gateway misconfigured: WATAHUB_API_KEY is missing or too weak' }, 503)
   }
 
+  // Brute-force brake: a client with too many recent failures is refused before comparing
+  const client = clientAddress(c)
+  const retryAfter = authFailures.blockedFor(client)
+  if (retryAfter > 0) return tooManyRequests(c, retryAfter)
+
   // Drop-in Meta clients send `Authorization: Bearer <meta token>` next to X-API-Key,
   // so either header may carry the gateway key. Both are always compared.
   const authHeader = c.req.header('authorization')
@@ -25,6 +31,7 @@ export const requireApiKey: MiddlewareHandler = async (c, next) => {
 
   const matches = await Promise.all(candidates.map((candidate) => timingSafeEqual(candidate, apiKey)))
   if (!matches.includes(true)) {
+    authFailures.hit(client)
     return c.json({ error: 'Unauthorized: Invalid Watahub API key' }, 401)
   }
 
