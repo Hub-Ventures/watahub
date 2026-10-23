@@ -32,6 +32,13 @@ describe('replay helpers', () => {
     expect(newestEventTimestamp({ object: 'x', entry: [] } as unknown as MetaWebhookPayload)).toBeUndefined()
   })
 
+  it('ignores old timestamps outside the messages field (history sync)', () => {
+    const history = payloadAt(1_000)
+    ;(history.entry[0].changes[0] as { field: string }).field = 'history'
+    expect(newestEventTimestamp(history)).toBeUndefined()
+    expect(isStale(history, 60)).toBe(false)
+  })
+
   it('treats payloads without event timestamps as fresh', () => {
     const noEvents = { object: 'x', entry: [{ id: '1', changes: [{ field: 'message_template_status_update', value: {} }] }] }
     expect(isStale(noEvents as unknown as MetaWebhookPayload, 60)).toBe(false)
