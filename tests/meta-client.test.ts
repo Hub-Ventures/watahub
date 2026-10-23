@@ -31,17 +31,17 @@ describe('MetaClient resilience', () => {
   })
 
   it('stops after maxAttempts and surfaces a rate_limit classification', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => rateLimited())
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(() => Promise.resolve(rateLimited()))
     const client = new MetaClient({ accessToken: 't', retry: { ...FAST_RETRY, maxAttempts: 3 } })
 
-    const error = await client.sendMessage('123', textMessage).catch((err) => err)
+    const error = await client.sendMessage('123', textMessage).catch((err: unknown) => err)
     expect(error).toBeInstanceOf(WatahubApiError)
     expect(fetchSpy).toHaveBeenCalledTimes(3)
-    expect(classifyMetaError(error).category).toBe('rate_limit')
+    expect(classifyMetaError(error as WatahubApiError).category).toBe('rate_limit')
   })
 
   it('never retries a send after a 5xx (the message may already be delivered)', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => serverError())
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(() => Promise.resolve(serverError()))
     const client = new MetaClient({ accessToken: 't', retry: FAST_RETRY })
 
     await expect(client.sendMessage('123', textMessage)).rejects.toBeInstanceOf(WatahubApiError)
@@ -73,12 +73,12 @@ describe('MetaClient resilience', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(
       (_url, init) =>
         new Promise((_resolve, reject) => {
-          init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))
+          init?.signal?.addEventListener('abort', () => reject(init.signal?.reason as Error))
         })
     )
     const client = new MetaClient({ accessToken: 't', retry: { ...FAST_RETRY, timeoutMs: 20 } })
 
-    const error = await client.sendMessage('123', textMessage).catch((err) => err)
+    const error = await client.sendMessage('123', textMessage).catch((err: unknown) => err)
     expect((error as Error).name).toBe('TimeoutError')
   })
 

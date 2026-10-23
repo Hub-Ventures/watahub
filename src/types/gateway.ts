@@ -2,8 +2,38 @@
  * Watahub Gateway Public Types & Contracts
  */
 
-export type OutboundMessageKind =
-  'text' | 'template' | 'image' | 'audio' | 'video' | 'document' | 'reaction' | 'interactive'
+export const OUTBOUND_MESSAGE_KINDS = [
+  'text',
+  'template',
+  'image',
+  'audio',
+  'video',
+  'document',
+  'reaction',
+  'interactive',
+] as const
+
+export type OutboundMessageKind = (typeof OUTBOUND_MESSAGE_KINDS)[number]
+
+/** Kinds whose content lives in `media` (id or link) */
+export const MEDIA_MESSAGE_KINDS = [
+  'image',
+  'audio',
+  'video',
+  'document',
+] as const satisfies readonly OutboundMessageKind[]
+
+export type MediaMessageKind = (typeof MEDIA_MESSAGE_KINDS)[number]
+
+export function isMediaKind(kind: OutboundMessageKind): kind is MediaMessageKind {
+  return (MEDIA_MESSAGE_KINDS as readonly OutboundMessageKind[]).includes(kind)
+}
+
+/**
+ * A template component as sent to Meta (`type`, `sub_type`, `index`, `parameters`...).
+ * The gateway forwards components verbatim and Meta validates them, so they are open records.
+ */
+export type TemplateComponent = Record<string, unknown>
 
 export interface SendMessagePayload {
   to: string
@@ -18,12 +48,7 @@ export interface SendMessagePayload {
     language: {
       code: string
     }
-    components?: Array<{
-      type: 'header' | 'body' | 'button'
-      sub_type?: 'quick_reply' | 'url'
-      index?: string | number
-      parameters: Array<Record<string, unknown>>
-    }>
+    components?: TemplateComponent[]
   }
   media?: {
     id?: string
@@ -46,43 +71,59 @@ export interface SendMessageResponse {
   phoneNumberId: string
 }
 
+/** A message template exactly as Graph returns it (`id`, `name`, `status`, `language`, `components`...) */
+export type MetaMessageTemplate = Record<string, unknown>
+
+export interface NormalizedInteractiveReply {
+  id: string
+  title: string
+  type: 'button' | 'list'
+}
+
+export interface NormalizedMessage {
+  id: string
+  from: string
+  senderName?: string
+  timestamp: number
+  kind: string
+  text?: string
+  mediaId?: string
+  mediaMime?: string
+  caption?: string
+  filename?: string
+  isVoice?: boolean
+  interactiveReply?: NormalizedInteractiveReply
+  reaction?: {
+    targetMessageId: string
+    emoji: string
+  }
+  referral?: Record<string, unknown>
+  replyToMessageId?: string
+}
+
+export interface NormalizedStatus {
+  id: string
+  recipient: string
+  status: 'sent' | 'delivered' | 'read' | 'failed'
+  timestamp: number
+  category?: string
+  errorCode?: number
+  errorMessage?: string
+}
+
 export interface WatahubNormalizedEvent {
   id: string
   timestamp: number
   phoneNumberId: string
   displayPhoneNumber: string
   type: 'message' | 'status' | 'error'
-  message?: {
-    id: string
-    from: string
-    senderName?: string
-    timestamp: number
-    kind: string
-    text?: string
-    mediaId?: string
-    mediaMime?: string
-    caption?: string
-    filename?: string
-    isVoice?: boolean
-    interactiveReply?: {
-      id: string
-      title: string
-      type: string
-    }
-    reaction?: {
-      targetMessageId: string
-      emoji: string
-    }
-    referral?: Record<string, unknown>
-    replyToMessageId?: string
-  }
-  status?: {
-    id: string
-    recipient: string
-    status: 'sent' | 'delivered' | 'read' | 'failed'
-    timestamp: number
-    category?: string
-    errorCode?: number
-    errorMessage?: string
-  }
+  message?: NormalizedMessage
+  status?: NormalizedStatus
+}
+
+/** Body POSTed to SUBSCRIBER_WEBHOOK_URL */
+export interface SubscriberPayload {
+  timestamp: number
+  events: WatahubNormalizedEvent[]
+  raw: unknown
 }

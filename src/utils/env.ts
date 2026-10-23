@@ -23,7 +23,7 @@ export function getEnvVar(c: Context, key: keyof WatahubEnv): string | undefined
   }
 
   // Check Node.js process.env
-  if (typeof process !== 'undefined' && process.env && process.env[key]) {
+  if (typeof process !== 'undefined' && process.env?.[key]) {
     return process.env[key]
   }
 

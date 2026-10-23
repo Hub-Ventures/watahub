@@ -159,10 +159,14 @@ describe('HTTP route contracts', () => {
   describe('GET /v1/templates', () => {
     it('resolves wabaId from path, query, then env', async () => {
       process.env.META_DEFAULT_WABA_ID = '3'
-      const spy = mockFetch(jsonResponse({ data: [1] }), jsonResponse({ data: [2] }), jsonResponse({ data: [3] }))
-      expect(await json(await app.request('/v1/templates/1', authed()))).toEqual({ data: [1] })
-      expect(await json(await app.request('/v1/templates?wabaId=2', authed()))).toEqual({ data: [2] })
-      expect(await json(await app.request('/v1/templates', authed()))).toEqual({ data: [3] })
+      const spy = mockFetch(
+        jsonResponse({ data: [{ name: 'a' }] }),
+        jsonResponse({ data: [{ name: 'b' }] }),
+        jsonResponse({ data: [{ name: 'c' }] })
+      )
+      expect(await json(await app.request('/v1/templates/1', authed()))).toEqual({ data: [{ name: 'a' }] })
+      expect(await json(await app.request('/v1/templates?wabaId=2', authed()))).toEqual({ data: [{ name: 'b' }] })
+      expect(await json(await app.request('/v1/templates', authed()))).toEqual({ data: [{ name: 'c' }] })
       expect(spy.mock.calls.map((call) => call[0])).toEqual([
         'https://graph.facebook.com/v24.0/1/message_templates',
         'https://graph.facebook.com/v24.0/2/message_templates',
@@ -238,7 +242,10 @@ describe('HTTP route contracts', () => {
       delete process.env.META_SYSTEM_USER_TOKEN
       const res = await app.request('/v1/onboarding/subscribe', authed(postJson({ wabaId: '456' })))
       expect(res.status).toBe(500)
-      expect(await json(res)).toEqual({ error: 'Missing Meta access token' })
+      // Same message on every route that needs a Meta token
+      expect(await json(res)).toEqual({
+        error: 'Missing Meta access token. Set META_SYSTEM_USER_TOKEN or pass X-Meta-Access-Token header.',
+      })
     })
 
     it('override-callback validates URL and returns success flag', async () => {
