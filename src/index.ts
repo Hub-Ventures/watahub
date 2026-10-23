@@ -1,7 +1,7 @@
-import { Hono, type Context } from 'hono'
+import { Hono, type Context, type MiddlewareHandler } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
-import { cors } from 'hono/cors'
 import { logger } from 'hono/logger'
+import { secureHeaders } from 'hono/secure-headers'
 import { HTTPException } from 'hono/http-exception'
 import { healthRouter } from './routes/health.js'
 import { webhookRouter } from './routes/webhook.js'
@@ -10,6 +10,7 @@ import { templatesRouter } from './routes/templates.js'
 import { onboardingRouter } from './routes/onboarding.js'
 import { proxyRouter } from './routes/proxy.js'
 import { requireApiKey } from './middleware/auth.js'
+import { corsFromEnv } from './middleware/cors.js'
 import { redactSecrets } from './utils/redact.js'
 
 export const app = new Hono()
@@ -17,11 +18,28 @@ export const app = new Hono()
 // Middlewares
 // Request lines include the query string (e.g. hub.verify_token), so redact before printing
 app.use('*', logger((line, ...rest) => console.log(redactSecrets(line), ...rest)))
-app.use('*', cors())
+// JSON-only API: nothing may be framed, sniffed or loaded as a subresource
+app.use(
+  '*',
+  secureHeaders({
+    contentSecurityPolicy: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] },
+    xFrameOptions: 'DENY',
+  })
+)
+// Off by default; CORS_ALLOWED_ORIGINS opts specific origins in (src/middleware/cors.ts)
+app.use('*', corsFromEnv)
 
 // Every machine-to-machine surface requires the gateway API key (fail closed)
 app.use('/v1/*', requireApiKey)
 app.use('/v24.0/*', requireApiKey)
+
+// Authenticated responses can carry access tokens (onboarding exchange) and Meta data
+const noStore: MiddlewareHandler = async (c, next) => {
+  await next()
+  c.res.headers.set('Cache-Control', 'no-store')
+}
+app.use('/v1/*', noStore)
+app.use('/v24.0/*', noStore)
 
 // Request body size limits (checked against Content-Length and enforced while streaming)
 const MB = 1024 * 1024

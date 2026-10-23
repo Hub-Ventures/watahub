@@ -14,6 +14,7 @@ export interface WatahubEnv {
   SUBSCRIBER_WEBHOOK_SECRET?: string
   WATAHUB_API_KEY?: string
   META_WEBHOOK_MAX_AGE_SECONDS?: string
+  CORS_ALLOWED_ORIGINS?: string
 }
 
 export function getEnvVar(c: Context, key: keyof WatahubEnv): string | undefined {
@@ -63,6 +64,13 @@ const EnvSchema = z
     SUBSCRIBER_WEBHOOK_URL: z.string().url().optional(),
     SUBSCRIBER_WEBHOOK_SECRET: z.string().min(32, 'must be at least 32 characters').optional(),
     META_WEBHOOK_MAX_AGE_SECONDS: z.string().regex(/^[1-9]\d*$/, 'must be a positive number of seconds').optional(),
+    CORS_ALLOWED_ORIGINS: z
+      .string()
+      .refine(
+        (value) => value.split(',').every((origin) => /^https?:\/\/[^/*\s]+$/.test(origin.trim())),
+        'must be a comma-separated list of exact origins such as https://app.example.com (no wildcards)'
+      )
+      .optional(),
     WATAHUB_API_KEY: z
       .string()
       .min(MIN_API_KEY_LENGTH, 'must be at least 32 characters (e.g. openssl rand -hex 32)')

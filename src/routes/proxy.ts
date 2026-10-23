@@ -81,6 +81,13 @@ proxyRouter.all('/v24.0/*', async (c) => {
     // Avoid conflicting encoding headers
     responseHeaders.delete('content-encoding')
     responseHeaders.delete('content-length')
+    // Graph answers with Access-Control-Allow-Origin: * and may set cookies; neither
+    // belongs to this origin, and the CORS policy is the gateway's (CORS_ALLOWED_ORIGINS)
+    const foreignHeaders: string[] = []
+    responseHeaders.forEach((_value, name) => {
+      if (name.startsWith('access-control-') || name === 'set-cookie') foreignHeaders.push(name)
+    })
+    for (const name of foreignHeaders) responseHeaders.delete(name)
 
     return new Response(res.body, {
       status: res.status,
