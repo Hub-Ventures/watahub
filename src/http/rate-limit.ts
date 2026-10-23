@@ -1,5 +1,6 @@
 import type { Context, MiddlewareHandler } from 'hono'
-import { getEnvVar } from '../utils/env.js'
+import { getConfig } from '../config.js'
+import { isRecord } from '../utils/guards.js'
 
 /**
  * In-memory fixed-window counters keyed by client address.
@@ -56,15 +57,19 @@ export class FixedWindowLimiter {
  * 3. CF-Connecting-IP on Workers, which Cloudflare sets and clients cannot override
  */
 export function clientAddress(c: Context): string {
-  const trustedHeader = getEnvVar(c, 'TRUSTED_CLIENT_IP_HEADER')
+  const trustedHeader = getConfig(c).trustedClientIpHeader
   if (trustedHeader) {
     // Proxies append to X-Forwarded-For, so only the last entry was written by the
     // trusted proxy; the leftmost ones are whatever the client sent
     const entries = c.req.header(trustedHeader)?.split(',') ?? []
     return entries[entries.length - 1]?.trim() || 'unknown'
   }
-  const incoming = (c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined)?.incoming
-  if (incoming) return incoming.socket?.remoteAddress || 'unknown'
+  const bindings: unknown = c.env
+  if (isRecord(bindings) && isRecord(bindings.incoming)) {
+    const socket = bindings.incoming.socket
+    const remoteAddress = isRecord(socket) ? socket.remoteAddress : undefined
+    return typeof remoteAddress === 'string' && remoteAddress ? remoteAddress : 'unknown'
+  }
   return c.req.header('cf-connecting-ip') || 'unknown'
 }
 
@@ -86,7 +91,7 @@ const requestLimiters = new Map<number, FixedWindowLimiter>()
  * protects the gateway and its token from a single noisy or leaked client.
  */
 export const rateLimitFromEnv: MiddlewareHandler = async (c, next) => {
-  const limit = Number(getEnvVar(c, 'RATE_LIMIT_PER_MINUTE'))
+  const limit = Number(getConfig(c).rateLimitPerMinute)
   if (!Number.isInteger(limit) || limit <= 0) return next()
 
   let limiter = requestLimiters.get(limit)

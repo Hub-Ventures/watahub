@@ -92,7 +92,15 @@ describe('POST /webhook → subscriber forwarding', () => {
             value: {
               messaging_product: 'whatsapp',
               metadata: { display_phone_number: '1555', phone_number_id: '987' },
-              messages: [{ from: '57300', id: 'wamid.A', timestamp: String(Math.floor(Date.now() / 1000)), type: 'text', text: { body: 'x' } }],
+              messages: [
+                {
+                  from: '57300',
+                  id: 'wamid.A',
+                  timestamp: String(Math.floor(Date.now() / 1000)),
+                  type: 'text',
+                  text: { body: 'x' },
+                },
+              ],
             },
           },
         ],
@@ -104,12 +112,19 @@ describe('POST /webhook → subscriber forwarding', () => {
     return app.request('/webhook', {
       method: 'POST',
       body,
-      headers: { 'Content-Type': 'application/json', 'x-hub-signature-256': await signSubscriberPayload(body, APP_SECRET) },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-hub-signature-256': await signSubscriberPayload(body, APP_SECRET),
+      },
     })
   }
 
   beforeEach(() => {
-    process.env = { ...originalEnv, META_APP_SECRET: APP_SECRET, SUBSCRIBER_WEBHOOK_URL: 'https://subscriber.example/hook' }
+    process.env = {
+      ...originalEnv,
+      META_APP_SECRET: APP_SECRET,
+      SUBSCRIBER_WEBHOOK_URL: 'https://subscriber.example/hook',
+    }
     webhookDeliveryIds.clear()
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })

@@ -1,6 +1,6 @@
 import type { MiddlewareHandler } from 'hono'
 import { cors } from 'hono/cors'
-import { getEnvVar } from '../utils/env.js'
+import { getConfig } from '../config.js'
 
 /**
  * Parses CORS_ALLOWED_ORIGINS (comma-separated exact origins such as
@@ -26,7 +26,7 @@ export function parseAllowedOrigins(value: string | undefined): string[] {
  * server-to-server gateway, so by default browsers get no CORS headers.
  */
 export const corsFromEnv: MiddlewareHandler = (c, next) => {
-  const origins = parseAllowedOrigins(getEnvVar(c, 'CORS_ALLOWED_ORIGINS'))
+  const origins = parseAllowedOrigins(getConfig(c).corsAllowedOrigins)
   if (origins.length === 0) return next()
   return cors({
     origin: origins,

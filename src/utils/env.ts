@@ -1,33 +1,20 @@
 import type { Context } from 'hono'
 import { z } from 'zod'
+import { isRecord } from './guards.js'
 
-export interface WatahubEnv {
-  PORT?: string
-  META_APP_ID?: string
-  META_APP_SECRET?: string
-  META_SYSTEM_USER_TOKEN?: string
-  META_WEBHOOK_VERIFY_TOKEN?: string
-  META_DEFAULT_PHONE_NUMBER_ID?: string
-  META_DEFAULT_WABA_ID?: string
-  META_API_VERSION?: string
-  SUBSCRIBER_WEBHOOK_URL?: string
-  SUBSCRIBER_WEBHOOK_SECRET?: string
-  WATAHUB_API_KEY?: string
-  META_WEBHOOK_MAX_AGE_SECONDS?: string
-  CORS_ALLOWED_ORIGINS?: string
-  RATE_LIMIT_PER_MINUTE?: string
-  TRUSTED_CLIENT_IP_HEADER?: string
-}
+/** Every variable the gateway reads; derived from EnvSchema so the two never drift */
+export type WatahubEnv = Partial<Record<keyof z.input<typeof EnvSchema>, string>>
 
 export function getEnvVar(c: Context, key: keyof WatahubEnv): string | undefined {
   // Check Cloudflare Workers / Hono context bindings
-  const fromEnv = (c.env as Record<string, unknown> | undefined)?.[key]
+  const bindings: unknown = c.env
+  const fromEnv = isRecord(bindings) ? bindings[key] : undefined
   if (typeof fromEnv === 'string' && fromEnv.length > 0) {
     return fromEnv
   }
 
   // Check Node.js process.env
-  if (typeof process !== 'undefined' && process.env && process.env[key]) {
+  if (typeof process !== 'undefined' && process.env?.[key]) {
     return process.env[key]
   }
 
@@ -52,7 +39,10 @@ const notPlaceholder = (value: string) => !PLACEHOLDER_VALUES.has(value)
  */
 const EnvSchema = z
   .object({
-    PORT: z.string().regex(/^\d{1,5}$/, 'must be a port number').optional(),
+    PORT: z
+      .string()
+      .regex(/^\d{1,5}$/, 'must be a port number')
+      .optional(),
     META_APP_ID: numericId.optional(),
     META_APP_SECRET: z.string().min(1, 'is required to verify Meta webhook signatures'),
     META_SYSTEM_USER_TOKEN: z.string().min(1).optional(),
@@ -62,12 +52,24 @@ const EnvSchema = z
       .refine(notPlaceholder, 'still has the .env.example placeholder'),
     META_DEFAULT_PHONE_NUMBER_ID: numericId.optional(),
     META_DEFAULT_WABA_ID: numericId.optional(),
-    META_API_VERSION: z.string().regex(/^v\d+\.\d+$/, 'must look like v24.0').optional(),
+    META_API_VERSION: z
+      .string()
+      .regex(/^v\d+\.\d+$/, 'must look like v24.0')
+      .optional(),
     SUBSCRIBER_WEBHOOK_URL: z.string().url().optional(),
     SUBSCRIBER_WEBHOOK_SECRET: z.string().min(32, 'must be at least 32 characters').optional(),
-    META_WEBHOOK_MAX_AGE_SECONDS: z.string().regex(/^[1-9]\d*$/, 'must be a positive number of seconds').optional(),
-    RATE_LIMIT_PER_MINUTE: z.string().regex(/^[1-9]\d*$/, 'must be a positive integer').optional(),
-    TRUSTED_CLIENT_IP_HEADER: z.string().regex(/^[A-Za-z0-9-]+$/, 'must be a header name such as X-Real-IP').optional(),
+    META_WEBHOOK_MAX_AGE_SECONDS: z
+      .string()
+      .regex(/^[1-9]\d*$/, 'must be a positive number of seconds')
+      .optional(),
+    RATE_LIMIT_PER_MINUTE: z
+      .string()
+      .regex(/^[1-9]\d*$/, 'must be a positive integer')
+      .optional(),
+    TRUSTED_CLIENT_IP_HEADER: z
+      .string()
+      .regex(/^[A-Za-z0-9-]+$/, 'must be a header name such as X-Real-IP')
+      .optional(),
     CORS_ALLOWED_ORIGINS: z
       .string()
       .refine(

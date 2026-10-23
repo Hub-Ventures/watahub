@@ -11,10 +11,15 @@ function payloadAt(messageTs: number, statusTs?: number): MetaWebhookPayload {
   const value: Record<string, unknown> = {
     messaging_product: 'whatsapp',
     metadata: { display_phone_number: '1555', phone_number_id: '987' },
-    messages: [{ from: '57300', id: `wamid.${messageTs}`, timestamp: String(messageTs), type: 'text', text: { body: 'x' } }],
+    messages: [
+      { from: '57300', id: `wamid.${messageTs}`, timestamp: String(messageTs), type: 'text', text: { body: 'x' } },
+    ],
   }
   if (statusTs) value.statuses = [{ id: 'wamid.S', status: 'read', timestamp: String(statusTs), recipient_id: '57300' }]
-  return { object: 'whatsapp_business_account', entry: [{ id: '1', changes: [{ field: 'messages', value }] }] } as unknown as MetaWebhookPayload
+  return {
+    object: 'whatsapp_business_account',
+    entry: [{ id: '1', changes: [{ field: 'messages', value }] }],
+  } as unknown as MetaWebhookPayload
 }
 
 async function postSigned(payload: MetaWebhookPayload) {
@@ -22,14 +27,17 @@ async function postSigned(payload: MetaWebhookPayload) {
   return app.request('/webhook', {
     method: 'POST',
     body,
-    headers: { 'Content-Type': 'application/json', 'x-hub-signature-256': await signSubscriberPayload(body, APP_SECRET) },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-hub-signature-256': await signSubscriberPayload(body, APP_SECRET),
+    },
   })
 }
 
 describe('replay helpers', () => {
   it('finds the newest message or status timestamp', () => {
     expect(newestEventTimestamp(payloadAt(100, 250))).toBe(250)
-    expect(newestEventTimestamp({ object: 'x', entry: [] } as unknown as MetaWebhookPayload)).toBeUndefined()
+    expect(newestEventTimestamp({ object: 'x', entry: [] })).toBeUndefined()
   })
 
   it('ignores old timestamps outside the messages field (history sync)', () => {
@@ -40,7 +48,10 @@ describe('replay helpers', () => {
   })
 
   it('treats payloads without event timestamps as fresh', () => {
-    const noEvents = { object: 'x', entry: [{ id: '1', changes: [{ field: 'message_template_status_update', value: {} }] }] }
+    const noEvents = {
+      object: 'x',
+      entry: [{ id: '1', changes: [{ field: 'message_template_status_update', value: {} }] }],
+    }
     expect(isStale(noEvents as unknown as MetaWebhookPayload, 60)).toBe(false)
   })
 
@@ -145,7 +156,11 @@ describe('POST /webhook replay protection', () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'))
     const payload = payloadAt(nowSeconds())
 
-    const forged = await app.request('/webhook', { method: 'POST', body: JSON.stringify(payload), headers: { 'Content-Type': 'application/json' } })
+    const forged = await app.request('/webhook', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'application/json' },
+    })
     expect(forged.status).toBe(401)
 
     expect(await (await postSigned(payload)).json()).toMatchObject({ status: 'received' })

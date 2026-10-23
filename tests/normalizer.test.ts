@@ -167,6 +167,7 @@ describe('Meta Webhook Normalizer', () => {
                     timestamp: '1729620005',
                     recipient_id: '573001234567',
                     pricing: {
+                      billable: true,
                       pricing_model: 'CBP',
                       category: 'service',
                     },

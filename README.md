@@ -103,11 +103,12 @@ pnpm run dev:node
 pnpm run dev:worker
 ```
 
-### Typecheck & Test Suite
+### Typecheck, Lint & Test Suite
 ```bash
-pnpm run typecheck
-pnpm test
+pnpm check   # typecheck + lint + format check + tests with coverage
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the code layout and conventions.
 
 ### Deploy to Cloudflare Workers
 ```bash

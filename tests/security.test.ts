@@ -3,7 +3,7 @@ import app, { BODY_LIMITS } from '../src/index.js'
 import { signSubscriberPayload, timingSafeEqual, verifyMetaSignature } from '../src/services/crypto.js'
 import { redactSecrets } from '../src/utils/redact.js'
 import { webhookDeliveryIds } from '../src/services/replay.js'
-import { resetRateLimits } from '../src/middleware/rate-limit.js'
+import { resetRateLimits } from '../src/http/rate-limit.js'
 
 // Replay cache and auth-failure counters persist across requests; every test starts clean
 beforeEach(() => {
@@ -26,7 +26,13 @@ const metaPayload = JSON.stringify({
             metadata: { display_phone_number: '15550001111', phone_number_id: '987654' },
             contacts: [{ wa_id: '573001234567', profile: { name: 'Test' } }],
             messages: [
-              { from: '573001234567', id: 'wamid.TEST', timestamp: String(Math.floor(Date.now() / 1000)), type: 'text', text: { body: 'hi' } },
+              {
+                from: '573001234567',
+                id: 'wamid.TEST',
+                timestamp: String(Math.floor(Date.now() / 1000)),
+                type: 'text',
+                text: { body: 'hi' },
+              },
             ],
           },
         },
@@ -119,7 +125,10 @@ describe('Gateway API key enforcement (fail closed)', () => {
     ['/v1/templates/123', { method: 'GET' }],
     ['/v1/onboarding/exchange', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } }],
     ['/v1/onboarding/subscribe', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } }],
-    ['/v1/onboarding/override-callback', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } }],
+    [
+      '/v1/onboarding/override-callback',
+      { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } },
+    ],
     ['/v24.0/123/messages', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } }],
   ]
 
@@ -206,11 +215,13 @@ describe('Input validation keeps caller input out of Graph paths', () => {
 
     expect((await post('/v1/onboarding/subscribe', { wabaId: 'me' })).status).toBe(422)
     expect(
-      (await post('/v1/onboarding/override-callback', {
-        phoneNumberId: '123',
-        callbackUrl: 'http://attacker.example/hook',
-        verifyToken: 'x',
-      })).status
+      (
+        await post('/v1/onboarding/override-callback', {
+          phoneNumberId: '123',
+          callbackUrl: 'http://attacker.example/hook',
+          verifyToken: 'x',
+        })
+      ).status
     ).toBe(422)
   })
 })
@@ -315,7 +326,12 @@ describe('Request body size limits', () => {
   const KEY = 'wk_test_0123456789abcdef0123456789abcdef'
 
   beforeEach(() => {
-    process.env = { ...originalEnv, WATAHUB_API_KEY: KEY, META_APP_SECRET: APP_SECRET, META_SYSTEM_USER_TOKEN: 'EAAG-system-token' }
+    process.env = {
+      ...originalEnv,
+      WATAHUB_API_KEY: KEY,
+      META_APP_SECRET: APP_SECRET,
+      META_SYSTEM_USER_TOKEN: 'EAAG-system-token',
+    }
   })
 
   afterEach(() => {

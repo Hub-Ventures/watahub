@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import app from '../src/index.js'
-import { resetRateLimits } from '../src/middleware/rate-limit.js'
+import { resetRateLimits } from '../src/http/rate-limit.js'
 
 const KEY = 'k'.repeat(48)
 const APP_SECRET = 'gateway-app-secret'
@@ -27,7 +27,9 @@ describe('POST /v1/onboarding/exchange (Embedded Signup)', () => {
   })
 
   it('sends the app secret and signup code in a POST body, never in the URL', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"access_token":"EAAG-new"}', { status: 200 }))
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{"access_token":"EAAG-new"}', { status: 200 }))
 
     const res = await exchange({ code: 'signup-code-123' })
     expect(res.status).toBe(200)
@@ -69,7 +71,10 @@ describe('POST /v1/onboarding/exchange (Embedded Signup)', () => {
 
   it('never echoes the app secret when Meta rejects the code', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response('{"error":{"message":"This authorization code has been used.","type":"OAuthException","code":100}}', { status: 400 })
+      new Response(
+        '{"error":{"message":"This authorization code has been used.","type":"OAuthException","code":100}}',
+        { status: 400 }
+      )
     )
     const res = await exchange({ code: 'used-code' })
     expect(res.status).toBe(400)
@@ -93,13 +98,18 @@ describe('POST /v1/onboarding/subscribe and override-callback surface Meta error
   })
 
   const expired = () =>
-    new Response('{"error":{"message":"Error validating access token","type":"OAuthException","code":190}}', { status: 401 })
+    new Response('{"error":{"message":"Error validating access token","type":"OAuthException","code":190}}', {
+      status: 401,
+    })
 
   it.each([
     ['/v1/onboarding/subscribe', { wabaId: '123456' }],
-    ['/v1/onboarding/override-callback', { phoneNumberId: '123456', callbackUrl: 'https://hooks.example.com/w', verifyToken: 'verify-token-123' }],
+    [
+      '/v1/onboarding/override-callback',
+      { phoneNumberId: '123456', callbackUrl: 'https://hooks.example.com/w', verifyToken: 'verify-token-123' },
+    ],
   ])('%s returns the classified auth error instead of 200 success:false', async (path, body) => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => expired())
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => Promise.resolve(expired()))
     const res = await app.request(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-API-Key': KEY },

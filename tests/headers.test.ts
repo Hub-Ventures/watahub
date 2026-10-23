@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import app from '../src/index.js'
-import { parseAllowedOrigins } from '../src/middleware/cors.js'
+import { parseAllowedOrigins } from '../src/http/cors.js'
 import { validateEnv } from '../src/utils/env.js'
 
 const KEY = 'k'.repeat(48)
@@ -19,7 +19,13 @@ describe('Security headers', () => {
     const originalEnv = process.env
 
     beforeEach(() => {
-      process.env = { ...originalEnv, WATAHUB_API_KEY: KEY, META_SYSTEM_USER_TOKEN: 'EAAG-system-token', META_APP_ID: '123', META_APP_SECRET: 'app-secret' }
+      process.env = {
+        ...originalEnv,
+        WATAHUB_API_KEY: KEY,
+        META_SYSTEM_USER_TOKEN: 'EAAG-system-token',
+        META_APP_ID: '123',
+        META_APP_SECRET: 'app-secret',
+      }
     })
 
     afterEach(() => {
@@ -88,7 +94,11 @@ describe('CORS', () => {
     const preflight = (origin: string) =>
       app.request('/v1/messages', {
         method: 'OPTIONS',
-        headers: { Origin: origin, 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'x-api-key' },
+        headers: {
+          Origin: origin,
+          'Access-Control-Request-Method': 'POST',
+          'Access-Control-Request-Headers': 'x-api-key',
+        },
       })
 
     const allowed = await preflight('https://admin.example.com')
@@ -100,12 +110,16 @@ describe('CORS', () => {
   })
 
   it('ignores wildcards and malformed origins', () => {
-    expect(parseAllowedOrigins('*, https://ok.example.com, https://bad.example.com/path, nope')).toEqual(['https://ok.example.com'])
+    expect(parseAllowedOrigins('*, https://ok.example.com, https://bad.example.com/path, nope')).toEqual([
+      'https://ok.example.com',
+    ])
   })
 
   it('rejects wildcard origins at boot', () => {
     const base = { META_APP_SECRET: 's', META_WEBHOOK_VERIFY_TOKEN: 'verify-token-0123456789', WATAHUB_API_KEY: KEY }
     expect(validateEnv({ ...base, CORS_ALLOWED_ORIGINS: '*' }).ok).toBe(false)
-    expect(validateEnv({ ...base, CORS_ALLOWED_ORIGINS: 'https://app.example.com,https://b.example.com' }).ok).toBe(true)
+    expect(validateEnv({ ...base, CORS_ALLOWED_ORIGINS: 'https://app.example.com,https://b.example.com' }).ok).toBe(
+      true
+    )
   })
 })

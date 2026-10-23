@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import app from '../src/index.js'
-import { resetRateLimits } from '../src/middleware/rate-limit.js'
+import { resetRateLimits } from '../src/http/rate-limit.js'
 
 const KEY = 'k'.repeat(48)
 
@@ -25,7 +25,10 @@ describe('Meta error responses', () => {
             message: '(#131047) Re-engagement message',
             type: 'OAuthException',
             code: 131047,
-            error_data: { messaging_product: 'whatsapp', details: 'internal routing for +573001234567 via node 10.2.3.4' },
+            error_data: {
+              messaging_product: 'whatsapp',
+              details: 'internal routing for +573001234567 via node 10.2.3.4',
+            },
             fbtrace_id: 'AbCdEfTrace',
           },
         }),

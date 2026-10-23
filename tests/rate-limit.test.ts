@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import app from '../src/index.js'
-import { AUTH_FAILURE_LIMIT, FixedWindowLimiter, resetRateLimits } from '../src/middleware/rate-limit.js'
+import { AUTH_FAILURE_LIMIT, FixedWindowLimiter, resetRateLimits } from '../src/http/rate-limit.js'
 
 const KEY = 'k'.repeat(48)
 
@@ -32,7 +32,12 @@ describe('Authentication brute-force brake', () => {
   const originalEnv = process.env
 
   beforeEach(() => {
-    process.env = { ...originalEnv, WATAHUB_API_KEY: KEY, META_SYSTEM_USER_TOKEN: 'EAAG-system-token', META_WEBHOOK_VERIFY_TOKEN: 'verify-token-0123456789' }
+    process.env = {
+      ...originalEnv,
+      WATAHUB_API_KEY: KEY,
+      META_SYSTEM_USER_TOKEN: 'EAAG-system-token',
+      META_WEBHOOK_VERIFY_TOKEN: 'verify-token-0123456789',
+    }
     resetRateLimits()
   })
 
@@ -48,7 +53,6 @@ describe('Authentication brute-force brake', () => {
     const blocked = await callApi('wrong-key')
     expect(blocked.status).toBe(429)
     expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(0)
-
   })
 
   it('never locks out the correct key, even from an address that is failing', async () => {
@@ -60,7 +64,9 @@ describe('Authentication brute-force brake', () => {
 
   it('keeps verify-token and API-key failures on separate counters', async () => {
     for (let i = 0; i <= AUTH_FAILURE_LIMIT; i++) {
-      await app.request('/webhook?hub.mode=subscribe&hub.verify_token=guess&hub.challenge=1', { headers: { 'CF-Connecting-IP': '203.0.113.7' } })
+      await app.request('/webhook?hub.mode=subscribe&hub.verify_token=guess&hub.challenge=1', {
+        headers: { 'CF-Connecting-IP': '203.0.113.7' },
+      })
     }
     expect((await callApi('wrong-key')).status).toBe(401)
   })
@@ -80,7 +86,9 @@ describe('Authentication brute-force brake', () => {
 
   it('limits verify token guessing on GET /webhook', async () => {
     const verify = (token: string) =>
-      app.request(`/webhook?hub.mode=subscribe&hub.verify_token=${token}&hub.challenge=42`, { headers: { 'CF-Connecting-IP': '203.0.113.8' } })
+      app.request(`/webhook?hub.mode=subscribe&hub.verify_token=${token}&hub.challenge=42`, {
+        headers: { 'CF-Connecting-IP': '203.0.113.8' },
+      })
 
     for (let i = 0; i < AUTH_FAILURE_LIMIT; i++) expect((await verify('guess')).status).toBe(403)
     expect((await verify('guess')).status).toBe(429)
@@ -117,7 +125,8 @@ describe('RATE_LIMIT_PER_MINUTE', () => {
   it('keys on TRUSTED_CLIENT_IP_HEADER when the operator sets one', async () => {
     process.env.RATE_LIMIT_PER_MINUTE = '1'
     process.env.TRUSTED_CLIENT_IP_HEADER = 'X-Real-IP'
-    const call = (realIp: string) => app.request('/v1/templates/123', { headers: { 'X-API-Key': KEY, 'X-Real-IP': realIp } })
+    const call = (realIp: string) =>
+      app.request('/v1/templates/123', { headers: { 'X-API-Key': KEY, 'X-Real-IP': realIp } })
     expect((await call('192.0.2.1')).status).toBe(200)
     expect((await call('192.0.2.1')).status).toBe(429)
     expect((await call('192.0.2.2')).status).toBe(200)

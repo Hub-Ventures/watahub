@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import app from '../src/index.js'
-import { isPublicHttpsUrl } from '../src/utils/validation.js'
+import { isPublicHttpsUrl } from '../src/schemas/common.js'
 
 const KEY = 'k'.repeat(48)
 
