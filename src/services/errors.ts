@@ -4,6 +4,9 @@
  * Derived from production lessons in Yampi.
  */
 
+import { isRecord } from '../utils/guards.js'
+
+/** Error envelope Graph returns on failures (documentation of the shape WatahubApiError reads) */
 export interface MetaApiErrorBody {
   error: {
     message: string
@@ -82,9 +85,7 @@ export function metaErrorCode(body: unknown): number | undefined {
 }
 
 function errorObject(body: unknown): Record<string, unknown> | undefined {
-  if (typeof body !== 'object' || body === null) return undefined
-  const error = (body as { error?: unknown }).error
-  return typeof error === 'object' && error !== null ? (error as Record<string, unknown>) : undefined
+  return isRecord(body) && isRecord(body.error) ? body.error : undefined
 }
 
 const optionalString = (value: unknown) => (typeof value === 'string' ? value : undefined)

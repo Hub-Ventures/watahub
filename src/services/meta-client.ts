@@ -5,6 +5,7 @@
 import { DEFAULT_META_API_VERSION, META_GRAPH_BASE_URL } from '../config.js'
 import { WatahubApiError, isRateLimit, isTransient, metaErrorCode } from './errors.js'
 import { backoffDelayMs, sleep, type RetryPolicy, type Sleep } from './retry.js'
+import { isRecord } from '../utils/guards.js'
 import type { MetaMessageTemplate, SendMessagePayload, SendMessageResponse } from '../types/gateway.js'
 
 export type { RetryPolicy } from './retry.js'
@@ -96,12 +97,12 @@ export class MetaClient implements MetaGraphClient {
       await this.post(`${phoneNumberId}/messages`, metaBody, { idempotent: false }, overrideToken)
     )
 
-    const messages: unknown[] = Array.isArray(data.messages) ? data.messages : []
-    const firstMsg = messages[0] as { id?: unknown } | undefined
+    const firstMsg: unknown = Array.isArray(data.messages) ? data.messages[0] : undefined
+    const messageId = isRecord(firstMsg) && typeof firstMsg.id === 'string' ? firstMsg.id : ''
 
     return {
       success: true,
-      messageId: typeof firstMsg?.id === 'string' ? firstMsg.id : '',
+      messageId,
       recipient: metaBody.to,
       phoneNumberId,
     }
@@ -219,7 +220,8 @@ export class MetaClient implements MetaGraphClient {
         continue
       }
 
-      const data = (await res.json().catch(() => ({}))) as GraphBody
+      const json: unknown = await res.json().catch(() => undefined)
+      const data: GraphBody = isRecord(json) ? json : {}
       if (res.ok || isLastAttempt) return { ok: res.ok, status: res.status, data }
 
       const code = metaErrorCode(data)
@@ -243,10 +245,6 @@ export class MetaClient implements MetaGraphClient {
 function ensureOk(res: GraphResponse): GraphResponse {
   if (!res.ok) throw new WatahubApiError(res.data, res.status)
   return res
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 /** Meta `/messages` request body. */
