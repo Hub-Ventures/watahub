@@ -1,12 +1,18 @@
 import { Hono } from 'hono'
+import { GATEWAY_NAME, GATEWAY_VERSION } from '../config.js'
+import type { Clock } from '../clock.js'
 
-export const healthRouter = new Hono()
+export function createHealthRouter(now: Clock): Hono {
+  const router = new Hono()
 
-healthRouter.get('/health', (c) => {
-  return c.json({
-    status: 'ok',
-    service: 'watahub',
-    version: '0.1.0',
-    timestamp: new Date().toISOString(),
-  })
-})
+  router.get('/health', (c) =>
+    c.json({
+      status: 'ok',
+      service: GATEWAY_NAME,
+      version: GATEWAY_VERSION,
+      timestamp: new Date(now()).toISOString(),
+    })
+  )
+
+  return router
+}

@@ -1,142 +1,50 @@
 import { Hono } from 'hono'
-import { z } from 'zod'
-import { getEnvVar } from '../utils/env.js'
-import { MetaClient } from '../services/meta-client.js'
-import { WatahubApiError, classifyMetaError } from '../services/errors.js'
-import type { SendMessagePayload } from '../types/gateway.js'
+import { getConfig } from '../config.js'
+import type { GatewayDeps } from '../deps.js'
+import { parseJsonBody, validationError } from '../http/body.js'
+import { errorResponse } from '../http/errors.js'
+import { metaClientFor } from '../http/meta.js'
+import { isGraphId } from '../schemas/common.js'
+import { SendMessageSchema } from '../schemas/messages.js'
 
-export const messagesRouter = new Hono()
+export function createMessagesRouter(deps: GatewayDeps): Hono {
+  const router = new Hono()
 
-const SendMessageSchema = z.object({
-  to: z.string().min(1, 'Recipient phone number is required'),
-  phoneNumberId: z.string().optional(),
-  tenantId: z.string().optional(),
-  kind: z.enum(['text', 'template', 'image', 'audio', 'video', 'document', 'reaction', 'interactive']),
-  text: z
-    .object({
-      body: z.string().min(1, 'Text body cannot be empty'),
-    })
-    .optional(),
-  template: z
-    .object({
-      name: z.string().min(1),
-      language: z.object({
-        code: z.string().min(2),
-      }),
-      components: z.array(z.record(z.unknown())).optional(),
-    })
-    .optional(),
-  media: z
-    .object({
-      id: z.string().optional(),
-      link: z.string().optional(),
-      caption: z.string().optional(),
-      filename: z.string().optional(),
-    })
-    .optional(),
-  reaction: z
-    .object({
-      messageId: z.string().min(1),
-      emoji: z.string().min(1),
-    })
-    .optional(),
-  interactive: z.record(z.unknown()).optional(),
-  replyToMessageId: z.string().optional(),
-})
+  /**
+   * Send WhatsApp Message
+   * POST /v1/messages
+   * The gateway API key is enforced by requireApiKey (src/http/auth.ts).
+   */
+  router.post('/v1/messages', async (c) => {
+    const body = await parseJsonBody(c, SendMessageSchema)
+    if (!body.ok) return body.response
+    const payload = body.value
 
-/**
- * Send WhatsApp Message
- * POST /v1/messages
- */
-messagesRouter.post('/v1/messages', async (c) => {
-  // 1. Check Gateway API Key if configured
-  const apiKey = getEnvVar(c, 'WATAHUB_API_KEY')
-  if (apiKey) {
-    const authHeader = c.req.header('authorization')
-    const headerKey = c.req.header('x-api-key')
-    const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
-
-    if (bearer !== apiKey && headerKey !== apiKey) {
-      return c.json({ error: 'Unauthorized: Invalid Watahub API key' }, 401)
-    }
-  }
-
-  // 2. Parse & Validate Body
-  let body: unknown
-  try {
-    body = await c.req.json()
-  } catch {
-    return c.json({ error: 'Malformed JSON payload' }, 400)
-  }
-
-  const parsed = SendMessageSchema.safeParse(body)
-  if (!parsed.success) {
-    return c.json(
-      {
-        error: 'Validation failed',
-        details: parsed.error.flatten().fieldErrors,
-      },
-      422
-    )
-  }
-
-  const payload: SendMessagePayload = parsed.data as SendMessagePayload
-
-  // 3. Resolve Phone Number ID & Access Token
-  const phoneNumberId =
-    payload.phoneNumberId ||
-    c.req.header('x-phone-number-id') ||
-    getEnvVar(c, 'META_DEFAULT_PHONE_NUMBER_ID')
-
-  if (!phoneNumberId) {
-    return c.json(
-      {
-        error: 'Missing phoneNumberId. Specify it in body, X-Phone-Number-Id header, or META_DEFAULT_PHONE_NUMBER_ID env var.',
-      },
-      400
-    )
-  }
-
-  const defaultToken = getEnvVar(c, 'META_SYSTEM_USER_TOKEN')
-  const overrideToken = c.req.header('x-meta-access-token')
-  const accessToken = overrideToken || defaultToken
-
-  if (!accessToken) {
-    return c.json(
-      {
-        error: 'Missing Meta access token. Set META_SYSTEM_USER_TOKEN or pass X-Meta-Access-Token header.',
-      },
-      500
-    )
-  }
-
-  const apiVersion = getEnvVar(c, 'META_API_VERSION') || 'v24.0'
-  const client = new MetaClient({ accessToken, apiVersion })
-
-  // 4. Send Message via Meta Graph API
-  try {
-    const result = await client.sendMessage(phoneNumberId, payload)
-    return c.json(result, 200)
-  } catch (err: unknown) {
-    if (err instanceof WatahubApiError) {
-      const classification = classifyMetaError(err)
+    const phoneNumberId =
+      payload.phoneNumberId || c.req.header('x-phone-number-id') || getConfig(c).metaDefaultPhoneNumberId
+    if (!phoneNumberId) {
       return c.json(
         {
-          error: {
-            message: err.message,
-            code: err.metaCode,
-            subcode: err.metaSubcode,
-            type: err.metaType,
-            category: classification.category,
-            retryable: classification.retryable,
-            action: classification.action,
-          },
+          error:
+            'Missing phoneNumberId. Specify it in body, X-Phone-Number-Id header, or META_DEFAULT_PHONE_NUMBER_ID env var.',
         },
-        (err.statusCode >= 400 && err.statusCode < 600 ? err.statusCode : 502) as 502
+        400
       )
     }
+    // The header and env paths bypass the body schema, so re-check the resolved ID
+    if (!isGraphId(phoneNumberId)) {
+      return validationError(c, { phoneNumberId: ['Must be a numeric Meta Graph ID'] })
+    }
 
-    const message = err instanceof Error ? err.message : 'Unknown gateway error'
-    return c.json({ error: { message } }, 500)
-  }
-})
+    const meta = metaClientFor(c, deps)
+    if (!meta.ok) return meta.response
+
+    try {
+      return c.json(await meta.value.sendMessage(phoneNumberId, payload), 200)
+    } catch (err: unknown) {
+      return errorResponse(c, err, deps.logger, { includeType: true })
+    }
+  })
+
+  return router
+}

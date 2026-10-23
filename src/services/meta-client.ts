@@ -1,25 +1,184 @@
 /**
- * Direct Meta Graph API v24.0 Client
+ * Direct Meta Graph API client: one request path with timeouts and safe retries.
  */
 
-import { WatahubApiError, type MetaApiErrorBody } from './errors.js'
-import type { SendMessagePayload, SendMessageResponse } from '../types/gateway.js'
+import { DEFAULT_META_API_VERSION, META_GRAPH_BASE_URL } from '../config.js'
+import { WatahubApiError, isRateLimit, isTransient, metaErrorCode } from './errors.js'
+import { backoffDelayMs, sleep, type RetryPolicy, type Sleep } from './retry.js'
+import { isRecord } from '../utils/guards.js'
+import type { MetaMessageTemplate, SendMessagePayload, SendMessageResponse } from '../types/gateway.js'
+
+export type { RetryPolicy } from './retry.js'
+export { backoffDelayMs } from './retry.js'
 
 export interface MetaClientConfig {
   accessToken: string
   apiVersion?: string
   baseUrl?: string
+  retry?: Partial<RetryPolicy>
+  /** HTTP transport. Defaults to the global `fetch`, resolved on every call. */
+  fetch?: typeof fetch
+  /** Delay between retries. Injected by tests to run without waiting. */
+  sleep?: Sleep
 }
 
-export class MetaClient {
-  private accessToken: string
-  private apiVersion: string
-  private baseUrl: string
+/**
+ * What the HTTP layer needs from Meta. Routes depend on this interface, not on
+ * the class, so tests and alternative transports can provide their own.
+ */
+export interface MetaGraphClient {
+  sendMessage(phoneNumberId: string, payload: SendMessagePayload): Promise<SendMessageResponse>
+  listTemplates(wabaId: string): Promise<MetaMessageTemplate[]>
+  exchangeCodeForToken(code: string, clientId: string, clientSecret: string): Promise<{ accessToken: string }>
+  subscribeAppToWaba(wabaId: string): Promise<boolean>
+  overridePhoneNumberCallback(phoneNumberId: string, callbackUrl: string, verifyToken: string): Promise<boolean>
+  getMediaUrl(mediaId: string): Promise<string>
+}
+
+export const DEFAULT_RETRY_POLICY: RetryPolicy = {
+  maxAttempts: 3,
+  baseDelayMs: 500,
+  maxDelayMs: 8_000,
+  timeoutMs: 15_000,
+}
+
+/** Fields subscribed when an app is attached to a WABA. */
+export const WABA_SUBSCRIBED_FIELDS = ['messages', 'smb_message_echoes', 'history', 'smb_app_state_sync'] as const
+
+type GraphBody = Record<string, unknown>
+
+interface GraphResponse {
+  ok: boolean
+  status: number
+  data: GraphBody
+}
+
+interface RequestOptions {
+  /** Safe to repeat when the outcome is unknown (timeouts, 5xx) */
+  idempotent: boolean
+}
+
+/** Retry-After in seconds (Meta and proxies send integer seconds) */
+function retryAfterMs(res: Response): number | undefined {
+  const header = res.headers.get('retry-after')
+  if (!header) return undefined
+  const seconds = Number(header)
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds * 1000 : undefined
+}
+
+export class MetaClient implements MetaGraphClient {
+  private readonly accessToken: string
+  private readonly apiVersion: string
+  private readonly baseUrl: string
+  private readonly retryPolicy: RetryPolicy
+  private readonly fetchFn: typeof fetch
+  private readonly sleep: Sleep
 
   constructor(config: MetaClientConfig) {
     this.accessToken = config.accessToken
-    this.apiVersion = config.apiVersion || 'v24.0'
-    this.baseUrl = config.baseUrl || 'https://graph.facebook.com'
+    this.apiVersion = config.apiVersion || DEFAULT_META_API_VERSION
+    this.baseUrl = config.baseUrl || META_GRAPH_BASE_URL
+    this.retryPolicy = { ...DEFAULT_RETRY_POLICY, ...config.retry }
+    this.fetchFn = config.fetch ?? ((input, init) => fetch(input, init))
+    this.sleep = config.sleep ?? sleep
+  }
+
+  /**
+   * Send a WhatsApp message (Text, Template, Media, Interactive)
+   */
+  async sendMessage(
+    phoneNumberId: string,
+    payload: SendMessagePayload,
+    overrideToken?: string
+  ): Promise<SendMessageResponse> {
+    const metaBody = buildMetaMessageBody(payload)
+    // Not idempotent: a timeout or 5xx may already have delivered the message
+    const { data } = ensureOk(
+      await this.post(`${phoneNumberId}/messages`, metaBody, { idempotent: false }, overrideToken)
+    )
+
+    const firstMsg: unknown = Array.isArray(data.messages) ? data.messages[0] : undefined
+    const messageId = isRecord(firstMsg) && typeof firstMsg.id === 'string' ? firstMsg.id : ''
+
+    return {
+      success: true,
+      messageId,
+      recipient: metaBody.to,
+      phoneNumberId,
+    }
+  }
+
+  /**
+   * List approved message templates from WABA
+   */
+  async listTemplates(wabaId: string, overrideToken?: string): Promise<MetaMessageTemplate[]> {
+    const { data } = ensureOk(await this.get(`${wabaId}/message_templates`, overrideToken))
+    return Array.isArray(data.data) ? data.data.filter(isRecord) : []
+  }
+
+  /**
+   * Exchange Embedded Signup code for permanent System User / Page Access Token.
+   * Unauthenticated: app credentials authenticate the call, no bearer token is sent.
+   */
+  async exchangeCodeForToken(code: string, clientId: string, clientSecret: string): Promise<{ accessToken: string }> {
+    // Sent as a form body, not a query string: URLs end up in proxy and access
+    // logs, and this one would carry the app secret and the signup code
+    const body = new URLSearchParams({ client_id: clientId, client_secret: clientSecret, code })
+
+    // Signup codes are single-use, so an ambiguous failure must not be replayed
+    const { data, status } = ensureOk(
+      await this.request(
+        this.url('oauth/access_token'),
+        { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() },
+        { idempotent: false }
+      )
+    )
+    if (typeof data.access_token !== 'string') throw new WatahubApiError(data, status)
+    return { accessToken: data.access_token }
+  }
+
+  /**
+   * Subscribe App to WABA
+   */
+  async subscribeAppToWaba(wabaId: string, overrideToken?: string): Promise<boolean> {
+    // Subscribing is a set operation: repeating it yields the same state
+    const res = await this.post(
+      `${wabaId}/subscribed_apps`,
+      { subscribed_fields: WABA_SUBSCRIBED_FIELDS },
+      { idempotent: true },
+      overrideToken
+    )
+    ensureOk(res)
+    return true
+  }
+
+  /**
+   * Override phone number webhook callback URL (Meta Phone-Level Routing)
+   */
+  async overridePhoneNumberCallback(
+    phoneNumberId: string,
+    callbackUrl: string,
+    verifyToken: string,
+    overrideToken?: string
+  ): Promise<boolean> {
+    // Overwrites a single setting, so repeating it is safe
+    const res = await this.post(
+      phoneNumberId,
+      { webhook_configuration: { override_callback_uri: callbackUrl, verify_token: verifyToken } },
+      { idempotent: true },
+      overrideToken
+    )
+    ensureOk(res)
+    return true
+  }
+
+  /**
+   * Resolve media ID to temporary downloadable CDN URL
+   */
+  async getMediaUrl(mediaId: string, overrideToken?: string): Promise<string> {
+    const { data, status } = ensureOk(await this.get(mediaId, overrideToken))
+    if (typeof data.url !== 'string') throw new WatahubApiError(data, status)
+    return data.url
   }
 
   private url(endpoint: string): string {
@@ -34,186 +193,130 @@ export class MetaClient {
     }
   }
 
+  /** Reads are idempotent */
+  private get(endpoint: string, overrideToken?: string): Promise<GraphResponse> {
+    return this.request(this.url(endpoint), { headers: this.headers(overrideToken) }, { idempotent: true })
+  }
+
+  private post(endpoint: string, body: unknown, options: RequestOptions, overrideToken?: string) {
+    return this.request(
+      this.url(endpoint),
+      { method: 'POST', headers: this.headers(overrideToken), body: JSON.stringify(body) },
+      options
+    )
+  }
+
   /**
-   * Send a WhatsApp message (Text, Template, Media, Interactive)
+   * Single transport entry point for every Graph call: per-attempt timeout and bounded retries.
+   * - Rate limits (429 / 4 / 80007 / 130429) are retried for every call, honoring Retry-After.
+   * - Timeouts, network errors and 5xx are retried only for idempotent calls.
+   * Returns the last response (non-JSON bodies become `{}`); callers decide how to surface non-2xx results.
    */
-  async sendMessage(
-    phoneNumberId: string,
-    payload: SendMessagePayload,
-    overrideToken?: string
-  ): Promise<SendMessageResponse> {
-    const endpoint = this.url(`${phoneNumberId}/messages`)
+  private async request(url: string, init: RequestInit, options: RequestOptions): Promise<GraphResponse> {
+    const policy = this.retryPolicy
 
-    const cleanTo = payload.to.replace(/^\+/, '').trim()
-    const metaBody: Record<string, unknown> = {
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
-      to: cleanTo,
-    }
+    for (let attempt = 0; ; attempt++) {
+      const isLastAttempt = attempt >= policy.maxAttempts - 1
 
-    if (payload.replyToMessageId) {
-      metaBody.context = { message_id: payload.replyToMessageId }
-    }
-
-    switch (payload.kind) {
-      case 'text':
-        metaBody.type = 'text'
-        metaBody.text = { body: payload.text?.body || '' }
-        break
-
-      case 'template':
-        metaBody.type = 'template'
-        metaBody.template = payload.template
-        break
-
-      case 'reaction':
-        metaBody.type = 'reaction'
-        metaBody.reaction = {
-          message_id: payload.reaction?.messageId,
-          emoji: payload.reaction?.emoji,
-        }
-        break
-
-      case 'image':
-      case 'audio':
-      case 'video':
-      case 'document': {
-        metaBody.type = payload.kind
-        const mediaObj: Record<string, unknown> = {}
-        if (payload.media?.id) mediaObj.id = payload.media.id
-        if (payload.media?.link) mediaObj.link = payload.media.link
-        if (payload.media?.caption) mediaObj.caption = payload.media.caption
-        if (payload.kind === 'document' && payload.media?.filename) {
-          mediaObj.filename = payload.media.filename
-        }
-        metaBody[payload.kind] = mediaObj
-        break
+      let res: Response
+      try {
+        res = await this.fetchFn(url, { ...init, signal: AbortSignal.timeout(policy.timeoutMs) })
+      } catch (err) {
+        if (!options.idempotent || isLastAttempt) throw err
+        await this.sleep(backoffDelayMs(attempt, policy))
+        continue
       }
 
-      case 'interactive':
-        metaBody.type = 'interactive'
-        metaBody.interactive = payload.interactive
-        break
+      const json: unknown = await res.json().catch(() => undefined)
+      const data: GraphBody = isRecord(json) ? json : {}
+      if (res.ok || isLastAttempt) return { ok: res.ok, status: res.status, data }
 
-      default:
-        throw new Error(`Unsupported message kind: ${payload.kind}`)
-    }
+      const code = metaErrorCode(data)
+      if (isRateLimit(res.status, code)) {
+        const hinted = retryAfterMs(res)
+        await this.sleep(Math.min(policy.maxDelayMs, hinted ?? backoffDelayMs(attempt, policy)))
+        continue
+      }
 
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: this.headers(overrideToken),
-      body: JSON.stringify(metaBody),
-    })
+      if (options.idempotent && isTransient(res.status, code)) {
+        await this.sleep(backoffDelayMs(attempt, policy))
+        continue
+      }
 
-    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
-
-    if (!res.ok) {
-      throw new WatahubApiError(data as unknown as MetaApiErrorBody, res.status)
-    }
-
-    const messages = Array.isArray(data.messages) ? data.messages : []
-    const firstMsg = messages[0] as { id?: string } | undefined
-    const messageId = firstMsg?.id || ''
-
-    return {
-      success: true,
-      messageId,
-      recipient: cleanTo,
-      phoneNumberId,
+      return { ok: res.ok, status: res.status, data }
     }
   }
+}
 
-  /**
-   * List approved message templates from WABA
-   */
-  async listTemplates(wabaId: string, overrideToken?: string): Promise<unknown[]> {
-    const endpoint = this.url(`${wabaId}/message_templates`)
-    const res = await fetch(endpoint, {
-      headers: this.headers(overrideToken),
-    })
+/** Throws WatahubApiError unless the Graph response is 2xx. */
+function ensureOk(res: GraphResponse): GraphResponse {
+  if (!res.ok) throw new WatahubApiError(res.data, res.status)
+  return res
+}
 
-    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
-    if (!res.ok) {
-      throw new WatahubApiError(data as unknown as MetaApiErrorBody, res.status)
-    }
+/** Meta `/messages` request body. */
+export interface MetaOutboundMessageBody {
+  messaging_product: 'whatsapp'
+  recipient_type: 'individual'
+  to: string
+  type: SendMessagePayload['kind']
+  context?: { message_id: string }
+  [field: string]: unknown
+}
 
-    return Array.isArray(data.data) ? data.data : []
+/**
+ * Translates the gateway payload into Meta's `/messages` body.
+ * Strips a leading `+` from the recipient. Throws on unsupported kinds.
+ */
+export function buildMetaMessageBody(payload: SendMessagePayload): MetaOutboundMessageBody {
+  // Key order matches the historical wire format: context precedes type.
+  const body: MetaOutboundMessageBody = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: payload.to.replace(/^\+/, '').trim(),
+    ...(payload.replyToMessageId ? { context: { message_id: payload.replyToMessageId } } : {}),
+    type: payload.kind,
   }
 
-  /**
-   * Exchange Embedded Signup code for permanent System User / Page Access Token
-   */
-  async exchangeCodeForToken(code: string, clientId: string, clientSecret: string): Promise<{ accessToken: string }> {
-    const endpoint = this.url('oauth/access_token')
-    const url = new URL(endpoint)
-    url.searchParams.set('client_id', clientId)
-    url.searchParams.set('client_secret', clientSecret)
-    url.searchParams.set('code', code)
+  switch (payload.kind) {
+    case 'text':
+      body.text = { body: payload.text?.body || '' }
+      break
 
-    const res = await fetch(url.toString())
-    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
+    case 'template':
+      body.template = payload.template
+      break
 
-    if (!res.ok || typeof data.access_token !== 'string') {
-      throw new WatahubApiError(data as unknown as MetaApiErrorBody, res.status)
-    }
+    case 'reaction':
+      body.reaction = {
+        message_id: payload.reaction?.messageId,
+        emoji: payload.reaction?.emoji,
+      }
+      break
 
-    return { accessToken: data.access_token }
+    case 'image':
+    case 'audio':
+    case 'video':
+    case 'document':
+      body[payload.kind] = buildMediaObject(payload)
+      break
+
+    case 'interactive':
+      body.interactive = payload.interactive
+      break
+
+    default:
+      throw new Error(`Unsupported message kind: ${String(payload.kind satisfies never)}`)
   }
 
-  /**
-   * Subscribe App to WABA
-   */
-  async subscribeAppToWaba(wabaId: string, overrideToken?: string): Promise<boolean> {
-    const endpoint = this.url(`${wabaId}/subscribed_apps`)
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: this.headers(overrideToken),
-      body: JSON.stringify({
-        subscribed_fields: ['messages', 'smb_message_echoes', 'history', 'smb_app_state_sync'],
-      }),
-    })
+  return body
+}
 
-    return res.ok
-  }
-
-  /**
-   * Override phone number webhook callback URL (Meta Phone-Level Routing)
-   */
-  async overridePhoneNumberCallback(
-    phoneNumberId: string,
-    callbackUrl: string,
-    verifyToken: string,
-    overrideToken?: string
-  ): Promise<boolean> {
-    const endpoint = this.url(phoneNumberId)
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: this.headers(overrideToken),
-      body: JSON.stringify({
-        webhook_configuration: {
-          override_callback_uri: callbackUrl,
-          verify_token: verifyToken,
-        },
-      }),
-    })
-
-    return res.ok
-  }
-
-  /**
-   * Resolve media ID to temporary downloadable CDN URL
-   */
-  async getMediaUrl(mediaId: string, overrideToken?: string): Promise<string> {
-    const endpoint = this.url(mediaId)
-    const res = await fetch(endpoint, {
-      headers: this.headers(overrideToken),
-    })
-
-    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
-    if (!res.ok || typeof data.url !== 'string') {
-      throw new WatahubApiError(data as unknown as MetaApiErrorBody, res.status)
-    }
-
-    return data.url
-  }
+function buildMediaObject({ kind, media }: SendMessagePayload): Record<string, string> {
+  const mediaObj: Record<string, string> = {}
+  if (media?.id) mediaObj.id = media.id
+  if (media?.link) mediaObj.link = media.link
+  if (media?.caption) mediaObj.caption = media.caption
+  if (kind === 'document' && media?.filename) mediaObj.filename = media.filename
+  return mediaObj
 }

@@ -36,7 +36,18 @@ export interface MetaInboundMessage {
   from: string
   id: string
   timestamp: string
-  type: 'text' | 'image' | 'audio' | 'video' | 'document' | 'interactive' | 'button' | 'reaction' | 'location' | 'contacts' | 'unknown'
+  type:
+    | 'text'
+    | 'image'
+    | 'audio'
+    | 'video'
+    | 'document'
+    | 'interactive'
+    | 'button'
+    | 'reaction'
+    | 'location'
+    | 'contacts'
+    | 'unknown'
   text?: {
     body: string
   }

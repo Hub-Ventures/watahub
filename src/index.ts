@@ -1,43 +1,74 @@
 import { Hono } from 'hono'
-import { cors } from 'hono/cors'
-import { logger } from 'hono/logger'
-import { healthRouter } from './routes/health.js'
-import { webhookRouter } from './routes/webhook.js'
-import { messagesRouter } from './routes/messages.js'
-import { templatesRouter } from './routes/templates.js'
-import { onboardingRouter } from './routes/onboarding.js'
-import { proxyRouter } from './routes/proxy.js'
+import { HTTPException } from 'hono/http-exception'
+import { logger as requestLogger } from 'hono/logger'
+import { createDefaultDeps, type GatewayDeps } from './deps.js'
+import { requireApiKey } from './http/auth.js'
+import { corsFromEnv } from './http/cors.js'
+import { noStore, securityHeaders } from './http/headers.js'
+import { jsonBodyLimit, proxyBodyLimit, webhookBodyLimit } from './http/limits.js'
+import { rateLimitFromEnv } from './http/rate-limit.js'
+import { createHealthRouter } from './routes/health.js'
+import { createMessagesRouter } from './routes/messages.js'
+import { createOnboardingRouter } from './routes/onboarding.js'
+import { createProxyRouter } from './routes/proxy.js'
+import { createTemplatesRouter } from './routes/templates.js'
+import { createWebhookRouter } from './routes/webhook.js'
+import { redactSecrets } from './utils/redact.js'
 
-export const app = new Hono()
+export type { GatewayDeps } from './deps.js'
+export { BODY_LIMITS } from './http/limits.js'
 
-// Middlewares
-app.use('*', logger())
-app.use('*', cors())
+/**
+ * Builds the gateway app. Override `deps` to inject collaborators
+ * (a fake Meta client, a fetch stub, a fixed clock, a structured logger).
+ */
+export function createApp(overrides: Partial<GatewayDeps> = {}): Hono {
+  const deps = createDefaultDeps(overrides)
+  const app = new Hono()
 
-// Mount sub-routers
-app.route('/', healthRouter)
-app.route('/', webhookRouter)
-app.route('/', messagesRouter)
-app.route('/', templatesRouter)
-app.route('/', onboardingRouter)
-app.route('/', proxyRouter)
-
-// Fallback 404 handler
-app.notFound((c) => {
-  return c.json({ error: 'Endpoint not found', path: c.req.path }, 404)
-})
-
-// Global error handler
-app.onError((err, c) => {
-  console.error('[watahub-error]', err)
-  return c.json(
-    {
-      error: {
-        message: err.message || 'Internal Server Error',
-      },
-    },
-    500
+  // Request lines include the query string (e.g. hub.verify_token), so redact before printing
+  app.use(
+    '*',
+    requestLogger((...parts) => deps.logger.info(redactSecrets(parts.join(' '))))
   )
-})
+  app.use('*', securityHeaders)
+  // Off by default; CORS_ALLOWED_ORIGINS opts specific origins in (src/http/cors.ts)
+  app.use('*', corsFromEnv)
+
+  const apiKeyGuard = requireApiKey(deps.logger)
+  for (const surface of ['/v1/*', '/v24.0/*']) {
+    // Order matters: no-store wraps every answer, floods are refused before auth,
+    // and every machine-to-machine surface requires the gateway API key (fail closed)
+    app.use(surface, noStore)
+    app.use(surface, rateLimitFromEnv)
+    app.use(surface, apiKeyGuard)
+  }
+
+  app.use('/webhook', webhookBodyLimit)
+  app.use('/v1/*', jsonBodyLimit)
+  app.use('/v24.0/*', proxyBodyLimit)
+
+  app.route('/', createHealthRouter(deps.now))
+  app.route('/', createWebhookRouter(deps))
+  app.route('/', createMessagesRouter(deps))
+  app.route('/', createTemplatesRouter(deps))
+  app.route('/', createOnboardingRouter(deps))
+  app.route('/', createProxyRouter(deps))
+
+  app.notFound((c) => c.json({ error: 'Endpoint not found', path: c.req.path }, 404))
+
+  app.onError((err, c) => {
+    // Hono's HTTPException (e.g. body limit) carries an intentional status and response
+    if (err instanceof HTTPException) return err.getResponse()
+
+    // Internal error details stay in the logs; callers only get a generic message
+    deps.logger.error(`[watahub-error] ${redactSecrets(err.stack || String(err))}`)
+    return c.json({ error: { message: 'Internal Server Error' } }, 500)
+  })
+
+  return app
+}
+
+export const app = createApp()
 
 export default app

@@ -1,106 +1,120 @@
 import { Hono } from 'hono'
-import { getEnvVar } from '../utils/env.js'
-import { verifyMetaSignature, signSubscriberPayload } from '../services/crypto.js'
+import { getConfig } from '../config.js'
+import type { GatewayDeps } from '../deps.js'
+import { runInBackground } from '../http/background.js'
+import { clientAddress, tooManyRequests, verifyTokenFailures } from '../http/rate-limit.js'
+import { errorName } from '../logger.js'
+import { sha256Hex, timingSafeEqual, verifyMetaSignature } from '../services/crypto.js'
+import { deliverToSubscriber, DEFAULT_DELIVERY_POLICY } from '../services/delivery.js'
 import { normalizeMetaWebhook } from '../services/normalizer.js'
+import { DEFAULT_WEBHOOK_MAX_AGE_SECONDS, isStale, webhookDeliveryIds } from '../services/replay.js'
+import type { SubscriberPayload } from '../types/gateway.js'
 import type { MetaWebhookPayload } from '../types/meta.js'
 
-export const webhookRouter = new Hono()
+export function createWebhookRouter(deps: GatewayDeps): Hono {
+  const router = new Hono()
 
-/**
- * Meta Webhook Verification Handshake
- * GET /webhook
- */
-webhookRouter.get('/webhook', (c) => {
-  const query = c.req.query()
-  const mode = query['hub.mode']
-  const token = query['hub.verify_token']
-  const challenge = query['hub.challenge']
+  /**
+   * Meta Webhook Verification Handshake
+   * GET /webhook
+   */
+  router.get('/webhook', async (c) => {
+    const mode = c.req.query('hub.mode')
+    const token = c.req.query('hub.verify_token')
+    const challenge = c.req.query('hub.challenge')
+    const expectedToken = getConfig(c).metaWebhookVerifyToken
 
-  const expectedToken = getEnvVar(c, 'META_WEBHOOK_VERIFY_TOKEN')
+    if (mode === 'subscribe' && token && expectedToken && (await timingSafeEqual(token, expectedToken))) {
+      return c.text(challenge || '', 200)
+    }
 
-  if (mode === 'subscribe' && token && expectedToken && token === expectedToken) {
-    return c.text(challenge || '', 200)
-  }
+    // Throttle guessing on this public route; the correct token is never refused (see requireApiKey)
+    const client = clientAddress(c)
+    const retryAfter = verifyTokenFailures.blockedFor(client)
+    if (retryAfter > 0) return tooManyRequests(c, retryAfter)
+    verifyTokenFailures.hit(client)
+    return c.text('Forbidden: Webhook verification failed', 403)
+  })
 
-  return c.text('Forbidden: Webhook verification failed', 403)
-})
+  /**
+   * Meta Webhook Ingestion & Subscriber Forwarding
+   * POST /webhook
+   */
+  router.post('/webhook', async (c) => {
+    const rawBody = await c.req.text()
+    const config = getConfig(c)
 
-/**
- * Meta Webhook Ingestion & Subscriber Forwarding
- * POST /webhook
- */
-webhookRouter.post('/webhook', async (c) => {
-  const rawBody = await c.req.text()
-  const signature = c.req.header('x-hub-signature-256')
-  const appSecret = getEnvVar(c, 'META_APP_SECRET')
+    // Fail closed: without META_APP_SECRET there is no way to authenticate Meta,
+    // so unsigned payloads must never be accepted or forwarded.
+    if (!config.metaAppSecret) {
+      deps.logger.error('[watahub] META_APP_SECRET is not set; rejecting webhook delivery')
+      return c.json({ error: 'Gateway misconfigured: webhook signature secret is not set' }, 503)
+    }
 
-  // Verify HMAC-SHA256 signature if META_APP_SECRET is configured
-  if (appSecret) {
-    const isValid = await verifyMetaSignature(rawBody, signature, appSecret)
+    const isValid = await verifyMetaSignature(rawBody, c.req.header('x-hub-signature-256'), config.metaAppSecret)
     if (!isValid) {
       return c.json({ error: 'Invalid HMAC signature' }, 401)
     }
-  }
 
-  let payload: MetaWebhookPayload
-  try {
-    payload = JSON.parse(rawBody) as MetaWebhookPayload
-  } catch {
-    return c.json({ error: 'Invalid JSON payload' }, 400)
-  }
-
-  // Normalize incoming messages and statuses
-  const normalizedEvents = normalizeMetaWebhook(payload)
-
-  // Asynchronously dispatch to subscriber (e.g. Cautia backend)
-  const subscriberUrl = getEnvVar(c, 'SUBSCRIBER_WEBHOOK_URL')
-  const subscriberSecret = getEnvVar(c, 'SUBSCRIBER_WEBHOOK_SECRET')
-
-  if (subscriberUrl && normalizedEvents.length > 0) {
-    const forwardPayload = {
-      timestamp: Date.now(),
-      events: normalizedEvents,
-      raw: payload,
+    let payload: MetaWebhookPayload
+    try {
+      payload = JSON.parse(rawBody) as MetaWebhookPayload
+    } catch {
+      return c.json({ error: 'Invalid JSON payload' }, 400)
     }
 
-    const forwardPromise = (async () => {
-      try {
-        const bodyStr = JSON.stringify(forwardPayload)
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-          'User-Agent': 'Watahub-Gateway/0.1.0',
-        }
+    // Derived from Meta's signed raw body, so a Meta redelivery of the same
+    // payload produces the same ID and the subscriber can drop the duplicate
+    const deliveryId = await sha256Hex(rawBody)
 
-        if (subscriberSecret) {
-          const sig = await signSubscriberPayload(bodyStr, subscriberSecret)
-          headers['x-watahub-signature'] = sig
-        }
+    // Fail closed before acknowledging: a 503 makes Meta retry until the
+    // subscriber secret is configured, instead of dropping the events
+    const { subscriberWebhookUrl: url, subscriberWebhookSecret: secret } = config
+    if (url && !secret) {
+      deps.logger.error(
+        '[watahub] SUBSCRIBER_WEBHOOK_SECRET is not set; refusing to accept events it cannot forward signed'
+      )
+      return c.json({ error: 'Gateway misconfigured: subscriber signing secret is not set' }, 503)
+    }
 
-        const res = await fetch(subscriberUrl, {
-          method: 'POST',
-          headers,
-          body: bodyStr,
-        })
+    // Replay protection (src/services/replay.ts). Both cases answer 200 so Meta
+    // stops retrying, but nothing is forwarded.
+    const now = deps.now()
+    const maxAgeSeconds = Number(config.metaWebhookMaxAgeSeconds) || DEFAULT_WEBHOOK_MAX_AGE_SECONDS
+    if (isStale(payload, maxAgeSeconds, now)) {
+      deps.logger.error(
+        `[watahub] Ignoring webhook ${deliveryId}: events older than ${maxAgeSeconds}s (possible replay)`
+      )
+      return c.json({ status: 'ignored', reason: 'stale', eventsCount: 0 }, 200)
+    }
+    if (webhookDeliveryIds.has(deliveryId, now)) {
+      return c.json({ status: 'ignored', reason: 'duplicate', eventsCount: 0 }, 200)
+    }
 
-        if (!res.ok) {
-          console.error(`[watahub] Subscriber webhook returned HTTP ${res.status}`)
-        }
-      } catch (err) {
-        console.error('[watahub] Failed to forward webhook to subscriber:', err)
-      }
-    })()
+    const events = normalizeMetaWebhook(payload, deps.now)
 
-    // Non-blocking execution for Cloudflare Workers / Node
-    if (c.executionCtx?.waitUntil) {
-      c.executionCtx.waitUntil(forwardPromise)
+    if (!url || !secret || events.length === 0) {
+      webhookDeliveryIds.remember(deliveryId, now)
     } else {
-      forwardPromise.catch((err) => console.error('[watahub] Async dispatch error:', err))
-    }
-  }
+      const forward: SubscriberPayload = { timestamp: now, events, raw: payload }
+      const delivery = deliverToSubscriber(
+        { url, body: JSON.stringify(forward), secret, deliveryId },
+        DEFAULT_DELIVERY_POLICY,
+        { fetch: deps.fetch, logger: deps.logger }
+      )
+        // Only a confirmed delivery marks the body as seen, so a failed one can still be replayed
+        .then((result) => {
+          if (result.delivered) webhookDeliveryIds.remember(deliveryId, deps.now())
+        })
+        .catch((err: unknown) => deps.logger.error(`[watahub] Async dispatch error: ${errorName(err)}`))
 
-  // Meta expects an immediate 200 OK
-  return c.json({
-    status: 'received',
-    eventsCount: normalizedEvents.length,
-  }, 200)
-})
+      // Meta gets its 200 now; the delivery finishes after the response
+      runInBackground(c, delivery)
+    }
+
+    // Meta expects an immediate 200 OK
+    return c.json({ status: 'received', eventsCount: events.length }, 200)
+  })
+
+  return router
+}
