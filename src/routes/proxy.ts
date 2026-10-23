@@ -49,7 +49,7 @@ function stripForeignHeaders(headers: Headers): void {
 
 /**
  * Direct Meta Cloud API v24.0 Passthrough Proxy
- * Allows Watahub to act as a 100% drop-in replacement for Meta Graph API / Kapso proxy.
+ * Lets Watahub stand in for the Meta Graph API on the routes listed below.
  * Routes:
  *   POST /v24.0/:phoneNumberId/messages
  *   POST /v24.0/:phoneNumberId/media

@@ -1,7 +1,6 @@
 /**
  * Meta Cloud API error model: named codes, the typed error thrown by the
  * Meta client, and the classification returned to callers.
- * Derived from production lessons in Yampi.
  */
 
 import { isRecord } from '../utils/guards.js'

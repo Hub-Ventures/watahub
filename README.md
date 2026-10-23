@@ -31,7 +31,7 @@ Most WhatsApp gateway providers charge extra message markups, enforce vendor loc
 flowchart LR
     User["WhatsApp User"] <--> Meta["Meta Cloud API (v24.0)"]
     Meta <--> Watahub["🌊 Watahub Gateway (Hono)"]
-    Watahub <--> Cautia["Product Backend (e.g. Cautia)"]
+    Watahub <--> Backend["Your backend"]
 ```
 
 ---
