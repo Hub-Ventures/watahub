@@ -7,16 +7,26 @@ import { GraphIdSchema, PublicHttpsUrlSchema } from '../utils/validation.js'
 
 export const onboardingRouter = new Hono()
 
+// Callers used to be able to send appId / appSecret here. Secrets in request bodies
+// end up in client logs and traces, and a token for another app is useless anyway:
+// this gateway can only verify webhooks signed with its own META_APP_SECRET.
+const CALLER_APP_CREDENTIALS = ['appId', 'appSecret'] as const
+
 const ExchangeCodeSchema = z
   .object({
     code: z.string().min(1, 'Embedded signup code is required').max(2048),
-    appId: GraphIdSchema.optional(),
-    appSecret: z.string().min(1).max(256).optional(),
   })
-  // A caller's app ID must never be paired with this gateway's app secret (or the reverse)
-  .refine((value) => !value.appId === !value.appSecret, {
-    message: 'appId and appSecret must be provided together',
-    path: ['appSecret'],
+  .passthrough()
+  .superRefine((value, ctx) => {
+    for (const key of CALLER_APP_CREDENTIALS) {
+      if (key in value) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: 'Not accepted: the exchange always uses this gateway\'s META_APP_ID and META_APP_SECRET',
+        })
+      }
+    }
   })
 
 const SubscribeWabaSchema = z.object({
@@ -46,8 +56,8 @@ onboardingRouter.post('/v1/onboarding/exchange', async (c) => {
     return c.json({ error: 'Validation failed', details: parsed.error.flatten().fieldErrors }, 422)
   }
 
-  const clientId = parsed.data.appId ?? getEnvVar(c, 'META_APP_ID')
-  const clientSecret = parsed.data.appSecret ?? getEnvVar(c, 'META_APP_SECRET')
+  const clientId = getEnvVar(c, 'META_APP_ID')
+  const clientSecret = getEnvVar(c, 'META_APP_SECRET')
 
   if (!clientId || !clientSecret) {
     return c.json({ error: 'Missing META_APP_ID or META_APP_SECRET configuration' }, 400)

@@ -54,21 +54,17 @@ describe('POST /v1/onboarding/exchange (Embedded Signup)', () => {
   })
 
   it.each([
-    ['appId without appSecret', { appId: '222' }],
-    ['appSecret without appId', { appSecret: 'other-secret' }],
-  ])('rejects %s instead of mixing it with the gateway credentials', async (_label, extra) => {
+    ['appId', { appId: '222' }],
+    ['appSecret', { appSecret: 'other-secret' }],
+    ['both', { appId: '222', appSecret: 'other-secret' }],
+  ])('rejects caller-supplied app credentials (%s) without calling Meta', async (_label, extra) => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
     const res = await exchange({ code: 'signup-code-123', ...extra })
     expect(res.status).toBe(422)
+    const body = (await res.json()) as { details: Record<string, string[]> }
+    for (const key of Object.keys(extra)) expect(body.details[key]).toBeDefined()
+    expect(JSON.stringify(body)).not.toContain('other-secret')
     expect(fetchSpy).not.toHaveBeenCalled()
-  })
-
-  it('uses a caller-supplied app when both appId and appSecret are given', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"access_token":"EAAG-new"}', { status: 200 }))
-    await exchange({ code: 'c', appId: '222', appSecret: 'other-secret' })
-    const form = new URLSearchParams(String(fetchSpy.mock.calls[0][1]?.body))
-    expect(form.get('client_id')).toBe('222')
-    expect(form.get('client_secret')).toBe('other-secret')
   })
 
   it('never echoes the app secret when Meta rejects the code', async () => {
