@@ -171,7 +171,7 @@ Content-Type: application/json
 Lists approved HSM templates directly from Meta Graph API.
 
 ### 5. Onboarding & Multi-Tenancy
-* `POST /v1/onboarding/exchange`: Exchanges Meta Embedded Signup `code` for an access token.
+* `POST /v1/onboarding/exchange`: Exchanges Meta Embedded Signup `code` for an access token (body: `{ "code": "..." }`; uses the gateway's own Meta app).
 * `POST /v1/onboarding/subscribe`: Subscribes application to WABA message webhooks.
 * `POST /v1/onboarding/override-callback`: Overrides webhook routing URL for an individual phone number.
 
@@ -179,14 +179,14 @@ Lists approved HSM templates directly from Meta Graph API.
 
 ## 🔒 Security model
 
-* **Authentication.** `/v1/*` and `/v24.0/*` require `WATAHUB_API_KEY` in `X-API-Key` or `Authorization: Bearer`, compared in constant time. A client with 10 failed attempts in a minute gets `429` with `Retry-After` (same for wrong `hub.verify_token` guesses on `GET /webhook`).
-* **Inbound webhooks.** `POST /webhook` only accepts bodies with a valid `X-Hub-Signature-256`. Meta's signature has no timestamp, so the gateway also drops replays: identical bodies are forwarded once, and deliveries whose newest event is older than `META_WEBHOOK_MAX_AGE_SECONDS` are acknowledged with `200` but not forwarded.
-* **Outbound deliveries.** Every forward to `SUBSCRIBER_WEBHOOK_URL` carries `X-Watahub-Signature: sha256=<HMAC-SHA256(body, SUBSCRIBER_WEBHOOK_SECRET)>` and `X-Watahub-Delivery-Id` (also sent as `Idempotency-Key`). Your backend should verify the signature over the raw body, reject bodies whose `timestamp` field (ms) is more than a few minutes old, and dedupe on the delivery ID. Redirects are not followed.
+* **Authentication.** `/v1/*` and `/v24.0/*` require `WATAHUB_API_KEY` in `X-API-Key` or `Authorization: Bearer`, compared in constant time. Keys must be at least 32 characters, which is what makes guessing impractical. A client address with more than 10 failed attempts in a minute gets `429` with `Retry-After` for further wrong keys (separate counter for wrong `hub.verify_token` guesses on `GET /webhook`). A correct key is never refused, so callers that share an address with a guesser keep working.
+* **Inbound webhooks.** `POST /webhook` only accepts bodies with a valid `X-Hub-Signature-256`. Meta's signature has no timestamp, so the gateway also drops replays: a body the subscriber already confirmed is not forwarded again, and deliveries whose newest event is older than `META_WEBHOOK_MAX_AGE_SECONDS` are acknowledged with `200` but not forwarded.
+* **Outbound deliveries.** With `SUBSCRIBER_WEBHOOK_URL` set and no `SUBSCRIBER_WEBHOOK_SECRET`, `POST /webhook` answers `503` so Meta keeps retrying until the secret is configured. Every forward to `SUBSCRIBER_WEBHOOK_URL` carries `X-Watahub-Signature: sha256=<HMAC-SHA256(body, SUBSCRIBER_WEBHOOK_SECRET)>` and `X-Watahub-Delivery-Id` (also sent as `Idempotency-Key`). Your backend should verify the signature over the raw body, reject bodies whose `timestamp` field (ms) is more than a few minutes old, and dedupe on the delivery ID. Redirects are not followed.
 * **Graph proxy.** `/v24.0` forwards only `POST /{id}/messages`, `POST /{id}/media` and `GET /{id}`, with numeric IDs and only the `phone_number_id` query parameter.
 * **Callback overrides.** `callbackUrl` must be `https://` on a public host: loopback, private, link-local and internal names are rejected.
-* **Embedded Signup.** The code exchange sends the app secret in a POST body, not the URL. Responses on `/v1` and `/v24.0` are `Cache-Control: no-store`.
+* **Embedded Signup.** `POST /v1/onboarding/exchange` takes only `code` and always uses `META_APP_ID` / `META_APP_SECRET` (sending `appId` or `appSecret` is a `422`). The secret goes to Graph in a POST body, not the URL. Responses on `/v1` and `/v24.0` are `Cache-Control: no-store`.
 * **HTTP.** Security headers (deny-all CSP, `X-Frame-Options: DENY`, HSTS, `nosniff`) on every response. CORS is off unless `CORS_ALLOWED_ORIGINS` is set.
-* **Limits.** Request bodies are capped (webhook 3 MB, JSON 1 MB, media upload 100 MB). The rate limiter and replay cache live in memory: per process on Node, per isolate on Workers. For a global limit on Workers, add Cloudflare rate limiting rules in front.
+* **Limits.** Request bodies are capped (webhook 3 MB, JSON 1 MB, media upload 100 MB). The rate limiter and replay cache live in memory: per process on Node, per isolate on Workers. For a global limit on Workers, add Cloudflare rate limiting rules in front. Behind a reverse proxy on Node, set `TRUSTED_CLIENT_IP_HEADER`; for `X-Forwarded-For` the last entry (written by your proxy) is used.
 
 ---
 
