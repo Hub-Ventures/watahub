@@ -61,6 +61,23 @@ describe('deliverToSubscriber', () => {
   })
 })
 
+describe('deliverToSubscriber redirects', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('does not follow redirects and treats them as a final failure', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 307, headers: { location: 'https://elsewhere.example/' } }))
+
+    const result = await deliverToSubscriber(request, FAST)
+    expect(result).toEqual({ delivered: false, attempts: 1, status: 307 })
+    expect(fetchSpy.mock.calls[0][1]?.redirect).toBe('manual')
+  })
+})
+
 describe('POST /webhook → subscriber forwarding', () => {
   const originalEnv = process.env
   const APP_SECRET = 'meta-app-secret'

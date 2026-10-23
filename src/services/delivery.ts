@@ -66,6 +66,8 @@ export async function deliverToSubscriber(
         method: 'POST',
         headers,
         body: request.body,
+        // A redirect would resend the signed body to a host nobody configured
+        redirect: 'manual',
         signal: AbortSignal.timeout(policy.timeoutMs),
       })
       lastStatus = res.status
