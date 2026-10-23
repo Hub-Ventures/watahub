@@ -7,11 +7,17 @@ import { GraphIdSchema, PublicHttpsUrlSchema } from '../utils/validation.js'
 
 export const onboardingRouter = new Hono()
 
-const ExchangeCodeSchema = z.object({
-  code: z.string().min(1, 'Embedded signup code is required').max(2048),
-  appId: GraphIdSchema.optional(),
-  appSecret: z.string().max(256).optional(),
-})
+const ExchangeCodeSchema = z
+  .object({
+    code: z.string().min(1, 'Embedded signup code is required').max(2048),
+    appId: GraphIdSchema.optional(),
+    appSecret: z.string().min(1).max(256).optional(),
+  })
+  // A caller's app ID must never be paired with this gateway's app secret (or the reverse)
+  .refine((value) => !value.appId === !value.appSecret, {
+    message: 'appId and appSecret must be provided together',
+    path: ['appSecret'],
+  })
 
 const SubscribeWabaSchema = z.object({
   wabaId: GraphIdSchema,
@@ -40,8 +46,8 @@ onboardingRouter.post('/v1/onboarding/exchange', async (c) => {
     return c.json({ error: 'Validation failed', details: parsed.error.flatten().fieldErrors }, 422)
   }
 
-  const clientId = parsed.data.appId || getEnvVar(c, 'META_APP_ID')
-  const clientSecret = parsed.data.appSecret || getEnvVar(c, 'META_APP_SECRET')
+  const clientId = parsed.data.appId ?? getEnvVar(c, 'META_APP_ID')
+  const clientSecret = parsed.data.appSecret ?? getEnvVar(c, 'META_APP_SECRET')
 
   if (!clientId || !clientSecret) {
     return c.json({ error: 'Missing META_APP_ID or META_APP_SECRET configuration' }, 400)
