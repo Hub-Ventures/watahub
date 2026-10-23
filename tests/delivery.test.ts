@@ -136,6 +136,8 @@ describe('POST /webhook → subscriber forwarding', () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'))
 
     await deliver()
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1))
+    await new Promise((resolve) => setTimeout(resolve, 10))
     const second = await deliver()
     expect(second.status).toBe(200)
     expect(await second.json()).toMatchObject({ status: 'ignored', reason: 'duplicate' })
@@ -144,12 +146,12 @@ describe('POST /webhook → subscriber forwarding', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1)
   })
 
-  it('does not forward unsigned events when SUBSCRIBER_WEBHOOK_SECRET is missing', async () => {
+  it('answers 503 (so Meta retries) instead of dropping events when SUBSCRIBER_WEBHOOK_SECRET is missing', async () => {
     delete process.env.SUBSCRIBER_WEBHOOK_SECRET
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
 
     const res = await deliver()
-    expect(res.status).toBe(200)
+    expect(res.status).toBe(503)
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(fetchSpy).not.toHaveBeenCalled()
   })

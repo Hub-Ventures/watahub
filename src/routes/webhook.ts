@@ -65,6 +65,15 @@ webhookRouter.post('/webhook', async (c) => {
   // payload produces the same ID and the subscriber can drop the duplicate
   const deliveryId = await sha256Hex(rawBody)
 
+  // Fail closed before acknowledging: a 503 makes Meta retry until the
+  // subscriber secret is configured, instead of dropping the events
+  const subscriberUrl = getEnvVar(c, 'SUBSCRIBER_WEBHOOK_URL')
+  const subscriberSecret = getEnvVar(c, 'SUBSCRIBER_WEBHOOK_SECRET')
+  if (subscriberUrl && !subscriberSecret) {
+    console.error('[watahub] SUBSCRIBER_WEBHOOK_SECRET is not set; refusing to accept events it cannot forward signed')
+    return c.json({ error: 'Gateway misconfigured: subscriber signing secret is not set' }, 503)
+  }
+
   // Replay protection (src/services/replay.ts). Both cases answer 200 so Meta
   // stops retrying, but nothing is forwarded.
   const maxAgeSeconds = Number(getEnvVar(c, 'META_WEBHOOK_MAX_AGE_SECONDS')) || DEFAULT_WEBHOOK_MAX_AGE_SECONDS
@@ -72,21 +81,17 @@ webhookRouter.post('/webhook', async (c) => {
     console.error(`[watahub] Ignoring webhook ${deliveryId}: events older than ${maxAgeSeconds}s (possible replay)`)
     return c.json({ status: 'ignored', reason: 'stale', eventsCount: 0 }, 200)
   }
-  if (!webhookDeliveryIds.remember(deliveryId)) {
+  if (webhookDeliveryIds.has(deliveryId)) {
     return c.json({ status: 'ignored', reason: 'duplicate', eventsCount: 0 }, 200)
   }
 
   // Normalize incoming messages and statuses
   const normalizedEvents = normalizeMetaWebhook(payload)
 
-  // Asynchronously dispatch to subscriber (e.g. Cautia backend)
-  const subscriberUrl = getEnvVar(c, 'SUBSCRIBER_WEBHOOK_URL')
-  const subscriberSecret = getEnvVar(c, 'SUBSCRIBER_WEBHOOK_SECRET')
-
-  if (subscriberUrl && normalizedEvents.length > 0 && !subscriberSecret) {
-    // Fail closed: subscribers must be able to verify that events came from this gateway
-    console.error('[watahub] SUBSCRIBER_WEBHOOK_SECRET is not set; not forwarding unsigned events')
-  } else if (subscriberUrl && subscriberSecret && normalizedEvents.length > 0) {
+  if (!subscriberUrl || !subscriberSecret || normalizedEvents.length === 0) {
+    webhookDeliveryIds.remember(deliveryId)
+  } else {
+    // Asynchronously dispatch to subscriber (e.g. Cautia backend)
     const forwardPayload = {
       timestamp: Date.now(),
       events: normalizedEvents,
@@ -98,7 +103,12 @@ webhookRouter.post('/webhook', async (c) => {
       body: JSON.stringify(forwardPayload),
       secret: subscriberSecret,
       deliveryId,
-    }).catch((err) => console.error('[watahub] Async dispatch error:', err instanceof Error ? err.name : 'unknown'))
+    })
+      // Only a confirmed delivery marks the body as seen, so a failed one can still be replayed
+      .then((result) => {
+        if (result.delivered) webhookDeliveryIds.remember(deliveryId)
+      })
+      .catch((err) => console.error('[watahub] Async dispatch error:', err instanceof Error ? err.name : 'unknown'))
 
     // Non-blocking execution. Hono's executionCtx getter throws outside Workers,
     // which used to turn every forwarded webhook on Node into a 500 (and a Meta retry).

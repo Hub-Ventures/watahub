@@ -114,8 +114,31 @@ describe('POST /webhook replay protection', () => {
     const payload = payloadAt(nowSeconds())
 
     expect(await (await postSigned(payload)).json()).toMatchObject({ status: 'received' })
-    expect(await (await postSigned(payload)).json()).toMatchObject({ status: 'ignored', reason: 'duplicate' })
     await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1))
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(await (await postSigned(payload)).json()).toMatchObject({ status: 'ignored', reason: 'duplicate' })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('lets a body whose delivery failed be replayed', async () => {
+    // 400 is final for the subscriber client, so one attempt and no backoff wait
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('bad', { status: 400 }))
+    const payload = payloadAt(nowSeconds())
+
+    await postSigned(payload)
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1))
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    expect(await (await postSigned(payload)).json()).toMatchObject({ status: 'received' })
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2))
+  })
+
+  it('remembers bodies that had nothing to forward', async () => {
+    delete process.env.SUBSCRIBER_WEBHOOK_URL
+    const payload = payloadAt(nowSeconds())
+    expect(await (await postSigned(payload)).json()).toMatchObject({ status: 'received' })
+    expect(await (await postSigned(payload)).json()).toMatchObject({ reason: 'duplicate' })
   })
 
   it('does not let unsigned bodies poison the duplicate cache', async () => {

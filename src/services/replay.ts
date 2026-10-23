@@ -6,8 +6,9 @@
  * - Age: every message/status carries Meta's own `timestamp` (unix seconds,
  *   inside the signed body). Deliveries whose newest event is older than the
  *   window are acknowledged but not forwarded.
- * - Duplicates: the delivery ID (SHA-256 of the signed body) is remembered for
- *   a while, so an identical body is acknowledged once and forwarded once.
+ * - Duplicates: the delivery ID (SHA-256 of the signed body) is remembered once
+ *   the subscriber confirmed it, so an identical body is not forwarded twice.
+ *   A failed delivery is not remembered and can be replayed.
  *   The cache is per process / per Worker isolate: subscribers must still
  *   dedupe on x-watahub-delivery-id.
  */
@@ -54,10 +55,14 @@ export class DeliveryIdCache {
     private readonly maxEntries = 10_000
   ) {}
 
+  has(id: string, nowMs = Date.now()): boolean {
+    const expiresAt = this.seen.get(id)
+    return expiresAt !== undefined && expiresAt > nowMs
+  }
+
   /** Records the ID; returns false if it was already seen inside the TTL */
   remember(id: string, nowMs = Date.now()): boolean {
-    const expiresAt = this.seen.get(id)
-    if (expiresAt !== undefined && expiresAt > nowMs) return false
+    if (this.has(id, nowMs)) return false
 
     this.seen.delete(id)
     if (this.seen.size >= this.maxEntries) this.evict(nowMs)
