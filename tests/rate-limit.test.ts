@@ -49,8 +49,20 @@ describe('Authentication brute-force brake', () => {
     expect(blocked.status).toBe(429)
     expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(0)
 
-    // Even the right key waits out the window, so guessing cannot continue
-    expect((await callApi(KEY)).status).toBe(429)
+  })
+
+  it('never locks out the correct key, even from an address that is failing', async () => {
+    // Clients behind one proxy or NAT share an address with whoever is guessing
+    for (let i = 0; i <= AUTH_FAILURE_LIMIT; i++) await callApi('wrong-key')
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"data":[]}', { status: 200 }))
+    expect((await callApi(KEY)).status).toBe(200)
+  })
+
+  it('keeps verify-token and API-key failures on separate counters', async () => {
+    for (let i = 0; i <= AUTH_FAILURE_LIMIT; i++) {
+      await app.request('/webhook?hub.mode=subscribe&hub.verify_token=guess&hub.challenge=1', { headers: { 'CF-Connecting-IP': '203.0.113.7' } })
+    }
+    expect((await callApi('wrong-key')).status).toBe(401)
   })
 
   it('keeps other clients unaffected', async () => {
@@ -72,7 +84,8 @@ describe('Authentication brute-force brake', () => {
 
     for (let i = 0; i < AUTH_FAILURE_LIMIT; i++) expect((await verify('guess')).status).toBe(403)
     expect((await verify('guess')).status).toBe(429)
-    expect((await verify('verify-token-0123456789')).status).toBe(429)
+    // Meta's own handshake still succeeds from a throttled address
+    expect((await verify('verify-token-0123456789')).status).toBe(200)
   })
 })
 
@@ -108,5 +121,15 @@ describe('RATE_LIMIT_PER_MINUTE', () => {
     expect((await call('192.0.2.1')).status).toBe(200)
     expect((await call('192.0.2.1')).status).toBe(429)
     expect((await call('192.0.2.2')).status).toBe(200)
+  })
+
+  it('uses the last X-Forwarded-For entry, the one the trusted proxy wrote', async () => {
+    process.env.RATE_LIMIT_PER_MINUTE = '1'
+    process.env.TRUSTED_CLIENT_IP_HEADER = 'X-Forwarded-For'
+    const call = (spoofed: string) =>
+      app.request('/v1/templates/123', { headers: { 'X-API-Key': KEY, 'X-Forwarded-For': `${spoofed}, 192.0.2.50` } })
+    expect((await call('1.2.3.4')).status).toBe(200)
+    // A different client-supplied prefix does not buy a fresh window
+    expect((await call('5.6.7.8')).status).toBe(429)
   })
 })

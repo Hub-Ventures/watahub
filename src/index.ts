@@ -30,6 +30,15 @@ app.use(
 // Off by default; CORS_ALLOWED_ORIGINS opts specific origins in (src/middleware/cors.ts)
 app.use('*', corsFromEnv)
 
+// Authenticated responses can carry access tokens (onboarding exchange) and Meta data.
+// Registered first so 401/429/503 answers from these surfaces are covered too
+const noStore: MiddlewareHandler = async (c, next) => {
+  await next()
+  c.res.headers.set('Cache-Control', 'no-store')
+}
+app.use('/v1/*', noStore)
+app.use('/v24.0/*', noStore)
+
 // Optional per-client limit (RATE_LIMIT_PER_MINUTE), counted before auth so floods are cheap to refuse
 app.use('/v1/*', rateLimitFromEnv)
 app.use('/v24.0/*', rateLimitFromEnv)
@@ -37,14 +46,6 @@ app.use('/v24.0/*', rateLimitFromEnv)
 // Every machine-to-machine surface requires the gateway API key (fail closed)
 app.use('/v1/*', requireApiKey)
 app.use('/v24.0/*', requireApiKey)
-
-// Authenticated responses can carry access tokens (onboarding exchange) and Meta data
-const noStore: MiddlewareHandler = async (c, next) => {
-  await next()
-  c.res.headers.set('Cache-Control', 'no-store')
-}
-app.use('/v1/*', noStore)
-app.use('/v24.0/*', noStore)
 
 // Request body size limits (checked against Content-Length and enforced while streaming)
 const MB = 1024 * 1024

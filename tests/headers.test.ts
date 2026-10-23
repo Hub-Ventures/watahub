@@ -38,6 +38,12 @@ describe('Security headers', () => {
       expect(res.headers.get('cache-control')).toBe('no-store')
     })
 
+    it('marks auth failures as no-store too', async () => {
+      const res = await app.request('/v1/templates/123', { headers: { 'X-API-Key': 'wrong' } })
+      expect(res.status).toBe(401)
+      expect(res.headers.get('cache-control')).toBe('no-store')
+    })
+
     it('strips Graph CORS and cookie headers from proxied responses and adds no-store', async () => {
       vi.spyOn(globalThis, 'fetch').mockResolvedValue(
         new Response('{"url":"https://lookaside.fbsbx.com/x"}', {

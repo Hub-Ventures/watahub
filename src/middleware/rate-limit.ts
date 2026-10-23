@@ -58,16 +58,20 @@ export class FixedWindowLimiter {
 export function clientAddress(c: Context): string {
   const trustedHeader = getEnvVar(c, 'TRUSTED_CLIENT_IP_HEADER')
   if (trustedHeader) {
-    return c.req.header(trustedHeader)?.split(',')[0].trim() || 'unknown'
+    // Proxies append to X-Forwarded-For, so only the last entry was written by the
+    // trusted proxy; the leftmost ones are whatever the client sent
+    const entries = c.req.header(trustedHeader)?.split(',') ?? []
+    return entries[entries.length - 1]?.trim() || 'unknown'
   }
   const incoming = (c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined)?.incoming
   if (incoming) return incoming.socket?.remoteAddress || 'unknown'
   return c.req.header('cf-connecting-ip') || 'unknown'
 }
 
-/** Failed API key or verify token attempts allowed per client per minute */
+/** Failed API key or verify token attempts allowed per client per minute (separate counters) */
 export const AUTH_FAILURE_LIMIT = 10
-export const authFailures = new FixedWindowLimiter(AUTH_FAILURE_LIMIT, 60_000)
+export const apiKeyFailures = new FixedWindowLimiter(AUTH_FAILURE_LIMIT, 60_000)
+export const verifyTokenFailures = new FixedWindowLimiter(AUTH_FAILURE_LIMIT, 60_000)
 
 export function tooManyRequests(c: Context, retryAfterSeconds: number) {
   c.header('Retry-After', String(retryAfterSeconds))
@@ -99,6 +103,7 @@ export const rateLimitFromEnv: MiddlewareHandler = async (c, next) => {
 }
 
 export function resetRateLimits(): void {
-  authFailures.clear()
+  apiKeyFailures.clear()
+  verifyTokenFailures.clear()
   requestLimiters.clear()
 }

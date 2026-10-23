@@ -4,7 +4,7 @@ import { verifyMetaSignature, sha256Hex, timingSafeEqual } from '../services/cry
 import { deliverToSubscriber } from '../services/delivery.js'
 import { normalizeMetaWebhook } from '../services/normalizer.js'
 import { DEFAULT_WEBHOOK_MAX_AGE_SECONDS, isStale, webhookDeliveryIds } from '../services/replay.js'
-import { authFailures, clientAddress, tooManyRequests } from '../middleware/rate-limit.js'
+import { clientAddress, tooManyRequests, verifyTokenFailures } from '../middleware/rate-limit.js'
 import type { MetaWebhookPayload } from '../types/meta.js'
 
 export const webhookRouter = new Hono()
@@ -21,16 +21,15 @@ webhookRouter.get('/webhook', async (c) => {
 
   const expectedToken = getEnvVar(c, 'META_WEBHOOK_VERIFY_TOKEN')
 
-  // The verify token is guessable by brute force over this public route
-  const client = clientAddress(c)
-  const retryAfter = authFailures.blockedFor(client)
-  if (retryAfter > 0) return tooManyRequests(c, retryAfter)
-
   if (mode === 'subscribe' && token && expectedToken && (await timingSafeEqual(token, expectedToken))) {
     return c.text(challenge || '', 200)
   }
 
-  authFailures.hit(client)
+  // Throttle guessing on this public route; the correct token is never refused (see requireApiKey)
+  const client = clientAddress(c)
+  const retryAfter = verifyTokenFailures.blockedFor(client)
+  if (retryAfter > 0) return tooManyRequests(c, retryAfter)
+  verifyTokenFailures.hit(client)
   return c.text('Forbidden: Webhook verification failed', 403)
 })
 
