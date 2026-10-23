@@ -2,6 +2,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import app, { BODY_LIMITS } from '../src/index.js'
 import { signSubscriberPayload, timingSafeEqual, verifyMetaSignature } from '../src/services/crypto.js'
 import { redactSecrets } from '../src/utils/redact.js'
+import { webhookDeliveryIds } from '../src/services/replay.js'
+import { resetRateLimits } from '../src/http/rate-limit.js'
+
+// Replay cache and auth-failure counters persist across requests; every test starts clean
+beforeEach(() => {
+  webhookDeliveryIds.clear()
+  resetRateLimits()
+})
 
 const APP_SECRET = 'meta-app-secret-for-tests'
 
@@ -18,7 +26,13 @@ const metaPayload = JSON.stringify({
             metadata: { display_phone_number: '15550001111', phone_number_id: '987654' },
             contacts: [{ wa_id: '573001234567', profile: { name: 'Test' } }],
             messages: [
-              { from: '573001234567', id: 'wamid.TEST', timestamp: '1700000000', type: 'text', text: { body: 'hi' } },
+              {
+                from: '573001234567',
+                id: 'wamid.TEST',
+                timestamp: String(Math.floor(Date.now() / 1000)),
+                type: 'text',
+                text: { body: 'hi' },
+              },
             ],
           },
         },

@@ -118,16 +118,21 @@ export class MetaClient implements MetaGraphClient {
 
   /**
    * Exchange Embedded Signup code for permanent System User / Page Access Token.
-   * Unauthenticated: credentials travel as query params, no bearer token is sent.
+   * Unauthenticated: app credentials authenticate the call, no bearer token is sent.
    */
   async exchangeCodeForToken(code: string, clientId: string, clientSecret: string): Promise<{ accessToken: string }> {
-    const url = new URL(this.url('oauth/access_token'))
-    url.searchParams.set('client_id', clientId)
-    url.searchParams.set('client_secret', clientSecret)
-    url.searchParams.set('code', code)
+    // Sent as a form body, not a query string: URLs end up in proxy and access
+    // logs, and this one would carry the app secret and the signup code
+    const body = new URLSearchParams({ client_id: clientId, client_secret: clientSecret, code })
 
     // Signup codes are single-use, so an ambiguous failure must not be replayed
-    const { data, status } = ensureOk(await this.request(url.toString(), {}, { idempotent: false }))
+    const { data, status } = ensureOk(
+      await this.request(
+        this.url('oauth/access_token'),
+        { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() },
+        { idempotent: false }
+      )
+    )
     if (typeof data.access_token !== 'string') throw new WatahubApiError(data, status)
     return { accessToken: data.access_token }
   }
@@ -143,7 +148,8 @@ export class MetaClient implements MetaGraphClient {
       { idempotent: true },
       overrideToken
     )
-    return res.ok
+    ensureOk(res)
+    return true
   }
 
   /**
@@ -162,7 +168,8 @@ export class MetaClient implements MetaGraphClient {
       { idempotent: true },
       overrideToken
     )
-    return res.ok
+    ensureOk(res)
+    return true
   }
 
   /**

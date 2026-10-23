@@ -17,9 +17,10 @@ export function createOnboardingRouter(deps: GatewayDeps): Hono {
     const body = await parseJsonBody(c, ExchangeCodeSchema)
     if (!body.ok) return body.response
 
+    // Always this gateway's own app: it can only verify webhooks signed with its META_APP_SECRET
     const config = getConfig(c)
-    const clientId = body.value.appId || config.metaAppId
-    const clientSecret = body.value.appSecret || config.metaAppSecret
+    const clientId = config.metaAppId
+    const clientSecret = config.metaAppSecret
     if (!clientId || !clientSecret) {
       return c.json({ error: 'Missing META_APP_ID or META_APP_SECRET configuration' }, 400)
     }

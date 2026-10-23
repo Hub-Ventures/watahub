@@ -36,6 +36,18 @@ export function buildProxyTargetUrl(subPath: string, requestUrl: string): string
 }
 
 /**
+ * Graph answers with Access-Control-Allow-Origin: * and may set cookies; neither
+ * belongs to this origin, and the CORS policy is the gateway's (CORS_ALLOWED_ORIGINS)
+ */
+function stripForeignHeaders(headers: Headers): void {
+  const foreign: string[] = []
+  headers.forEach((_value, name) => {
+    if (name.startsWith('access-control-') || name === 'set-cookie') foreign.push(name)
+  })
+  for (const name of foreign) headers.delete(name)
+}
+
+/**
  * Direct Meta Cloud API v24.0 Passthrough Proxy
  * Allows Watahub to act as a 100% drop-in replacement for Meta Graph API / Kapso proxy.
  * Routes:
@@ -75,6 +87,7 @@ export function createProxyRouter(deps: GatewayDeps): Hono {
       // The runtime re-encodes the body, so upstream encoding headers would be wrong
       responseHeaders.delete('content-encoding')
       responseHeaders.delete('content-length')
+      stripForeignHeaders(responseHeaders)
       return new Response(res.body, { status: res.status, headers: responseHeaders })
     } catch (err: unknown) {
       return errorResponse(c, err, deps.logger)

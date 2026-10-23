@@ -36,8 +36,9 @@ src/
   config.ts       constants and the typed per-request config (getConfig)
   logger.ts       Logger port + console default
   clock.ts        Clock port + system default
-  http/           HTTP-only helpers: auth, body parsing, error responses,
-                  body limits, background work, per-request Meta client
+  http/           HTTP-only helpers: auth, rate limits, CORS, security headers,
+                  body parsing, error responses, body limits, background work,
+                  per-request Meta client
   routes/         one router factory per surface: createXRouter(deps)
   schemas/        zod request schemas (no logic)
   services/       domain logic with no Hono imports: Meta client, retries,
@@ -63,6 +64,9 @@ deliberate security decision:
 - The `/v24.0` proxy forwards only allowlisted routes and query params.
 - Responses never echo internal or upstream error messages; logs carry error names only, and request lines go through `redactSecrets`.
 - Message sends are never retried after a timeout, network error or 5xx.
+- Webhook deliveries that are stale or already forwarded are acknowledged but not forwarded again (`services/replay.ts`); a subscriber URL without a signing secret answers 503.
+- Phone callback URLs must be public https hosts; the signup exchange only uses the gateway's own app credentials and sends them in the body, never the URL.
+- Failed API key and verify token attempts are throttled per client without ever locking out the correct key; CORS is off unless `CORS_ALLOWED_ORIGINS` lists exact origins; authenticated responses are `no-store`.
 
 If a refactor and a control disagree, the control wins.
 

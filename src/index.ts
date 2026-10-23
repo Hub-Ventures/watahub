@@ -1,10 +1,12 @@
 import { Hono } from 'hono'
-import { cors } from 'hono/cors'
 import { HTTPException } from 'hono/http-exception'
 import { logger as requestLogger } from 'hono/logger'
 import { createDefaultDeps, type GatewayDeps } from './deps.js'
 import { requireApiKey } from './http/auth.js'
+import { corsFromEnv } from './http/cors.js'
+import { noStore, securityHeaders } from './http/headers.js'
 import { jsonBodyLimit, proxyBodyLimit, webhookBodyLimit } from './http/limits.js'
+import { rateLimitFromEnv } from './http/rate-limit.js'
 import { createHealthRouter } from './routes/health.js'
 import { createMessagesRouter } from './routes/messages.js'
 import { createOnboardingRouter } from './routes/onboarding.js'
@@ -29,12 +31,18 @@ export function createApp(overrides: Partial<GatewayDeps> = {}): Hono {
     '*',
     requestLogger((...parts) => deps.logger.info(redactSecrets(parts.join(' '))))
   )
-  app.use('*', cors())
+  app.use('*', securityHeaders)
+  // Off by default; CORS_ALLOWED_ORIGINS opts specific origins in (src/http/cors.ts)
+  app.use('*', corsFromEnv)
 
-  // Every machine-to-machine surface requires the gateway API key (fail closed)
   const apiKeyGuard = requireApiKey(deps.logger)
-  app.use('/v1/*', apiKeyGuard)
-  app.use('/v24.0/*', apiKeyGuard)
+  for (const surface of ['/v1/*', '/v24.0/*']) {
+    // Order matters: no-store wraps every answer, floods are refused before auth,
+    // and every machine-to-machine surface requires the gateway API key (fail closed)
+    app.use(surface, noStore)
+    app.use(surface, rateLimitFromEnv)
+    app.use(surface, apiKeyGuard)
+  }
 
   app.use('/webhook', webhookBodyLimit)
   app.use('/v1/*', jsonBodyLimit)

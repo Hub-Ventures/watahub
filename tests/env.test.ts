@@ -63,6 +63,21 @@ describe('validateEnv', () => {
     expect(errorsFor({ ...validEnv, META_API_VERSION: 'latest' })).toHaveLength(1)
   })
 
+  it('validates the optional hardening knobs', () => {
+    expect(
+      validateEnv({
+        ...validEnv,
+        META_WEBHOOK_MAX_AGE_SECONDS: '86400',
+        RATE_LIMIT_PER_MINUTE: '600',
+        TRUSTED_CLIENT_IP_HEADER: 'X-Real-IP',
+        CORS_ALLOWED_ORIGINS: 'https://app.example.com',
+      })
+    ).toEqual({ ok: true })
+    expect(errorsFor({ ...validEnv, META_WEBHOOK_MAX_AGE_SECONDS: '0' })).toHaveLength(1)
+    expect(errorsFor({ ...validEnv, RATE_LIMIT_PER_MINUTE: 'lots' })).toHaveLength(1)
+    expect(errorsFor({ ...validEnv, TRUSTED_CLIENT_IP_HEADER: 'X Real: IP' })).toHaveLength(1)
+  })
+
   it('never echoes secret values in error messages', () => {
     const secret = 'wk_leaky_value'
     const errors = errorsFor({ ...validEnv, WATAHUB_API_KEY: secret })

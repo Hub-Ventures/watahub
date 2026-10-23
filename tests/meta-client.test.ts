@@ -228,15 +228,14 @@ describe('MetaClient requests and bodies', () => {
   })
 
   describe('exchangeCodeForToken', () => {
-    it('GETs oauth/access_token with query credentials and no headers', async () => {
+    it('POSTs the credentials as a form body, never in the URL, without a bearer token', async () => {
       const spy = mockFetch(okJson({ access_token: 'LONG' }))
       expect(await client.exchangeCodeForToken('CODE', 'ID', 'SECRET')).toEqual({ accessToken: 'LONG' })
-      const [url, init] = spy.mock.calls[0]
-      expect(url).toBe(
-        'https://graph.facebook.com/v24.0/oauth/access_token?client_id=ID&client_secret=SECRET&code=CODE'
-      )
-      // No bearer token or other headers are sent on the code exchange.
-      expect(init?.headers).toBeUndefined()
+      const [url, init] = spy.mock.calls[0] as [string, RequestInit]
+      expect(url).toBe('https://graph.facebook.com/v24.0/oauth/access_token')
+      expect(init.method).toBe('POST')
+      expect(init.headers).toEqual({ 'Content-Type': 'application/x-www-form-urlencoded' })
+      expect(String(init.body)).toBe('client_id=ID&client_secret=SECRET&code=CODE')
     })
 
     it('throws when access_token is missing even on 200', async () => {
@@ -246,10 +245,10 @@ describe('MetaClient requests and bodies', () => {
   })
 
   describe('subscribeAppToWaba / overridePhoneNumberCallback', () => {
-    it('returns res.ok without throwing on Meta errors', async () => {
+    it('returns true on success and throws WatahubApiError on Meta errors', async () => {
       const spy = mockFetch(okJson({ success: true }), okJson(metaError(100), 400))
       expect(await client.subscribeAppToWaba('WABA')).toBe(true)
-      expect(await client.subscribeAppToWaba('WABA')).toBe(false)
+      await expect(client.subscribeAppToWaba('WABA')).rejects.toBeInstanceOf(WatahubApiError)
       expect(spy.mock.calls[0][0]).toBe('https://graph.facebook.com/v24.0/WABA/subscribed_apps')
       expect(sentBody(spy)).toEqual({
         subscribed_fields: ['messages', 'smb_message_echoes', 'history', 'smb_app_state_sync'],

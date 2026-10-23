@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import app from '../src/index.js'
 import { signSubscriberPayload } from '../src/services/crypto.js'
+import { webhookDeliveryIds } from '../src/services/replay.js'
 import { jsonResponse, metaError, mockFetch, postJson } from './helpers/fetch-mock.js'
 
 /**
@@ -206,15 +207,15 @@ describe('HTTP route contracts', () => {
       expect(await json(res)).toEqual({ error: 'Missing META_APP_ID or META_APP_SECRET configuration' })
     })
 
-    it('exchanges the code without needing a system token', async () => {
+    it('exchanges the code with the gateway app credentials, without a system token', async () => {
       delete process.env.META_SYSTEM_USER_TOKEN
       process.env.META_APP_ID = '111'
       process.env.META_APP_SECRET = 'ENV_SECRET'
       const spy = mockFetch(jsonResponse({ access_token: 'T' }))
-      const res = await app.request('/v1/onboarding/exchange', authed(postJson({ code: 'C', appId: '222' })))
+      const res = await app.request('/v1/onboarding/exchange', authed(postJson({ code: 'C' })))
       expect(res.status).toBe(200)
       expect(await json(res)).toEqual({ accessToken: 'T' })
-      expect(String(spy.mock.calls[0][0])).toContain('client_id=222&client_secret=ENV_SECRET&code=C')
+      expect(String((spy.mock.calls[0][1] as RequestInit).body)).toBe('client_id=111&client_secret=ENV_SECRET&code=C')
     })
 
     it('maps Meta errors without the type field', async () => {
@@ -228,13 +229,15 @@ describe('HTTP route contracts', () => {
   })
 
   describe('POST /v1/onboarding/subscribe and override-callback', () => {
-    it('subscribe returns success flag from Meta', async () => {
+    it('subscribe returns success, and classified Meta errors without the type field', async () => {
       mockFetch(jsonResponse({}), jsonResponse(metaError(100), 400))
       const ok = await app.request('/v1/onboarding/subscribe', authed(postJson({ wabaId: '456' })))
       expect(await json(ok)).toEqual({ success: true, wabaId: '456' })
       const ko = await app.request('/v1/onboarding/subscribe', authed(postJson({ wabaId: '456' })))
-      expect(ko.status).toBe(200)
-      expect(await json(ko)).toEqual({ success: false, wabaId: '456' })
+      expect(ko.status).toBe(400)
+      const body = await json(ko)
+      expect(body.error).toMatchObject({ code: 100, category: 'unknown', retryable: false })
+      expect(body.error).not.toHaveProperty('type')
     })
 
     it('subscribe validates and needs a token', async () => {
@@ -307,7 +310,15 @@ describe('HTTP route contracts', () => {
               value: {
                 messaging_product: 'whatsapp',
                 metadata: { display_phone_number: 'D', phone_number_id: 'P' },
-                messages: [{ id: 'wamid.in', from: '1', timestamp: '1', type: 'text', text: { body: 'x' } }],
+                messages: [
+                  {
+                    id: 'wamid.in',
+                    from: '1',
+                    timestamp: String(Math.floor(Date.now() / 1000)),
+                    type: 'text',
+                    text: { body: 'x' },
+                  },
+                ],
               },
             },
           ],
@@ -323,6 +334,7 @@ describe('HTTP route contracts', () => {
 
     beforeEach(() => {
       process.env.META_APP_SECRET = APP_SECRET
+      webhookDeliveryIds.clear()
     })
 
     it('acknowledges with the number of normalized events', async () => {

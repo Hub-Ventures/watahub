@@ -3,6 +3,7 @@ import { getConfig } from '../config.js'
 import type { Logger } from '../logger.js'
 import { timingSafeEqual } from '../services/crypto.js'
 import { isStrongApiKey } from '../utils/env.js'
+import { apiKeyFailures, clientAddress, tooManyRequests } from './rate-limit.js'
 
 /**
  * Gateway API key guard for every authenticated surface (/v1/*, /v24.0/*).
@@ -21,6 +22,13 @@ export function requireApiKey(logger: Logger): MiddlewareHandler {
     }
 
     if (!(await hasValidApiKey(c, apiKey))) {
+      // Only failing callers are throttled, after the comparison: clients behind one
+      // proxy or NAT share an address, and a correct key must never be locked out by
+      // someone else's guesses. Guessing resistance comes from the 32+ character key.
+      const client = clientAddress(c)
+      const retryAfter = apiKeyFailures.blockedFor(client)
+      if (retryAfter > 0) return tooManyRequests(c, retryAfter)
+      apiKeyFailures.hit(client)
       return c.json({ error: 'Unauthorized: Invalid Watahub API key' }, 401)
     }
 

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import app from '../src/index.js'
 import { deliverToSubscriber, type DeliveryPolicy } from '../src/services/delivery.js'
 import { sha256Hex, signSubscriberPayload } from '../src/services/crypto.js'
+import { webhookDeliveryIds } from '../src/services/replay.js'
 
 const FAST: DeliveryPolicy = { maxAttempts: 3, baseDelayMs: 1, maxDelayMs: 2, timeoutMs: 50 }
 const request = { url: 'https://subscriber.example/hook', body: '{"a":1}', secret: 'sub-secret', deliveryId: 'abc123' }
@@ -60,6 +61,23 @@ describe('deliverToSubscriber', () => {
   })
 })
 
+describe('deliverToSubscriber redirects', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('does not follow redirects and treats them as a final failure', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 307, headers: { location: 'https://elsewhere.example/' } }))
+
+    const result = await deliverToSubscriber(request, FAST)
+    expect(result).toEqual({ delivered: false, attempts: 1, status: 307 })
+    expect(fetchSpy.mock.calls[0][1]?.redirect).toBe('manual')
+  })
+})
+
 describe('POST /webhook → subscriber forwarding', () => {
   const originalEnv = process.env
   const APP_SECRET = 'meta-app-secret'
@@ -74,7 +92,15 @@ describe('POST /webhook → subscriber forwarding', () => {
             value: {
               messaging_product: 'whatsapp',
               metadata: { display_phone_number: '1555', phone_number_id: '987' },
-              messages: [{ from: '57300', id: 'wamid.A', timestamp: '1700000000', type: 'text', text: { body: 'x' } }],
+              messages: [
+                {
+                  from: '57300',
+                  id: 'wamid.A',
+                  timestamp: String(Math.floor(Date.now() / 1000)),
+                  type: 'text',
+                  text: { body: 'x' },
+                },
+              ],
             },
           },
         ],
@@ -99,6 +125,7 @@ describe('POST /webhook → subscriber forwarding', () => {
       META_APP_SECRET: APP_SECRET,
       SUBSCRIBER_WEBHOOK_URL: 'https://subscriber.example/hook',
     }
+    webhookDeliveryIds.clear()
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 
@@ -119,26 +146,27 @@ describe('POST /webhook → subscriber forwarding', () => {
     expect(headers['x-watahub-delivery-id']).toBe(await sha256Hex(body))
   })
 
-  it('a Meta redelivery of the same payload reuses the same delivery id', async () => {
+  it('a Meta redelivery of the same payload is acknowledged but forwarded only once', async () => {
     process.env.SUBSCRIBER_WEBHOOK_SECRET = 'sub-secret'
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'))
 
     await deliver()
-    await deliver()
-    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1))
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    const second = await deliver()
+    expect(second.status).toBe(200)
+    expect(await second.json()).toMatchObject({ status: 'ignored', reason: 'duplicate' })
 
-    const ids = fetchSpy.mock.calls.map(
-      ([, init]) => (init?.headers as Record<string, string>)['x-watahub-delivery-id']
-    )
-    expect(ids[0]).toBe(ids[1])
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
   })
 
-  it('does not forward unsigned events when SUBSCRIBER_WEBHOOK_SECRET is missing', async () => {
+  it('answers 503 (so Meta retries) instead of dropping events when SUBSCRIBER_WEBHOOK_SECRET is missing', async () => {
     delete process.env.SUBSCRIBER_WEBHOOK_SECRET
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
 
     const res = await deliver()
-    expect(res.status).toBe(200)
+    expect(res.status).toBe(503)
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(fetchSpy).not.toHaveBeenCalled()
   })

@@ -24,6 +24,10 @@ export interface GatewayConfig {
   metaApiVersion: string
   subscriberWebhookUrl?: string
   subscriberWebhookSecret?: string
+  metaWebhookMaxAgeSeconds?: string
+  corsAllowedOrigins?: string
+  rateLimitPerMinute?: string
+  trustedClientIpHeader?: string
 }
 
 export function getConfig(c: Context): GatewayConfig {
@@ -38,5 +42,9 @@ export function getConfig(c: Context): GatewayConfig {
     metaApiVersion: getEnvVar(c, 'META_API_VERSION') || DEFAULT_META_API_VERSION,
     subscriberWebhookUrl: getEnvVar(c, 'SUBSCRIBER_WEBHOOK_URL'),
     subscriberWebhookSecret: getEnvVar(c, 'SUBSCRIBER_WEBHOOK_SECRET'),
+    metaWebhookMaxAgeSeconds: getEnvVar(c, 'META_WEBHOOK_MAX_AGE_SECONDS'),
+    corsAllowedOrigins: getEnvVar(c, 'CORS_ALLOWED_ORIGINS'),
+    rateLimitPerMinute: getEnvVar(c, 'RATE_LIMIT_PER_MINUTE'),
+    trustedClientIpHeader: getEnvVar(c, 'TRUSTED_CLIENT_IP_HEADER'),
   }
 }
