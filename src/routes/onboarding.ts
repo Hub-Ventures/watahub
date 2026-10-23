@@ -124,6 +124,23 @@ onboardingRouter.post('/v1/onboarding/subscribe', async (c) => {
     const success = await client.subscribeAppToWaba(parsed.data.wabaId)
     return c.json({ success, wabaId: parsed.data.wabaId }, 200)
   } catch (err: unknown) {
+    if (err instanceof WatahubApiError) {
+      const classification = classifyMetaError(err)
+      return c.json(
+        {
+          error: {
+            message: err.message,
+            code: err.metaCode,
+            subcode: err.metaSubcode,
+            category: classification.category,
+            retryable: classification.retryable,
+            action: classification.action,
+          },
+        },
+        (err.statusCode >= 400 && err.statusCode < 600 ? err.statusCode : 502) as 502
+      )
+    }
+
     const failure = transportFailure(err)
     return c.json({ error: { message: failure.message } }, failure.status)
   }
@@ -165,6 +182,23 @@ onboardingRouter.post('/v1/onboarding/override-callback', async (c) => {
     )
     return c.json({ success, phoneNumberId: parsed.data.phoneNumberId }, 200)
   } catch (err: unknown) {
+    if (err instanceof WatahubApiError) {
+      const classification = classifyMetaError(err)
+      return c.json(
+        {
+          error: {
+            message: err.message,
+            code: err.metaCode,
+            subcode: err.metaSubcode,
+            category: classification.category,
+            retryable: classification.retryable,
+            action: classification.action,
+          },
+        },
+        (err.statusCode >= 400 && err.statusCode < 600 ? err.statusCode : 502) as 502
+      )
+    }
+
     const failure = transportFailure(err)
     return c.json({ error: { message: failure.message } }, failure.status)
   }

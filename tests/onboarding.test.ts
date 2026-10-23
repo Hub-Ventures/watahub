@@ -78,3 +78,44 @@ describe('POST /v1/onboarding/exchange (Embedded Signup)', () => {
     expect(text).not.toContain('used-code')
   })
 })
+
+describe('POST /v1/onboarding/subscribe and override-callback surface Meta errors', () => {
+  const originalEnv = process.env
+
+  beforeEach(() => {
+    process.env = { ...originalEnv, WATAHUB_API_KEY: KEY, META_SYSTEM_USER_TOKEN: 'EAAG-expired' }
+    resetRateLimits()
+  })
+
+  afterEach(() => {
+    process.env = originalEnv
+    vi.restoreAllMocks()
+  })
+
+  const expired = () =>
+    new Response('{"error":{"message":"Error validating access token","type":"OAuthException","code":190}}', { status: 401 })
+
+  it.each([
+    ['/v1/onboarding/subscribe', { wabaId: '123456' }],
+    ['/v1/onboarding/override-callback', { phoneNumberId: '123456', callbackUrl: 'https://hooks.example.com/w', verifyToken: 'verify-token-123' }],
+  ])('%s returns the classified auth error instead of 200 success:false', async (path, body) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => expired())
+    const res = await app.request(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': KEY },
+      body: JSON.stringify(body),
+    })
+    expect(res.status).toBe(401)
+    expect(await res.json()).toMatchObject({ error: { code: 190, category: 'auth', retryable: false } })
+  })
+
+  it('subscribe still answers success on 2xx', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"success":true}', { status: 200 }))
+    const res = await app.request('/v1/onboarding/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': KEY },
+      body: JSON.stringify({ wabaId: '123456' }),
+    })
+    expect(await res.json()).toEqual({ success: true, wabaId: '123456' })
+  })
+})

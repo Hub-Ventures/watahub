@@ -281,7 +281,7 @@ export class MetaClient {
   async subscribeAppToWaba(wabaId: string, overrideToken?: string): Promise<boolean> {
     const endpoint = this.url(`${wabaId}/subscribed_apps`)
     // Subscribing is a set operation: repeating it yields the same state
-    const { res } = await this.request(
+    const { res, data } = await this.request(
       endpoint,
       {
         method: 'POST',
@@ -293,7 +293,10 @@ export class MetaClient {
       { idempotent: true }
     )
 
-    return res.ok
+    if (!res.ok) {
+      throw new WatahubApiError(data as unknown as MetaApiErrorBody, res.status)
+    }
+    return true
   }
 
   /**
@@ -307,7 +310,7 @@ export class MetaClient {
   ): Promise<boolean> {
     const endpoint = this.url(phoneNumberId)
     // Overwrites a single setting, so repeating it is safe
-    const { res } = await this.request(
+    const { res, data } = await this.request(
       endpoint,
       {
         method: 'POST',
@@ -322,7 +325,10 @@ export class MetaClient {
       { idempotent: true }
     )
 
-    return res.ok
+    if (!res.ok) {
+      throw new WatahubApiError(data as unknown as MetaApiErrorBody, res.status)
+    }
+    return true
   }
 
   /**
