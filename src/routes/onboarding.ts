@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { getEnvVar } from '../utils/env.js'
 import { MetaClient } from '../services/meta-client.js'
 import { WatahubApiError, classifyMetaError, transportFailure } from '../services/errors.js'
-import { GraphIdSchema, HttpsUrlSchema } from '../utils/validation.js'
+import { GraphIdSchema, PublicHttpsUrlSchema } from '../utils/validation.js'
 
 export const onboardingRouter = new Hono()
 
@@ -19,7 +19,7 @@ const SubscribeWabaSchema = z.object({
 
 const OverrideCallbackSchema = z.object({
   phoneNumberId: GraphIdSchema,
-  callbackUrl: HttpsUrlSchema,
+  callbackUrl: PublicHttpsUrlSchema,
   verifyToken: z.string().min(1, 'verifyToken is required').max(256),
 })
 
