@@ -508,6 +508,105 @@ describe('HTTP route contracts', () => {
       expect(body.error).toBe('Validation failed')
       expect(body.details.interactive).toBeDefined()
     })
+
+    it('sends interactive location request message', async () => {
+      const spy = mockFetch(jsonResponse({ messages: [{ id: 'wamid.LOC_REQ' }] }))
+      const locReqPayload = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'interactive',
+        interactive: {
+          type: 'location_request_message',
+          body: { text: 'Please share your delivery location.' },
+          action: { name: 'send_location' },
+        },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(locReqPayload)))
+      expect(res.status).toBe(200)
+      expect(await json(res)).toEqual({
+        success: true,
+        messageId: 'wamid.LOC_REQ',
+        recipient: '573001234567',
+        phoneNumberId: '123',
+      })
+
+      const [, init] = spy.mock.calls[0] as [string, RequestInit]
+      const sentBody = JSON.parse(String(init.body)) as Record<string, any>
+      expect(sentBody.type).toBe('interactive')
+      expect(sentBody.interactive).toEqual(locReqPayload.interactive)
+    })
+
+    it('sends interactive cta_url button message', async () => {
+      const spy = mockFetch(jsonResponse({ messages: [{ id: 'wamid.CTA' }] }))
+      const ctaPayload = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'interactive',
+        interactive: {
+          type: 'cta_url',
+          body: { text: 'View your account statement online:' },
+          footer: { text: 'Valid for 30 days' },
+          action: {
+            name: 'cta_url',
+            parameters: {
+              display_text: 'View Statement',
+              url: 'https://example.com/statements/ST-999',
+            },
+          },
+        },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(ctaPayload)))
+      expect(res.status).toBe(200)
+      expect(await json(res)).toEqual({
+        success: true,
+        messageId: 'wamid.CTA',
+        recipient: '573001234567',
+        phoneNumberId: '123',
+      })
+
+      const [, init] = spy.mock.calls[0] as [string, RequestInit]
+      const sentBody = JSON.parse(String(init.body)) as Record<string, any>
+      expect(sentBody.type).toBe('interactive')
+      expect(sentBody.interactive).toEqual(ctaPayload.interactive)
+    })
+
+    it('rejects location request message with invalid action name or missing body text', async () => {
+      const invalidLocReq = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'interactive',
+        interactive: {
+          type: 'location_request_message',
+          body: { text: '' },
+          action: { name: 'invalid_action' },
+        },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(invalidLocReq)))
+      expect(res.status).toBe(422)
+      expect((await json(res)).details.interactive).toBeDefined()
+    })
+
+    it('rejects cta_url with invalid URL or oversized display_text', async () => {
+      const invalidCta = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'interactive',
+        interactive: {
+          type: 'cta_url',
+          body: { text: 'Check link' },
+          action: {
+            name: 'cta_url',
+            parameters: {
+              display_text: 'This display text exceeds the maximum 20 chars',
+              url: 'not-a-valid-url',
+            },
+          },
+        },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(invalidCta)))
+      expect(res.status).toBe(422)
+      expect((await json(res)).details.interactive).toBeDefined()
+    })
   })
 
   describe('GET /v1/templates', () => {
