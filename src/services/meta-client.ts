@@ -302,9 +302,27 @@ export function buildMetaMessageBody(payload: SendMessagePayload): MetaOutboundM
       body[payload.kind] = buildMediaObject(payload)
       break
 
-    case 'interactive':
+    case 'interactive': {
+      if (payload.interactive?.type === 'flow') {
+        const action = isRecord(payload.interactive.action) ? payload.interactive.action : undefined
+        const params = isRecord(action?.parameters) ? action.parameters : undefined
+        if (params && !params.flow_message_version) {
+          body.interactive = {
+            ...payload.interactive,
+            action: {
+              ...action,
+              parameters: {
+                flow_message_version: '3',
+                ...params,
+              },
+            },
+          }
+          break
+        }
+      }
       body.interactive = payload.interactive
       break
+    }
 
     case 'location': {
       const loc = payload.location

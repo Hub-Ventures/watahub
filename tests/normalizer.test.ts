@@ -272,6 +272,63 @@ describe('Meta Webhook Normalizer', () => {
     })
   })
 
+  it('normalizes inbound WhatsApp Flow completion (nfm_reply)', () => {
+    const rawPayload: MetaWebhookPayload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_123',
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '15550293848',
+                  phone_number_id: 'PHONE_456',
+                },
+                messages: [
+                  {
+                    from: '573001234567',
+                    id: 'wamid.nfm_reply_1',
+                    timestamp: '1729620000',
+                    type: 'interactive',
+                    interactive: {
+                      type: 'nfm_reply',
+                      nfm_reply: {
+                        name: 'flow',
+                        body: 'Sent',
+                        response_json: JSON.stringify({
+                          flow_token: 'session_xyz123',
+                          appointment_date: '2026-11-01',
+                          service_id: 'dental_cleaning',
+                        }),
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const events = normalizeMetaWebhook(rawPayload)
+    expect(events).toHaveLength(1)
+    expect(events[0].message?.kind).toBe('interactive')
+    expect(events[0].message?.interactiveReply).toEqual({
+      type: 'nfm_reply',
+      name: 'flow',
+      body: 'Sent',
+      responseJson: {
+        flow_token: 'session_xyz123',
+        appointment_date: '2026-11-01',
+        service_id: 'dental_cleaning',
+      },
+    })
+  })
+
   it('normalizes inbound location message with coordinates, name and address', () => {
     const rawPayload: MetaWebhookPayload = {
       object: 'whatsapp_business_account',

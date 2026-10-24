@@ -439,6 +439,75 @@ describe('HTTP route contracts', () => {
       expect(res2.status).toBe(422)
       expect((await json(res2)).details.reaction).toBeDefined()
     })
+
+    it('sends interactive flow message with full payload structure', async () => {
+      const spy = mockFetch(jsonResponse({ messages: [{ id: 'wamid.FLOW' }] }))
+      const flowPayload = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'interactive',
+        interactive: {
+          type: 'flow',
+          header: { type: 'text', text: 'Appointment Booking' },
+          body: { text: 'Select an available slot' },
+          footer: { text: 'Powered by Watahub' },
+          action: {
+            name: 'flow',
+            parameters: {
+              flow_token: 'session_token_123',
+              flow_id: '12345678901234',
+              flow_cta: 'Book Now',
+              flow_action: 'navigate',
+              flow_action_payload: {
+                screen: 'APPOINTMENT_SCREEN',
+                data: { doctor_id: 'doc_1' },
+              },
+            },
+          },
+        },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(flowPayload)))
+      expect(res.status).toBe(200)
+      expect(await json(res)).toEqual({
+        success: true,
+        messageId: 'wamid.FLOW',
+        recipient: '573001234567',
+        phoneNumberId: '123',
+      })
+
+      const [, init] = spy.mock.calls[0] as [string, RequestInit]
+      const sentBody = JSON.parse(String(init.body)) as Record<string, any>
+      expect(sentBody.type).toBe('interactive')
+      expect(sentBody.interactive.type).toBe('flow')
+      expect(sentBody.interactive.action.parameters.flow_message_version).toBe('3')
+      expect(sentBody.interactive.action.parameters.flow_id).toBe('12345678901234')
+    })
+
+    it('rejects interactive flow with invalid flow_id or missing required fields', async () => {
+      const invalidFlow = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'interactive',
+        interactive: {
+          type: 'flow',
+          body: { text: 'Test' },
+          action: {
+            name: 'flow',
+            parameters: {
+              flow_token: '',
+              flow_id: 'NON_NUMERIC_ID',
+              flow_cta: 'This CTA label is way too long for Meta',
+              flow_action: 'invalid_action',
+            },
+          },
+        },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(invalidFlow)))
+      expect(res.status).toBe(422)
+      const body = await json(res)
+      expect(body.error).toBe('Validation failed')
+      expect(body.details.interactive).toBeDefined()
+    })
   })
 
   describe('GET /v1/templates', () => {

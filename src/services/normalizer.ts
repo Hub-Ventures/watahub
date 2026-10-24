@@ -3,6 +3,7 @@
  */
 
 import { systemClock, type Clock } from '../clock.js'
+import { isRecord } from '../utils/guards.js'
 import type {
   MetaInboundContact,
   MetaInboundMessage,
@@ -269,7 +270,7 @@ function normalizeInboundContacts(contacts?: MetaInboundContact[]): ContactCard[
   }))
 }
 
-/** Button and list replies only; flow (nfm) replies are not normalized yet. */
+/** Normalizes button, list, and Flow (nfm_reply) user responses. */
 function toInteractiveReply(interactive: MetaInboundMessage['interactive']): NormalizedInteractiveReply | undefined {
   if (interactive?.type === 'button_reply') {
     return {
@@ -283,6 +284,26 @@ function toInteractiveReply(interactive: MetaInboundMessage['interactive']): Nor
       id: interactive.list_reply?.id || '',
       title: interactive.list_reply?.title || '',
       type: 'list',
+    }
+  }
+  if (interactive?.type === 'nfm_reply') {
+    const nfm = interactive.nfm_reply
+    let responseJson: Record<string, unknown> | undefined
+    if (nfm?.response_json) {
+      try {
+        const parsed: unknown = JSON.parse(nfm.response_json)
+        if (isRecord(parsed)) {
+          responseJson = parsed
+        }
+      } catch {
+        // malformed json string remains undefined
+      }
+    }
+    return {
+      type: 'nfm_reply',
+      name: nfm?.name || '',
+      body: nfm?.body || '',
+      ...(responseJson ? { responseJson } : {}),
     }
   }
   return undefined
