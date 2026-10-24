@@ -233,6 +233,16 @@ describe('MetaClient requests and bodies', () => {
         },
       }
       expect((await send({ to: '1', kind: 'interactive', interactive: ctaUrl })).body.interactive).toEqual(ctaUrl)
+
+      const poll = {
+        type: 'poll',
+        action: {
+          name: 'Choose your lunch preference',
+          options: ['Pizza', 'Sushi', 'Salad'],
+          selectable_options_count: 1,
+        },
+      }
+      expect((await send({ to: '1', kind: 'interactive', interactive: poll })).body.interactive).toEqual(poll)
     })
 
     it('maps reactions to Meta field names, including clearing reactions with empty emoji', async () => {

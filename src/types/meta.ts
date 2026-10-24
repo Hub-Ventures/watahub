@@ -107,6 +107,8 @@ export interface MetaInboundMessage {
     | 'location'
     | 'contacts'
     | 'sticker'
+    | 'poll'
+    | 'poll_update'
     | 'unknown'
   text?: {
     body: string
@@ -119,7 +121,7 @@ export interface MetaInboundMessage {
   location?: MetaInboundLocation
   contacts?: MetaInboundContact[]
   interactive?: {
-    type: 'button_reply' | 'list_reply' | 'nfm_reply'
+    type: 'button_reply' | 'list_reply' | 'nfm_reply' | 'poll_update'
     button_reply?: {
       id: string
       title: string
@@ -134,6 +136,12 @@ export interface MetaInboundMessage {
       body: string
       name: string
     }
+    poll_update?: {
+      poll_id?: string
+      message_id?: string
+      selected_options?: Array<string | { id?: string; title?: string; name?: string }>
+      timestamp?: string
+    }
   }
   button?: {
     payload: string
@@ -142,6 +150,17 @@ export interface MetaInboundMessage {
   reaction?: {
     message_id: string
     emoji?: string
+  }
+  poll_update?: {
+    poll_id?: string
+    message_id?: string
+    selected_options?: Array<string | { id?: string; title?: string; name?: string }>
+    timestamp?: string
+  }
+  poll?: {
+    poll_id?: string
+    selected_options?: Array<string | { id?: string; title?: string; name?: string }>
+    timestamp?: string
   }
   context?: {
     from: string

@@ -209,6 +209,39 @@ export interface InteractiveCtaUrlMessage {
   }
 }
 
+export interface PollOption {
+  id?: string
+  title?: string
+  name?: string
+}
+
+export interface InteractivePollMessage {
+  type: 'poll'
+  body?: {
+    text: string
+  }
+  action:
+    | {
+        name: string
+        options: Array<string | PollOption>
+        selectable_options_count?: number
+      }
+    | {
+        name: 'poll'
+        parameters: {
+          name: string
+          options: Array<string | PollOption>
+          selectable_options_count?: number
+        }
+      }
+}
+
+export interface NormalizedPollVote {
+  pollMessageId?: string
+  selectedOptionIds: string[]
+  timestamp?: number
+}
+
 export interface NormalizedInteractiveReply {
   id?: string
   title?: string
@@ -244,6 +277,7 @@ export interface NormalizedMessage {
     targetMessageId: string
     emoji: string
   }
+  pollVote?: NormalizedPollVote
   location?: NormalizedLocation
   contacts?: ContactCard[]
   referral?: Record<string, unknown>
