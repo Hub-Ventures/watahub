@@ -20,6 +20,10 @@ export const webhookBodyLimit = limit(BODY_LIMITS.webhook)
 export const jsonBodyLimit = limit(BODY_LIMITS.json)
 const mediaBodyLimit = limit(BODY_LIMITS.media)
 
+/** Media uploads (/v1/media or /v1/media/:phoneNumberId) get the media limit; other /v1 calls get json limit */
+export const v1BodyLimit: MiddlewareHandler = (c, next) =>
+  c.req.path.startsWith('/v1/media') && c.req.method === 'POST' ? mediaBodyLimit(c, next) : jsonBodyLimit(c, next)
+
 /** Media uploads through the proxy get the media limit; every other proxied call is JSON */
 export const proxyBodyLimit: MiddlewareHandler = (c, next) =>
   c.req.path.endsWith('/media') ? mediaBodyLimit(c, next) : jsonBodyLimit(c, next)

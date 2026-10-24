@@ -129,6 +129,8 @@ describe('Gateway API key enforcement (fail closed)', () => {
       '/v1/onboarding/override-callback',
       { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } },
     ],
+    ['/v1/media/123', { method: 'GET' }],
+    ['/v1/media/123', { method: 'POST', body: 'x', headers: { 'Content-Type': 'multipart/form-data; boundary=x' } }],
     ['/v24.0/123/messages', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } }],
   ]
 
