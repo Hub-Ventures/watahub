@@ -100,7 +100,7 @@ export const SendMessageSchema = z
     reaction: z
       .object({
         messageId: z.string().min(1).max(256),
-        emoji: z.string().min(1).max(16),
+        emoji: z.string().max(16),
       })
       .optional(),
     location: z

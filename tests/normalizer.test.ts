@@ -637,4 +637,64 @@ describe('Meta Webhook Normalizer', () => {
     expect(events[0].status?.recipient).toBe('573001234567')
     expect(events[0].status?.category).toBe('service')
   })
+
+  it('normalizes inbound reaction and reaction removal (empty emoji)', () => {
+    const rawPayload: MetaWebhookPayload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_123',
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '15550293848',
+                  phone_number_id: 'PHONE_456',
+                },
+                messages: [
+                  {
+                    from: '573001234567',
+                    id: 'wamid.reaction_1',
+                    timestamp: '1729620000',
+                    type: 'reaction',
+                    reaction: {
+                      message_id: 'wamid.target_1',
+                      emoji: '🎉',
+                    },
+                  },
+                  {
+                    from: '573001234567',
+                    id: 'wamid.reaction_2',
+                    timestamp: '1729620010',
+                    type: 'reaction',
+                    reaction: {
+                      message_id: 'wamid.target_1',
+                      emoji: '',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const events = normalizeMetaWebhook(rawPayload)
+    expect(events).toHaveLength(2)
+
+    expect(events[0].message?.kind).toBe('reaction')
+    expect(events[0].message?.reaction).toEqual({
+      targetMessageId: 'wamid.target_1',
+      emoji: '🎉',
+    })
+
+    expect(events[1].message?.kind).toBe('reaction')
+    expect(events[1].message?.reaction).toEqual({
+      targetMessageId: 'wamid.target_1',
+      emoji: '',
+    })
+  })
 })

@@ -141,7 +141,7 @@ export interface MetaInboundMessage {
   }
   reaction?: {
     message_id: string
-    emoji: string
+    emoji?: string
   }
   context?: {
     from: string
