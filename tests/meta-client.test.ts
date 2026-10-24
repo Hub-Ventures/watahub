@@ -218,11 +218,20 @@ describe('MetaClient requests and bodies', () => {
       expect(audio.body).toMatchObject({ type: 'audio', audio: { id: 'MID' } })
     })
 
+    it('builds a sticker body with id or link, omitting caption', async () => {
+      const stickerWithId = await send({ to: '1', kind: 'sticker', media: { id: 'STK_123', caption: 'ignore me' } })
+      expect(stickerWithId.body.type).toBe('sticker')
+      expect(stickerWithId.body.sticker).toEqual({ id: 'STK_123' })
+
+      const stickerWithLink = await send({ to: '1', kind: 'sticker', media: { link: 'https://example.com/s.webp' } })
+      expect(stickerWithLink.body.sticker).toEqual({ link: 'https://example.com/s.webp' })
+    })
+
     it('rejects unsupported kinds before calling Meta', async () => {
       const spy = vi.spyOn(globalThis, 'fetch')
-      await expect(
-        client.sendMessage('P', { to: '1', kind: 'sticker' } as unknown as SendMessagePayload)
-      ).rejects.toThrow('Unsupported message kind: sticker')
+      await expect(client.sendMessage('P', { to: '1', kind: 'fax' } as unknown as SendMessagePayload)).rejects.toThrow(
+        'Unsupported message kind: fax'
+      )
       expect(spy).not.toHaveBeenCalled()
     })
 
