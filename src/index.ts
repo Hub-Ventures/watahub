@@ -5,9 +5,10 @@ import { createDefaultDeps, type GatewayDeps } from './deps.js'
 import { requireApiKey } from './http/auth.js'
 import { corsFromEnv } from './http/cors.js'
 import { noStore, securityHeaders } from './http/headers.js'
-import { jsonBodyLimit, proxyBodyLimit, webhookBodyLimit } from './http/limits.js'
+import { proxyBodyLimit, v1BodyLimit, webhookBodyLimit } from './http/limits.js'
 import { rateLimitFromEnv } from './http/rate-limit.js'
 import { createHealthRouter } from './routes/health.js'
+import { createMediaRouter } from './routes/media.js'
 import { createMessagesRouter } from './routes/messages.js'
 import { createOnboardingRouter } from './routes/onboarding.js'
 import { createProxyRouter } from './routes/proxy.js'
@@ -45,12 +46,13 @@ export function createApp(overrides: Partial<GatewayDeps> = {}): Hono {
   }
 
   app.use('/webhook', webhookBodyLimit)
-  app.use('/v1/*', jsonBodyLimit)
+  app.use('/v1/*', v1BodyLimit)
   app.use('/v24.0/*', proxyBodyLimit)
 
   app.route('/', createHealthRouter(deps.now))
   app.route('/', createWebhookRouter(deps))
   app.route('/', createMessagesRouter(deps))
+  app.route('/', createMediaRouter(deps))
   app.route('/', createTemplatesRouter(deps))
   app.route('/', createOnboardingRouter(deps))
   app.route('/', createProxyRouter(deps))

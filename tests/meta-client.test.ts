@@ -481,4 +481,23 @@ describe('MetaClient requests and bodies', () => {
       await expect(client.getMediaUrl('MID')).rejects.toBeInstanceOf(WatahubApiError)
     })
   })
+
+  describe('uploadMedia', () => {
+    it('uploads media and returns media id', async () => {
+      const spy = mockFetch(okJson({ id: 'MEDIA_999' }), okJson({ id: 'MEDIA_OVR' }), okJson({}))
+      const res = await client.uploadMedia('PHONE_123', 'stream-data', 'multipart/form-data; boundary=xyz')
+      expect(res).toEqual({ id: 'MEDIA_999' })
+      expect(spy.mock.calls[0][0]).toBe('https://graph.facebook.com/v24.0/PHONE_123/media')
+      const headers = spy.mock.calls[0][1]?.headers as Headers
+      expect(headers.get('content-type')).toBe('multipart/form-data; boundary=xyz')
+      expect(headers.get('authorization')).toBe('Bearer TOKEN')
+
+      const resOvr = await client.uploadMedia('PHONE_123', 'stream-data', 'image/png', 'OVERRIDE_TOKEN')
+      expect(resOvr).toEqual({ id: 'MEDIA_OVR' })
+      const ovrHeaders = spy.mock.calls[1][1]?.headers as Headers
+      expect(ovrHeaders.get('authorization')).toBe('Bearer OVERRIDE_TOKEN')
+
+      await expect(client.uploadMedia('PHONE_123', 'stream-data')).rejects.toBeInstanceOf(WatahubApiError)
+    })
+  })
 })

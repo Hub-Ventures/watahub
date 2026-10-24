@@ -78,7 +78,9 @@ export function createProxyRouter(deps: GatewayDeps): Hono {
 
     const init: RequestInit = { method: c.req.method, headers, signal: AbortSignal.timeout(PROXY_TIMEOUT_MS) }
     if (c.req.method !== 'GET' && c.req.method !== 'HEAD') {
-      init.body = await c.req.raw.arrayBuffer()
+      init.body = c.req.raw.body
+      // @ts-expect-error duplex required in Node fetch when body is a stream
+      init.duplex = 'half'
     }
 
     try {

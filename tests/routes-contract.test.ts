@@ -967,7 +967,11 @@ describe('HTTP route contracts', () => {
       const headers = init.headers as Headers
       expect(headers.get('authorization')).toBe('Bearer OVR')
       expect(headers.get('content-type')).toBe('application/json')
-      expect(new TextDecoder().decode(init.body as ArrayBuffer)).toBe('{"a":1}')
+      const bodyText =
+        init.body instanceof ArrayBuffer
+          ? new TextDecoder().decode(init.body)
+          : await new Response(init.body as ReadableStream).text()
+      expect(bodyText).toBe('{"a":1}')
     })
 
     it('sends no body on GET and strips encoding headers', async () => {

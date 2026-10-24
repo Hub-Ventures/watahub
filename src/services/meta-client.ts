@@ -33,6 +33,12 @@ export interface MetaGraphClient {
   subscribeAppToWaba(wabaId: string, subscribedFields?: readonly string[], overrideToken?: string): Promise<boolean>
   overridePhoneNumberCallback(phoneNumberId: string, callbackUrl: string, verifyToken: string): Promise<boolean>
   getMediaUrl(mediaId: string): Promise<string>
+  uploadMedia(
+    phoneNumberId: string,
+    body: BodyInit,
+    contentType?: string,
+    overrideToken?: string
+  ): Promise<{ id: string }>
 }
 
 export const DEFAULT_RETRY_POLICY: RetryPolicy = {
@@ -184,6 +190,36 @@ export class MetaClient implements MetaGraphClient {
     const { data, status } = ensureOk(await this.get(mediaId, overrideToken))
     if (typeof data.url !== 'string') throw new WatahubApiError(data, status)
     return data.url
+  }
+
+  /**
+   * Upload media file (multipart stream) to WhatsApp Cloud API
+   */
+  async uploadMedia(
+    phoneNumberId: string,
+    body: BodyInit,
+    contentType?: string,
+    overrideToken?: string
+  ): Promise<{ id: string }> {
+    const headers = new Headers({
+      Authorization: `Bearer ${overrideToken || this.accessToken}`,
+    })
+    if (contentType) headers.set('Content-Type', contentType)
+    const init: RequestInit = {
+      method: 'POST',
+      headers,
+      body,
+      signal: AbortSignal.timeout(60_000),
+    }
+    // @ts-expect-error duplex required in Node fetch when body is a stream
+    init.duplex = 'half'
+
+    const res = await this.fetchFn(this.url(`${phoneNumberId}/media`), init)
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
+    if (!res.ok || typeof data.id !== 'string') {
+      throw new WatahubApiError(data, res.status)
+    }
+    return { id: data.id }
   }
 
   private url(endpoint: string): string {

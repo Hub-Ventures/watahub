@@ -31,6 +31,7 @@ const fakeClient = (overrides: Partial<MetaGraphClient>): MetaGraphClient => ({
   subscribeAppToWaba: () => Promise.reject(new Error('not stubbed')),
   overridePhoneNumberCallback: () => Promise.reject(new Error('not stubbed')),
   getMediaUrl: () => Promise.reject(new Error('not stubbed')),
+  uploadMedia: () => Promise.reject(new Error('not stubbed')),
   ...overrides,
 })
 
@@ -89,6 +90,8 @@ describe('createApp dependency injection', () => {
       subscribeAppToWaba: () => Promise.resolve(true),
       overridePhoneNumberCallback: () => Promise.resolve(false),
       listTemplates: () => Promise.resolve([{ name: 'hello' }]),
+      getMediaUrl: () => Promise.resolve('https://cdn.example/file.jpg'),
+      uploadMedia: () => Promise.resolve({ id: 'MEDIA_SEAM_1' }),
     })
     const app = createApp({ logger: memoryLogger().logger, createMetaClient: () => client })
 
@@ -103,6 +106,14 @@ describe('createApp dependency injection', () => {
     expect(await override.json()).toEqual({ success: false, phoneNumberId: '123' })
     const templates = await app.request('/v1/templates/456', { headers: auth })
     expect(await templates.json()).toEqual({ data: [{ name: 'hello' }] })
+    const media = await app.request('/v1/media/123456', { headers: auth })
+    expect(await media.json()).toEqual({ mediaId: '123456', url: 'https://cdn.example/file.jpg' })
+    const upload = await app.request('/v1/media/123456', {
+      method: 'POST',
+      headers: { ...auth, 'Content-Type': 'multipart/form-data; boundary=xyz' },
+      body: 'stream',
+    })
+    expect(await upload.json()).toEqual({ id: 'MEDIA_SEAM_1' })
   })
 
   it('maps client failures on every route to generic 502/504 and logs only the error name', async () => {
@@ -112,6 +123,7 @@ describe('createApp dependency injection', () => {
       subscribeAppToWaba: () => Promise.reject(new TypeError('connect ECONNREFUSED 10.0.0.9')),
       overridePhoneNumberCallback: () => Promise.reject(new TypeError('connect ECONNREFUSED 10.0.0.9')),
       listTemplates: () => Promise.reject(new TypeError('connect ECONNREFUSED 10.0.0.9')),
+      getMediaUrl: () => Promise.reject(new TypeError('connect ECONNREFUSED 10.0.0.9')),
     })
     process.env.META_APP_ID = '111'
     process.env.META_APP_SECRET = 'S'
@@ -126,9 +138,10 @@ describe('createApp dependency injection', () => {
         postJson({ phoneNumberId: '123', callbackUrl: 'https://cb.example', verifyToken: 'V' }, auth)
       ),
       app.request('/v1/templates/456', { headers: auth }),
+      app.request('/v1/media/123', { headers: auth }),
     ])
 
-    expect(responses.map((res) => res.status)).toEqual([504, 502, 502, 502])
+    expect(responses.map((res) => res.status)).toEqual([504, 502, 502, 502, 502])
     for (const res of responses) expect(await res.text()).not.toContain('10.0.0.9')
     expect(lines.error.join('\n')).not.toContain('10.0.0.9')
     expect(lines.error).toContain('[watahub] Meta Graph API call failed: TimeoutError')
