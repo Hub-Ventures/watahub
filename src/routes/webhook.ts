@@ -2,12 +2,12 @@ import { Hono } from 'hono'
 import { getConfig } from '../config.js'
 import type { GatewayDeps } from '../deps.js'
 import { runInBackground } from '../http/background.js'
-import { clientAddress, tooManyRequests, verifyTokenFailures } from '../http/rate-limit.js'
+import { clientAddress, tooManyRequests } from '../http/rate-limit.js'
 import { errorName } from '../logger.js'
 import { sha256Hex, timingSafeEqual, verifyMetaSignature } from '../services/crypto.js'
 import { deliverToSubscriber, DEFAULT_DELIVERY_POLICY } from '../services/delivery.js'
 import { hasWebhookChanges, normalizeMetaWebhook } from '../services/normalizer.js'
-import { DEFAULT_WEBHOOK_MAX_AGE_SECONDS, isStale, webhookDeliveryIds } from '../services/replay.js'
+import { DEFAULT_WEBHOOK_MAX_AGE_SECONDS, isStale } from '../services/replay.js'
 import type { SubscriberPayload } from '../types/gateway.js'
 import type { MetaWebhookPayload } from '../types/meta.js'
 
@@ -30,9 +30,9 @@ export function createWebhookRouter(deps: GatewayDeps): Hono {
 
     // Throttle guessing on this public route; the correct token is never refused (see requireApiKey)
     const client = clientAddress(c)
-    const retryAfter = verifyTokenFailures.blockedFor(client)
+    const retryAfter = await deps.verifyTokenLimiter.blockedFor(client)
     if (retryAfter > 0) return tooManyRequests(c, retryAfter)
-    verifyTokenFailures.hit(client)
+    await deps.verifyTokenLimiter.hit(client)
     return c.text('Forbidden: Webhook verification failed', 403)
   })
 
@@ -87,7 +87,7 @@ export function createWebhookRouter(deps: GatewayDeps): Hono {
       )
       return c.json({ status: 'ignored', reason: 'stale', eventsCount: 0 }, 200)
     }
-    if (webhookDeliveryIds.has(deliveryId, now)) {
+    if (await deps.replayStore.has(deliveryId, now)) {
       return c.json({ status: 'ignored', reason: 'duplicate', eventsCount: 0 }, 200)
     }
 
@@ -95,7 +95,7 @@ export function createWebhookRouter(deps: GatewayDeps): Hono {
     const hasChanges = hasWebhookChanges(payload)
 
     if (!url || !secret || (events.length === 0 && !hasChanges)) {
-      webhookDeliveryIds.remember(deliveryId, now)
+      await deps.replayStore.remember(deliveryId, now)
     } else {
       const forward: SubscriberPayload = { timestamp: now, events, raw: payload }
       const delivery = deliverToSubscriber(
@@ -104,8 +104,8 @@ export function createWebhookRouter(deps: GatewayDeps): Hono {
         { fetch: deps.fetch, logger: deps.logger }
       )
         // Only a confirmed delivery marks the body as seen, so a failed one can still be replayed
-        .then((result) => {
-          if (result.delivered) webhookDeliveryIds.remember(deliveryId, deps.now())
+        .then(async (result) => {
+          if (result.delivered) await deps.replayStore.remember(deliveryId, deps.now())
         })
         .catch((err: unknown) => deps.logger.error(`[watahub] Async dispatch error: ${errorName(err)}`))
 

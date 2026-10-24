@@ -322,3 +322,143 @@ describe('buildProxyTargetUrl', () => {
     ).toBe('https://graph.facebook.com/v24.0/789?phone_number_id=1')
   })
 })
+
+describe('Pluggable state stores in createApp', () => {
+  const originalEnv = process.env
+
+  beforeEach(() => {
+    process.env = { ...originalEnv, WATAHUB_API_KEY: KEY, META_SYSTEM_USER_TOKEN: 'SYS' }
+  })
+
+  afterEach(() => {
+    process.env = originalEnv
+    vi.restoreAllMocks()
+  })
+
+  it('uses injected replayStore on webhook ingestion', async () => {
+    const replayStore = {
+      has: vi.fn().mockReturnValue(false),
+      remember: vi.fn().mockReturnValue(true),
+      clear: vi.fn(),
+    }
+    const app = createApp({ replayStore })
+
+    const payload = JSON.stringify({
+      object: 'whatsapp_business_account',
+      entry: [{ id: '1', changes: [] }],
+    })
+    process.env.META_APP_SECRET = 'secret'
+
+    const res = await app.request('/webhook', {
+      method: 'POST',
+      body: payload,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-hub-signature-256': await signSubscriberPayload(payload, 'secret'),
+      },
+    })
+    expect(res.status).toBe(200)
+    expect(replayStore.has).toHaveBeenCalled()
+    expect(replayStore.remember).toHaveBeenCalled()
+  })
+
+  it('uses injected apiKeyLimiter on authentication failures', async () => {
+    const apiKeyLimiter = {
+      blockedFor: vi.fn().mockReturnValue(0),
+      hit: vi.fn(),
+      clear: vi.fn(),
+    }
+    const app = createApp({ apiKeyLimiter })
+
+    const res = await app.request('/v1/messages', {
+      method: 'POST',
+      body: '{}',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': 'wrong-key' },
+    })
+    expect(res.status).toBe(401)
+    expect(apiKeyLimiter.blockedFor).toHaveBeenCalled()
+    expect(apiKeyLimiter.hit).toHaveBeenCalled()
+  })
+
+  it('uses injected verifyTokenLimiter on webhook verification failure', async () => {
+    const verifyTokenLimiter = {
+      blockedFor: vi.fn().mockReturnValue(0),
+      hit: vi.fn(),
+      clear: vi.fn(),
+    }
+    process.env.META_WEBHOOK_VERIFY_TOKEN = 'correct-token'
+    const app = createApp({ verifyTokenLimiter })
+
+    const res = await app.request('/webhook?hub.mode=subscribe&hub.verify_token=wrong&hub.challenge=123')
+    expect(res.status).toBe(403)
+    expect(verifyTokenLimiter.blockedFor).toHaveBeenCalled()
+    expect(verifyTokenLimiter.hit).toHaveBeenCalled()
+  })
+
+  it('uses injected createRequestLimiter on authenticated routes', async () => {
+    const customLimiter = {
+      blockedFor: vi.fn().mockReturnValue(0),
+      hit: vi.fn(),
+      clear: vi.fn(),
+    }
+    process.env.RATE_LIMIT_PER_MINUTE = '60'
+    const app = createApp({
+      createRequestLimiter: vi.fn().mockReturnValue(customLimiter),
+      createMetaClient: () => fakeClient({ listTemplates: () => Promise.resolve([]) }),
+    })
+
+    const res = await app.request('/v1/templates/123', { headers: auth })
+    expect(res.status).toBe(200)
+    expect(customLimiter.blockedFor).toHaveBeenCalled()
+    expect(customLimiter.hit).toHaveBeenCalled()
+  })
+})
+
+describe('Distributed store adapters (store-adapters.ts)', () => {
+  class MockKv {
+    public map = new Map<string, string>()
+    get(key: string): Promise<string | null> {
+      return Promise.resolve(this.map.get(key) ?? null)
+    }
+    set(key: string, value: string): Promise<void> {
+      this.map.set(key, value)
+      return Promise.resolve()
+    }
+  }
+
+  it('DistributedReplayStore remembers and checks deduplication keys', async () => {
+    const { DistributedReplayStore } = await import('../src/services/store-adapters.js')
+    const kv = new MockKv()
+    const store = new DistributedReplayStore(kv, 3600)
+
+    expect(await store.has('delivery-1')).toBe(false)
+    expect(await store.remember('delivery-1')).toBe(true)
+    expect(await store.has('delivery-1')).toBe(true)
+    expect(await store.remember('delivery-1')).toBe(false)
+    await store.clear()
+  })
+
+  it('DistributedRateLimitStore tracks hits, blocks, and recovers after window', async () => {
+    const { DistributedRateLimitStore } = await import('../src/services/store-adapters.js')
+    const kv = new MockKv()
+    const store = new DistributedRateLimitStore(kv, 2, 60)
+
+    expect(await store.blockedFor('client-ip', 1000)).toBe(0)
+    await store.hit('client-ip', 1000)
+    expect(await store.blockedFor('client-ip', 1000)).toBe(0)
+    await store.hit('client-ip', 1000)
+
+    // At limit
+    expect(await store.blockedFor('client-ip', 1000)).toBe(60)
+
+    // Expired
+    expect(await store.blockedFor('client-ip', 1000 + 61_000)).toBe(0)
+
+    // Overwritten with corrupted JSON recovers gracefully
+    kv.map.set('watahub:ratelimit:client-ip', 'not-valid-json')
+    expect(await store.blockedFor('client-ip', 1000)).toBe(0)
+    await store.hit('client-ip', 1000)
+    expect(await store.blockedFor('client-ip', 1000)).toBe(0)
+    await store.clear()
+  })
+})

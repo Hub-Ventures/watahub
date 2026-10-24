@@ -13,6 +13,7 @@
  *   dedupe on x-watahub-delivery-id.
  */
 
+import type { ReplayStore } from '../deps.js'
 import type { MetaWebhookPayload } from '../types/meta.js'
 
 /** Meta retries failed deliveries for up to 7 days; a tighter default would drop real retries */
@@ -48,7 +49,7 @@ export function isStale(payload: MetaWebhookPayload, maxAgeSeconds: number, nowM
 }
 
 /** Bounded, time-limited set of recently seen delivery IDs */
-export class DeliveryIdCache {
+export class DeliveryIdCache implements ReplayStore {
   private seen = new Map<string, number>()
 
   constructor(
