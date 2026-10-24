@@ -158,11 +158,59 @@ describe('MetaClient requests and bodies', () => {
       expect(body.text).toEqual({ body: '' })
     })
 
-    it('passes template and interactive objects through', async () => {
+    it('passes template and interactive objects through, defaulting flow_message_version for flows', async () => {
       const template = { name: 'hello', language: { code: 'es' } }
       expect((await send({ to: '1', kind: 'template', template })).body.template).toEqual(template)
       const interactive = { type: 'button', body: { text: 'x' } }
       expect((await send({ to: '1', kind: 'interactive', interactive })).body.interactive).toEqual(interactive)
+
+      const flowWithoutVersion = {
+        type: 'flow',
+        body: { text: 'Book now' },
+        action: {
+          name: 'flow',
+          parameters: {
+            flow_token: 'tok_1',
+            flow_id: '123456789',
+            flow_cta: 'Book',
+            flow_action: 'navigate',
+          },
+        },
+      }
+      const sentFlow = await send({ to: '1', kind: 'interactive', interactive: flowWithoutVersion })
+      expect(sentFlow.body.interactive).toEqual({
+        ...flowWithoutVersion,
+        action: {
+          ...flowWithoutVersion.action,
+          parameters: {
+            flow_message_version: '3',
+            ...flowWithoutVersion.action.parameters,
+          },
+        },
+      })
+
+      const flowWithVersion = {
+        type: 'flow',
+        body: { text: 'Book now' },
+        action: {
+          name: 'flow',
+          parameters: {
+            flow_message_version: '4',
+            flow_token: 'tok_1',
+            flow_id: '123456789',
+            flow_cta: 'Book',
+            flow_action: 'navigate',
+          },
+        },
+      }
+      expect((await send({ to: '1', kind: 'interactive', interactive: flowWithVersion })).body.interactive).toEqual(
+        flowWithVersion
+      )
+
+      const flowWithoutAction = { type: 'flow', body: { text: 'Book' } }
+      expect((await send({ to: '1', kind: 'interactive', interactive: flowWithoutAction })).body.interactive).toEqual(
+        flowWithoutAction
+      )
     })
 
     it('maps reactions to Meta field names, including clearing reactions with empty emoji', async () => {

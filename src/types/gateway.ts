@@ -141,10 +141,47 @@ export interface ContactCard {
   birthday?: string
 }
 
+export interface FlowActionParameters {
+  flow_token: string
+  flow_id: string
+  flow_cta: string
+  flow_action: 'navigate' | 'data_exchange'
+  flow_action_payload?: {
+    screen?: string
+    data?: Record<string, unknown>
+  }
+  flow_message_version?: string
+  mode?: 'draft' | 'published'
+}
+
+export interface InteractiveFlowMessage {
+  type: 'flow'
+  header?: {
+    type: 'text' | 'image' | 'video' | 'document'
+    text?: string
+    image?: Record<string, unknown>
+    video?: Record<string, unknown>
+    document?: Record<string, unknown>
+  }
+  body: {
+    text: string
+  }
+  footer?: {
+    text: string
+  }
+  action: {
+    name: 'flow'
+    parameters: FlowActionParameters
+  }
+}
+
 export interface NormalizedInteractiveReply {
-  id: string
-  title: string
-  type: 'button' | 'list'
+  id?: string
+  title?: string
+  type: 'button' | 'list' | 'nfm_reply'
+  name?: string
+  body?: string
+  responseJson?: Record<string, unknown>
 }
 
 export interface NormalizedLocation {

@@ -157,6 +157,37 @@ describe('normalizeMetaWebhook edge cases', () => {
         type: 'interactive',
         interactive: { type: 'nfm_reply', nfm_reply: { response_json: '{}', body: '', name: 'f' } },
       })?.interactiveReply
+    ).toEqual({
+      type: 'nfm_reply',
+      name: 'f',
+      body: '',
+      responseJson: {},
+    })
+    expect(
+      normalizeOne({
+        type: 'interactive',
+        interactive: { type: 'nfm_reply', nfm_reply: { response_json: 'invalid-json', body: 'b', name: 'n' } },
+      })?.interactiveReply
+    ).toEqual({
+      type: 'nfm_reply',
+      name: 'n',
+      body: 'b',
+    })
+    expect(
+      normalizeOne({
+        type: 'interactive',
+        interactive: { type: 'nfm_reply' },
+      })?.interactiveReply
+    ).toEqual({
+      type: 'nfm_reply',
+      name: '',
+      body: '',
+    })
+    expect(
+      normalizeOne({
+        type: 'interactive',
+        interactive: { type: 'other' as any },
+      })?.interactiveReply
     ).toBeUndefined()
     expect(normalizeOne({ type: 'reaction', reaction: { message_id: 'wamid.t', emoji: '❤️' } })?.reaction).toEqual({
       targetMessageId: 'wamid.t',

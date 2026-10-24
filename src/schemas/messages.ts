@@ -66,6 +66,46 @@ export const ContactSchema = z.object({
     .optional(),
 })
 
+export const InteractiveFlowParametersSchema = z.object({
+  flow_token: z.string().min(1, 'flow_token is required').max(512),
+  flow_id: GraphIdSchema,
+  flow_cta: z.string().min(1, 'flow_cta is required').max(20, 'flow_cta cannot exceed 20 characters'),
+  flow_action: z.enum(['navigate', 'data_exchange']),
+  flow_action_payload: z
+    .object({
+      screen: z.string().max(128).optional(),
+      data: z.record(z.unknown()).optional(),
+    })
+    .optional(),
+  flow_message_version: z.string().max(16).optional(),
+  mode: z.enum(['draft', 'published']).optional(),
+})
+
+export const InteractiveFlowSchema = z.object({
+  type: z.literal('flow'),
+  header: z
+    .object({
+      type: z.enum(['text', 'image', 'video', 'document']),
+      text: z.string().max(60).optional(),
+      image: z.record(z.unknown()).optional(),
+      video: z.record(z.unknown()).optional(),
+      document: z.record(z.unknown()).optional(),
+    })
+    .optional(),
+  body: z.object({
+    text: z.string().min(1, 'body.text is required').max(1024),
+  }),
+  footer: z
+    .object({
+      text: z.string().max(60),
+    })
+    .optional(),
+  action: z.object({
+    name: z.literal('flow'),
+    parameters: InteractiveFlowParametersSchema,
+  }),
+})
+
 /** POST /v1/messages body. Limits follow Meta's documented maximums. */
 export const SendMessageSchema = z
   .object({
@@ -150,6 +190,17 @@ export const SendMessageSchema = z
         path: ['media'],
         message: 'Video messages do not support filename',
       })
+    }
+    if (kind === 'interactive' && value.interactive?.type === 'flow') {
+      const flowResult = InteractiveFlowSchema.safeParse(value.interactive)
+      if (!flowResult.success) {
+        for (const issue of flowResult.error.issues) {
+          ctx.addIssue({
+            ...issue,
+            path: ['interactive', ...issue.path],
+          })
+        }
+      }
     }
     if (kind === 'sticker' && value.media && (value.media.caption || value.media.filename)) {
       ctx.addIssue({
