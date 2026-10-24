@@ -30,7 +30,7 @@ export interface MetaGraphClient {
   sendMessage(phoneNumberId: string, payload: SendMessagePayload): Promise<SendMessageResponse>
   listTemplates(wabaId: string): Promise<MetaMessageTemplate[]>
   exchangeCodeForToken(code: string, clientId: string, clientSecret: string): Promise<{ accessToken: string }>
-  subscribeAppToWaba(wabaId: string): Promise<boolean>
+  subscribeAppToWaba(wabaId: string, subscribedFields?: readonly string[], overrideToken?: string): Promise<boolean>
   overridePhoneNumberCallback(phoneNumberId: string, callbackUrl: string, verifyToken: string): Promise<boolean>
   getMediaUrl(mediaId: string): Promise<string>
 }
@@ -42,8 +42,9 @@ export const DEFAULT_RETRY_POLICY: RetryPolicy = {
   timeoutMs: 15_000,
 }
 
-/** Fields subscribed when an app is attached to a WABA. */
-export const WABA_SUBSCRIBED_FIELDS = ['messages', 'smb_message_echoes', 'history', 'smb_app_state_sync'] as const
+/** Default fields subscribed when an app is attached to a WABA. */
+export const DEFAULT_WABA_SUBSCRIBED_FIELDS = ['messages'] as const
+export const WABA_SUBSCRIBED_FIELDS = DEFAULT_WABA_SUBSCRIBED_FIELDS
 
 type GraphBody = Record<string, unknown>
 
@@ -140,11 +141,15 @@ export class MetaClient implements MetaGraphClient {
   /**
    * Subscribe App to WABA
    */
-  async subscribeAppToWaba(wabaId: string, overrideToken?: string): Promise<boolean> {
+  async subscribeAppToWaba(
+    wabaId: string,
+    subscribedFields: readonly string[] = DEFAULT_WABA_SUBSCRIBED_FIELDS,
+    overrideToken?: string
+  ): Promise<boolean> {
     // Subscribing is a set operation: repeating it yields the same state
     const res = await this.post(
       `${wabaId}/subscribed_apps`,
-      { subscribed_fields: WABA_SUBSCRIBED_FIELDS },
+      { subscribed_fields: subscribedFields },
       { idempotent: true },
       overrideToken
     )

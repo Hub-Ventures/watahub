@@ -45,10 +45,10 @@ export function createOnboardingRouter(deps: GatewayDeps): Hono {
 
     const meta = metaClientFor(c, deps)
     if (!meta.ok) return meta.response
-    const { wabaId } = body.value
+    const { wabaId, subscribedFields } = body.value
 
     try {
-      const success = await meta.value.subscribeAppToWaba(wabaId)
+      const success = await meta.value.subscribeAppToWaba(wabaId, subscribedFields)
       return c.json({ success, wabaId }, 200)
     } catch (err: unknown) {
       return errorResponse(c, err, deps.logger)

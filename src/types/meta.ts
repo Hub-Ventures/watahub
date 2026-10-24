@@ -28,6 +28,7 @@ export interface MetaWebhookValue {
     wa_id: string
   }>
   messages?: MetaInboundMessage[]
+  message_echoes?: MetaInboundMessage[]
   statuses?: MetaMessageStatus[]
   errors?: MetaWebhookError[]
 }
@@ -119,6 +120,7 @@ export interface MetaInboundReferral {
 
 export interface MetaInboundMessage {
   from: string
+  to?: string
   id: string
   timestamp: string
   type:

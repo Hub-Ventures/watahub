@@ -930,6 +930,16 @@ describe('HTTP route contracts', () => {
       })
     })
 
+    it('subscribe accepts optional subscribedFields list', async () => {
+      mockFetch(jsonResponse({}))
+      const res = await app.request(
+        '/v1/onboarding/subscribe',
+        authed(postJson({ wabaId: '456', subscribedFields: ['messages', 'smb_message_echoes'] }))
+      )
+      expect(res.status).toBe(200)
+      expect(await json(res)).toEqual({ success: true, wabaId: '456' })
+    })
+
     it('override-callback validates URL and returns success flag', async () => {
       const bad = await app.request(
         '/v1/onboarding/override-callback',

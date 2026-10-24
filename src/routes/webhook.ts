@@ -6,7 +6,7 @@ import { clientAddress, tooManyRequests, verifyTokenFailures } from '../http/rat
 import { errorName } from '../logger.js'
 import { sha256Hex, timingSafeEqual, verifyMetaSignature } from '../services/crypto.js'
 import { deliverToSubscriber, DEFAULT_DELIVERY_POLICY } from '../services/delivery.js'
-import { normalizeMetaWebhook } from '../services/normalizer.js'
+import { hasWebhookChanges, normalizeMetaWebhook } from '../services/normalizer.js'
 import { DEFAULT_WEBHOOK_MAX_AGE_SECONDS, isStale, webhookDeliveryIds } from '../services/replay.js'
 import type { SubscriberPayload } from '../types/gateway.js'
 import type { MetaWebhookPayload } from '../types/meta.js'
@@ -92,8 +92,9 @@ export function createWebhookRouter(deps: GatewayDeps): Hono {
     }
 
     const events = normalizeMetaWebhook(payload, deps.now)
+    const hasChanges = hasWebhookChanges(payload)
 
-    if (!url || !secret || events.length === 0) {
+    if (!url || !secret || (events.length === 0 && !hasChanges)) {
       webhookDeliveryIds.remember(deliveryId, now)
     } else {
       const forward: SubscriberPayload = { timestamp: now, events, raw: payload }

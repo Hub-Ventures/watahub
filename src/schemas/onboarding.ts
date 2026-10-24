@@ -25,6 +25,7 @@ export const ExchangeCodeSchema = z
 
 export const SubscribeWabaSchema = z.object({
   wabaId: GraphIdSchema,
+  subscribedFields: z.array(z.string().min(1).max(64)).min(1).max(20).optional(),
 })
 
 export const OverrideCallbackSchema = z.object({

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeMetaWebhook } from '../src/services/normalizer.js'
+import { hasWebhookChanges, normalizeMetaWebhook } from '../src/services/normalizer.js'
 import type { MetaWebhookPayload } from '../src/types/meta.js'
 
 describe('Meta Webhook Normalizer', () => {
@@ -1035,5 +1035,88 @@ describe('Meta Webhook Normalizer', () => {
       sourceType: '',
       sourceId: '',
     })
+  })
+
+  it('normalizes smb_message_echoes into echo events with recipient and isEcho flag', () => {
+    const rawPayload: MetaWebhookPayload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_123',
+          changes: [
+            {
+              field: 'smb_message_echoes',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '15550293848',
+                  phone_number_id: 'PHONE_456',
+                },
+                contacts: [
+                  {
+                    profile: { name: 'Customer Name' },
+                    wa_id: '573001234567',
+                  },
+                ],
+                message_echoes: [
+                  {
+                    from: '15550293848',
+                    to: '573001234567',
+                    id: 'wamid.echo_text_1',
+                    timestamp: '1729620000',
+                    type: 'text',
+                    text: { body: 'Hello from WhatsApp mobile app' },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const events = normalizeMetaWebhook(rawPayload)
+    expect(events).toHaveLength(1)
+    expect(events[0].type).toBe('echo')
+    expect(events[0].id).toBe('wamid.echo_text_1')
+    expect(events[0].phoneNumberId).toBe('PHONE_456')
+    expect(events[0].displayPhoneNumber).toBe('15550293848')
+    expect(events[0].message).toMatchObject({
+      id: 'wamid.echo_text_1',
+      from: '15550293848',
+      recipient: '573001234567',
+      isEcho: true,
+      kind: 'text',
+      text: 'Hello from WhatsApp mobile app',
+    })
+  })
+
+  it('returns empty events for unnormalized fields like history but hasWebhookChanges detects changes', () => {
+    const rawPayload: MetaWebhookPayload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_123',
+          changes: [
+            {
+              field: 'history',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '15550293848',
+                  phone_number_id: 'PHONE_456',
+                },
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    expect(normalizeMetaWebhook(rawPayload)).toEqual([])
+    expect(hasWebhookChanges(rawPayload)).toBe(true)
+    expect(hasWebhookChanges(undefined)).toBe(false)
+    expect(hasWebhookChanges({ object: 'whatsapp_business_account', entry: [] })).toBe(false)
+    expect(hasWebhookChanges({ object: 'whatsapp_business_account', entry: [{ id: '1', changes: [] }] })).toBe(false)
   })
 })

@@ -331,6 +331,7 @@ export interface NormalizedReferral {
 export interface NormalizedMessage {
   id: string
   from: string
+  recipient?: string
   senderName?: string
   timestamp: number
   kind: string
@@ -341,6 +342,7 @@ export interface NormalizedMessage {
   filename?: string
   isVoice?: boolean
   animated?: boolean
+  isEcho?: boolean
   interactiveReply?: NormalizedInteractiveReply
   reaction?: {
     targetMessageId: string
@@ -369,7 +371,7 @@ export interface WatahubNormalizedEvent {
   timestamp: number
   phoneNumberId: string
   displayPhoneNumber: string
-  type: 'message' | 'status' | 'error'
+  type: 'message' | 'status' | 'error' | 'echo'
   message?: NormalizedMessage
   status?: NormalizedStatus
 }

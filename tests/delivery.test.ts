@@ -170,4 +170,99 @@ describe('POST /webhook → subscriber forwarding', () => {
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(fetchSpy).not.toHaveBeenCalled()
   })
+
+  it('forwards non-messages webhook changes (like history sync) with raw payload to subscriber', async () => {
+    process.env.SUBSCRIBER_WEBHOOK_SECRET = 'sub-secret'
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'))
+
+    const historyPayload = JSON.stringify({
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_1',
+          changes: [
+            {
+              field: 'history',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: { phone_number_id: '123' },
+                history_data: { phase: 0, chunk_order: 1, progress: 25 },
+              },
+            },
+          ],
+        },
+      ],
+    })
+
+    const res = await app.request('/webhook', {
+      method: 'POST',
+      body: historyPayload,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-hub-signature-256': await signSubscriberPayload(historyPayload, APP_SECRET),
+      },
+    })
+    expect(res.status).toBe(200)
+
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1))
+    const sentBody = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string)
+    expect(sentBody.events).toEqual([])
+    expect(sentBody.raw).toEqual(JSON.parse(historyPayload))
+  })
+
+  it('forwards smb_message_echoes webhook with normalized echo event', async () => {
+    process.env.SUBSCRIBER_WEBHOOK_SECRET = 'sub-secret'
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'))
+
+    const echoPayload = JSON.stringify({
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_1',
+          changes: [
+            {
+              field: 'smb_message_echoes',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: { display_phone_number: '1555', phone_number_id: '987' },
+                message_echoes: [
+                  {
+                    from: '1555',
+                    to: '57300',
+                    id: 'wamid.echo_1',
+                    timestamp: String(Math.floor(Date.now() / 1000)),
+                    type: 'text',
+                    text: { body: 'Hello from WhatsApp mobile app' },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    })
+
+    const res = await app.request('/webhook', {
+      method: 'POST',
+      body: echoPayload,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-hub-signature-256': await signSubscriberPayload(echoPayload, APP_SECRET),
+      },
+    })
+    expect(res.status).toBe(200)
+
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1))
+    const sentBody = JSON.parse(fetchSpy.mock.calls[0][1]?.body as string)
+    expect(sentBody.events).toHaveLength(1)
+    expect(sentBody.events[0].type).toBe('echo')
+    expect(sentBody.events[0].message).toMatchObject({
+      id: 'wamid.echo_1',
+      from: '1555',
+      recipient: '57300',
+      isEcho: true,
+      kind: 'text',
+      text: 'Hello from WhatsApp mobile app',
+    })
+  })
 })
