@@ -235,4 +235,16 @@ describe('normalizeMetaWebhook edge cases', () => {
     })
     expect(normalizeOne({ type: 'location' })).toEqual({ ...base, kind: 'location' })
   })
+
+  it('safely parses referral payload with undefined source fields', () => {
+    const msg = normalizeOne({
+      type: 'text',
+      text: { body: 'hello' },
+      referral: {},
+    })
+    expect(msg?.referral).toEqual({
+      sourceType: '',
+      sourceId: '',
+    })
+  })
 })

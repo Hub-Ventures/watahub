@@ -104,6 +104,19 @@ export interface MetaInboundContact {
   urls?: MetaContactUrl[]
 }
 
+export interface MetaInboundReferral {
+  source_url?: string
+  source_type?: string
+  source_id?: string
+  headline?: string
+  body?: string
+  media_type?: string
+  image_url?: string
+  video_url?: string
+  thumbnail_url?: string
+  ctwa_clid?: string
+}
+
 export interface MetaInboundMessage {
   from: string
   id: string
@@ -185,18 +198,7 @@ export interface MetaInboundMessage {
       product_retailer_id: string
     }
   }
-  referral?: {
-    source_url: string
-    source_type: string
-    source_id: string
-    headline: string
-    body: string
-    media_type: string
-    image_url?: string
-    video_url?: string
-    thumbnail_url?: string
-    ctwa_clid?: string
-  }
+  referral?: MetaInboundReferral
 }
 
 export interface MetaMediaAttachment {

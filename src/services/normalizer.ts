@@ -8,6 +8,7 @@ import type {
   MetaInboundContact,
   MetaInboundMessage,
   MetaInboundOrder,
+  MetaInboundReferral,
   MetaMessageStatus,
   MetaWebhookPayload,
   MetaWebhookValue,
@@ -19,6 +20,7 @@ import type {
   NormalizedOrder,
   NormalizedOrderItem,
   NormalizedPollVote,
+  NormalizedReferral,
   NormalizedStatus,
   WatahubNormalizedEvent,
 } from '../types/gateway.js'
@@ -120,6 +122,7 @@ function normalizeStatus(status: MetaMessageStatus, toMillis: ToMillis): Normali
 }
 
 function normalizeMessage(msg: MetaInboundMessage, toMillis: ToMillis, senderName?: string): NormalizedMessage {
+  const referral = normalizeReferral(msg.referral)
   const base: NormalizedMessage = {
     id: msg.id,
     from: msg.from,
@@ -127,6 +130,7 @@ function normalizeMessage(msg: MetaInboundMessage, toMillis: ToMillis, senderNam
     timestamp: toMillis(msg.timestamp),
     kind: msg.type,
     replyToMessageId: msg.context?.id,
+    ...(referral ? { referral } : {}),
   }
 
   switch (msg.type) {
@@ -380,5 +384,21 @@ function normalizeInboundOrder(raw?: MetaInboundOrder): NormalizedOrder | undefi
     catalogId: raw.catalog_id || '',
     ...(raw.text ? { text: raw.text } : {}),
     productItems,
+  }
+}
+
+function normalizeReferral(raw?: MetaInboundReferral): NormalizedReferral | undefined {
+  if (!raw) return undefined
+  return {
+    sourceType: raw.source_type || '',
+    sourceId: raw.source_id || '',
+    ...(raw.source_url ? { sourceUrl: raw.source_url } : {}),
+    ...(raw.headline ? { headline: raw.headline } : {}),
+    ...(raw.body ? { body: raw.body } : {}),
+    ...(raw.media_type ? { mediaType: raw.media_type } : {}),
+    ...(raw.image_url ? { imageUrl: raw.image_url } : {}),
+    ...(raw.video_url ? { videoUrl: raw.video_url } : {}),
+    ...(raw.thumbnail_url ? { thumbnailUrl: raw.thumbnail_url } : {}),
+    ...(raw.ctwa_clid ? { ctwaClid: raw.ctwa_clid } : {}),
   }
 }
