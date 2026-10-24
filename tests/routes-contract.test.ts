@@ -371,6 +371,74 @@ describe('HTTP route contracts', () => {
       expect(res.status).toBe(422)
       expect((await json(res)).details.media).toBeDefined()
     })
+
+    it('sends reaction message with emoji', async () => {
+      const spy = mockFetch(jsonResponse({ messages: [{ id: 'wamid.REACT' }] }))
+      const reactPayload = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'reaction',
+        reaction: { messageId: 'wamid.original123', emoji: '❤️' },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(reactPayload)))
+      expect(res.status).toBe(200)
+      expect(await json(res)).toEqual({
+        success: true,
+        messageId: 'wamid.REACT',
+        recipient: '573001234567',
+        phoneNumberId: '123',
+      })
+
+      const [, init] = spy.mock.calls[0] as [string, RequestInit]
+      const sentBody = JSON.parse(String(init.body)) as Record<string, any>
+      expect(sentBody.type).toBe('reaction')
+      expect(sentBody.reaction).toEqual({ message_id: 'wamid.original123', emoji: '❤️' })
+    })
+
+    it('clears reaction with empty emoji string', async () => {
+      const spy = mockFetch(jsonResponse({ messages: [{ id: 'wamid.UNREACT' }] }))
+      const clearPayload = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'reaction',
+        reaction: { messageId: 'wamid.original123', emoji: '' },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(clearPayload)))
+      expect(res.status).toBe(200)
+      expect(await json(res)).toEqual({
+        success: true,
+        messageId: 'wamid.UNREACT',
+        recipient: '573001234567',
+        phoneNumberId: '123',
+      })
+
+      const [, init] = spy.mock.calls[0] as [string, RequestInit]
+      const sentBody = JSON.parse(String(init.body)) as Record<string, any>
+      expect(sentBody.type).toBe('reaction')
+      expect(sentBody.reaction).toEqual({ message_id: 'wamid.original123', emoji: '' })
+    })
+
+    it('rejects reaction message with missing messageId or oversized emoji', async () => {
+      const missingId = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'reaction',
+        reaction: { messageId: '', emoji: '👍' },
+      }
+      const res1 = await app.request('/v1/messages', authed(postJson(missingId)))
+      expect(res1.status).toBe(422)
+      expect((await json(res1)).details.reaction).toBeDefined()
+
+      const oversizedEmoji = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'reaction',
+        reaction: { messageId: 'wamid.123', emoji: '12345678901234567' },
+      }
+      const res2 = await app.request('/v1/messages', authed(postJson(oversizedEmoji)))
+      expect(res2.status).toBe(422)
+      expect((await json(res2)).details.reaction).toBeDefined()
+    })
   })
 
   describe('GET /v1/templates', () => {

@@ -290,7 +290,7 @@ export function buildMetaMessageBody(payload: SendMessagePayload): MetaOutboundM
     case 'reaction':
       body.reaction = {
         message_id: payload.reaction?.messageId,
-        emoji: payload.reaction?.emoji,
+        emoji: payload.reaction?.emoji ?? '',
       }
       break
 

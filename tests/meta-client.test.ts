@@ -165,10 +165,17 @@ describe('MetaClient requests and bodies', () => {
       expect((await send({ to: '1', kind: 'interactive', interactive })).body.interactive).toEqual(interactive)
     })
 
-    it('maps reactions to Meta field names', async () => {
-      const { body } = await send({ to: '1', kind: 'reaction', reaction: { messageId: 'wamid.t', emoji: '👍' } })
-      expect(body.type).toBe('reaction')
-      expect(body.reaction).toEqual({ message_id: 'wamid.t', emoji: '👍' })
+    it('maps reactions to Meta field names, including clearing reactions with empty emoji', async () => {
+      const react = await send({ to: '1', kind: 'reaction', reaction: { messageId: 'wamid.t', emoji: '👍' } })
+      expect(react.body.type).toBe('reaction')
+      expect(react.body.reaction).toEqual({ message_id: 'wamid.t', emoji: '👍' })
+
+      const unreact = await send({ to: '1', kind: 'reaction', reaction: { messageId: 'wamid.t', emoji: '' } })
+      expect(unreact.body.type).toBe('reaction')
+      expect(unreact.body.reaction).toEqual({ message_id: 'wamid.t', emoji: '' })
+
+      const fallback = await send({ to: '1', kind: 'reaction' })
+      expect(fallback.body.reaction).toEqual({ message_id: undefined, emoji: '' })
     })
 
     it('builds a location body with latitude and longitude, including optional name and address', async () => {

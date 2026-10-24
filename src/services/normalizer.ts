@@ -179,7 +179,7 @@ function normalizeMessage(msg: MetaInboundMessage, toMillis: ToMillis, senderNam
         ...base,
         reaction: {
           targetMessageId: msg.reaction?.message_id || '',
-          emoji: msg.reaction?.emoji || '',
+          emoji: msg.reaction?.emoji ?? '',
         },
       }
 
