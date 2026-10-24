@@ -328,11 +328,12 @@ export function buildMetaMessageBody(payload: SendMessagePayload): MetaOutboundM
   return body
 }
 
-function buildMediaObject({ kind, media }: SendMessagePayload): Record<string, string> {
-  const mediaObj: Record<string, string> = {}
+function buildMediaObject({ kind, media }: SendMessagePayload): Record<string, unknown> {
+  const mediaObj: Record<string, unknown> = {}
   if (media?.id) mediaObj.id = media.id
   if (media?.link) mediaObj.link = media.link
-  if (kind !== 'sticker' && media?.caption) mediaObj.caption = media.caption
+  if (kind !== 'sticker' && kind !== 'audio' && media?.caption) mediaObj.caption = media.caption
   if (kind === 'document' && media?.filename) mediaObj.filename = media.filename
+  if (kind === 'audio' && media?.voice !== undefined) mediaObj.voice = media.voice
   return mediaObj
 }

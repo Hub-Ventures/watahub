@@ -289,6 +289,88 @@ describe('HTTP route contracts', () => {
       expect(res.status).toBe(422)
       expect((await json(res)).details.media).toBeDefined()
     })
+
+    it('sends video message with caption and id', async () => {
+      const spy = mockFetch(jsonResponse({ messages: [{ id: 'wamid.VID' }] }))
+      const videoPayload = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'video',
+        media: { id: '987654321', caption: 'Product demo' },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(videoPayload)))
+      expect(res.status).toBe(200)
+      expect(await json(res)).toEqual({
+        success: true,
+        messageId: 'wamid.VID',
+        recipient: '573001234567',
+        phoneNumberId: '123',
+      })
+
+      const [, init] = spy.mock.calls[0] as [string, RequestInit]
+      const sentBody = JSON.parse(String(init.body)) as Record<string, any>
+      expect(sentBody.type).toBe('video')
+      expect(sentBody.video).toEqual({ id: '987654321', caption: 'Product demo' })
+    })
+
+    it('sends audio message with voice flag', async () => {
+      const spy = mockFetch(jsonResponse({ messages: [{ id: 'wamid.VOICE' }] }))
+      const audioPayload = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'audio',
+        media: { id: '987654321', voice: true },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(audioPayload)))
+      expect(res.status).toBe(200)
+      expect(await json(res)).toEqual({
+        success: true,
+        messageId: 'wamid.VOICE',
+        recipient: '573001234567',
+        phoneNumberId: '123',
+      })
+
+      const [, init] = spy.mock.calls[0] as [string, RequestInit]
+      const sentBody = JSON.parse(String(init.body)) as Record<string, any>
+      expect(sentBody.type).toBe('audio')
+      expect(sentBody.audio).toEqual({ id: '987654321', voice: true })
+    })
+
+    it('rejects video message if filename is provided', async () => {
+      const videoWithFilename = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'video',
+        media: { id: '987654321', filename: 'clip.mp4' },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(videoWithFilename)))
+      expect(res.status).toBe(422)
+      expect((await json(res)).details.media).toBeDefined()
+    })
+
+    it('rejects audio message if caption or filename is provided', async () => {
+      const audioWithCaption = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'audio',
+        media: { id: '987654321', caption: 'Audio with caption' },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(audioWithCaption)))
+      expect(res.status).toBe(422)
+      expect((await json(res)).details.media).toBeDefined()
+    })
+
+    it('rejects voice flag on non-audio messages', async () => {
+      const videoWithVoice = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'video',
+        media: { id: '987654321', voice: true },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(videoWithVoice)))
+      expect(res.status).toBe(422)
+      expect((await json(res)).details.media).toBeDefined()
+    })
   })
 
   describe('GET /v1/templates', () => {
