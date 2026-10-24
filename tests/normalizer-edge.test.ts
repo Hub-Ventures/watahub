@@ -135,6 +135,13 @@ describe('normalizeMetaWebhook edge cases', () => {
       mediaMime: 'image/jpeg',
       caption: 'c',
     })
+    expect(
+      normalizeOne({ type: 'video', video: { id: 'V', mime_type: 'video/mp4', caption: 'my clip' } })
+    ).toMatchObject({
+      mediaId: 'V',
+      mediaMime: 'video/mp4',
+      caption: 'my clip',
+    })
     expect(normalizeOne({ type: 'audio', audio: { id: 'A', mime_type: 'audio/ogg' } })?.isVoice).toBe(false)
     expect(
       normalizeOne({ type: 'document', document: { id: 'F', mime_type: 'application/pdf', filename: 'f.pdf' } })
@@ -157,11 +164,11 @@ describe('normalizeMetaWebhook edge cases', () => {
     })
   })
 
-  it('keeps only base fields for video and unknown kinds', () => {
+  it('keeps only base fields for unknown kinds', () => {
     const base = { id: 'wamid.x', from: '1', senderName: undefined, timestamp: 10_000, replyToMessageId: undefined }
-    expect(normalizeOne({ type: 'video', video: { id: 'V', mime_type: 'video/mp4' } })).toEqual({
+    expect(normalizeOne({ type: 'unknown' })).toEqual({
       ...base,
-      kind: 'video',
+      kind: 'unknown',
     })
     expect(normalizeOne({ type: 'location' })).toEqual({ ...base, kind: 'location' })
   })

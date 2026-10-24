@@ -153,6 +153,14 @@ function normalizeMessage(msg: MetaInboundMessage, toMillis: ToMillis, senderNam
         caption: msg.document?.caption,
       }
 
+    case 'video':
+      return {
+        ...base,
+        mediaId: msg.video?.id,
+        mediaMime: msg.video?.mime_type,
+        caption: msg.video?.caption,
+      }
+
     case 'sticker':
       return {
         ...base,

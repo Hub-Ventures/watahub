@@ -98,6 +98,133 @@ describe('Meta Webhook Normalizer', () => {
     expect(events[0].message?.isVoice).toBe(true)
   })
 
+  it('normalizes inbound general audio message (isVoice: false)', () => {
+    const rawPayload: MetaWebhookPayload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_123',
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '15550293848',
+                  phone_number_id: 'PHONE_456',
+                },
+                messages: [
+                  {
+                    from: '573001234567',
+                    id: 'wamid.audio_general',
+                    timestamp: '1729620000',
+                    type: 'audio',
+                    audio: {
+                      id: 'MEDIA_AUDIO_1',
+                      mime_type: 'audio/mp3',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const events = normalizeMetaWebhook(rawPayload)
+    expect(events).toHaveLength(1)
+    expect(events[0].message?.kind).toBe('audio')
+    expect(events[0].message?.mediaId).toBe('MEDIA_AUDIO_1')
+    expect(events[0].message?.mediaMime).toBe('audio/mp3')
+    expect(events[0].message?.isVoice).toBe(false)
+  })
+
+  it('normalizes inbound video message with caption', () => {
+    const rawPayload: MetaWebhookPayload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_123',
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '15550293848',
+                  phone_number_id: 'PHONE_456',
+                },
+                messages: [
+                  {
+                    from: '573001234567',
+                    id: 'wamid.video123',
+                    timestamp: '1729620000',
+                    type: 'video',
+                    video: {
+                      id: 'MEDIA_VID_1',
+                      mime_type: 'video/mp4',
+                      caption: 'Check this out!',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const events = normalizeMetaWebhook(rawPayload)
+    expect(events).toHaveLength(1)
+    expect(events[0].message?.kind).toBe('video')
+    expect(events[0].message?.mediaId).toBe('MEDIA_VID_1')
+    expect(events[0].message?.mediaMime).toBe('video/mp4')
+    expect(events[0].message?.caption).toBe('Check this out!')
+  })
+
+  it('normalizes inbound video message without caption', () => {
+    const rawPayload: MetaWebhookPayload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_123',
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '15550293848',
+                  phone_number_id: 'PHONE_456',
+                },
+                messages: [
+                  {
+                    from: '573001234567',
+                    id: 'wamid.video456',
+                    timestamp: '1729620000',
+                    type: 'video',
+                    video: {
+                      id: 'MEDIA_VID_2',
+                      mime_type: 'video/mp4',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const events = normalizeMetaWebhook(rawPayload)
+    expect(events).toHaveLength(1)
+    expect(events[0].message?.kind).toBe('video')
+    expect(events[0].message?.mediaId).toBe('MEDIA_VID_2')
+    expect(events[0].message?.mediaMime).toBe('video/mp4')
+    expect(events[0].message?.caption).toBeUndefined()
+  })
+
   it('normalizes interactive button and list replies', () => {
     const rawPayload: MetaWebhookPayload = {
       object: 'whatsapp_business_account',

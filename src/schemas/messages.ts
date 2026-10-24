@@ -94,6 +94,7 @@ export const SendMessageSchema = z
         link: z.string().url().optional(),
         caption: z.string().max(1024).optional(),
         filename: z.string().max(240).optional(),
+        voice: z.boolean().optional(),
       })
       .optional(),
     reaction: z
@@ -128,6 +129,27 @@ export const SendMessageSchema = z
     }
     if (isMedia && value.media && !value.media.id && !value.media.link) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['media'], message: 'media.id or media.link is required' })
+    }
+    if (kind !== 'audio' && value.media?.voice !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['media'],
+        message: 'voice is only supported for audio messages',
+      })
+    }
+    if (kind === 'audio' && value.media && (value.media.caption || value.media.filename)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['media'],
+        message: 'Audio messages do not support caption or filename',
+      })
+    }
+    if (kind === 'video' && value.media?.filename) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['media'],
+        message: 'Video messages do not support filename',
+      })
     }
     if (kind === 'sticker' && value.media && (value.media.caption || value.media.filename)) {
       ctx.addIssue({

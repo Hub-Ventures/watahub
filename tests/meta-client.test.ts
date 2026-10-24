@@ -218,6 +218,34 @@ describe('MetaClient requests and bodies', () => {
       expect(audio.body).toMatchObject({ type: 'audio', audio: { id: 'MID' } })
     })
 
+    it('builds a video body with caption and id or link', async () => {
+      const videoWithId = await send({
+        to: '1',
+        kind: 'video',
+        media: { id: 'VID_123', caption: 'Promo clip' },
+      })
+      expect(videoWithId.body.type).toBe('video')
+      expect(videoWithId.body.video).toEqual({ id: 'VID_123', caption: 'Promo clip' })
+
+      const videoWithLink = await send({
+        to: '1',
+        kind: 'video',
+        media: { link: 'https://example.com/video.mp4' },
+      })
+      expect(videoWithLink.body.type).toBe('video')
+      expect(videoWithLink.body.video).toEqual({ link: 'https://example.com/video.mp4' })
+    })
+
+    it('builds an audio body with voice flag and omits caption', async () => {
+      const voiceNote = await send({
+        to: '1',
+        kind: 'audio',
+        media: { id: 'VOICE_123', voice: true, caption: 'Ignored in audio' },
+      })
+      expect(voiceNote.body.type).toBe('audio')
+      expect(voiceNote.body.audio).toEqual({ id: 'VOICE_123', voice: true })
+    })
+
     it('builds a sticker body with id or link, omitting caption', async () => {
       const stickerWithId = await send({ to: '1', kind: 'sticker', media: { id: 'STK_123', caption: 'ignore me' } })
       expect(stickerWithId.body.type).toBe('sticker')

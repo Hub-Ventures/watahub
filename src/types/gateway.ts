@@ -59,6 +59,11 @@ export interface SendMessagePayload {
     link?: string
     caption?: string
     filename?: string
+    /**
+     * If true for kind 'audio', instructs WhatsApp to render as a voice note (PTT / push-to-talk).
+     * WhatsApp requires audio encoded with `audio/ogg; codecs=opus` for voice bubble rendering.
+     */
+    voice?: boolean
   }
   reaction?: {
     messageId: string
