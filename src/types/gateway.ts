@@ -379,6 +379,7 @@ export interface WatahubNormalizedEvent {
 /** Body POSTed to SUBSCRIBER_WEBHOOK_URL */
 export interface SubscriberPayload {
   timestamp: number
+  tenantId?: string
   events: WatahubNormalizedEvent[]
   raw: unknown
 }

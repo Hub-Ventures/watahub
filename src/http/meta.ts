@@ -12,8 +12,12 @@ export const MISSING_META_TOKEN =
  * Builds the Meta client for this request from the resolved access token and
  * API version. Answers 500 when no token is configured or supplied.
  */
-export function metaClientFor(c: Context, deps: GatewayDeps): Outcome<MetaGraphClient> {
-  const accessToken = resolveMetaAccessToken(c)
+export async function metaClientFor(
+  c: Context,
+  deps: GatewayDeps,
+  phoneNumberId?: string
+): Promise<Outcome<MetaGraphClient>> {
+  const accessToken = await resolveMetaAccessToken(c, deps, phoneNumberId)
   if (!accessToken) {
     return { ok: false, response: c.json({ error: MISSING_META_TOKEN }, 500) }
   }

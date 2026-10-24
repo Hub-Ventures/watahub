@@ -16,8 +16,14 @@ import { createTemplatesRouter } from './routes/templates.js'
 import { createWebhookRouter } from './routes/webhook.js'
 import { redactSecrets } from './utils/redact.js'
 
-export type { GatewayDeps } from './deps.js'
+export type { GatewayDeps, PhoneConfig, PhoneDirectory, RateLimitStore, ReplayStore } from './deps.js'
 export { BODY_LIMITS } from './http/limits.js'
+export { InMemoryPhoneDirectory, defaultPhoneDirectory } from './services/phone-directory.js'
+export {
+  DistributedPhoneDirectory,
+  DistributedRateLimitStore,
+  DistributedReplayStore,
+} from './services/store-adapters.js'
 
 /**
  * Builds the gateway app. Override `deps` to inject collaborators

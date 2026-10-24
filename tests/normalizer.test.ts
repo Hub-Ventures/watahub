@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { hasWebhookChanges, normalizeMetaWebhook } from '../src/services/normalizer.js'
+import { extractPhoneNumberId, hasWebhookChanges, normalizeMetaWebhook } from '../src/services/normalizer.js'
 import type { MetaWebhookPayload } from '../src/types/meta.js'
 
 describe('Meta Webhook Normalizer', () => {
@@ -1118,5 +1118,29 @@ describe('Meta Webhook Normalizer', () => {
     expect(hasWebhookChanges(undefined)).toBe(false)
     expect(hasWebhookChanges({ object: 'whatsapp_business_account', entry: [] })).toBe(false)
     expect(hasWebhookChanges({ object: 'whatsapp_business_account', entry: [{ id: '1', changes: [] }] })).toBe(false)
+  })
+
+  it('extractPhoneNumberId extracts the phone number id or returns undefined', () => {
+    expect(extractPhoneNumberId(undefined)).toBeUndefined()
+    expect(extractPhoneNumberId({ object: 'whatsapp_business_account', entry: [] })).toBeUndefined()
+    expect(
+      extractPhoneNumberId({
+        object: 'whatsapp_business_account',
+        entry: [
+          {
+            id: '1',
+            changes: [
+              {
+                field: 'messages',
+                value: {
+                  messaging_product: 'whatsapp',
+                  metadata: { display_phone_number: '123', phone_number_id: '999888' },
+                },
+              },
+            ],
+          },
+        ],
+      })
+    ).toBe('999888')
   })
 })

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import app from '../src/index.js'
+import app, { createApp, InMemoryPhoneDirectory } from '../src/index.js'
 import { signSubscriberPayload } from '../src/services/crypto.js'
 import { webhookDeliveryIds } from '../src/services/replay.js'
 import { jsonResponse, metaError, mockFetch, postJson } from './helpers/fetch-mock.js'
@@ -117,6 +117,37 @@ describe('HTTP route contracts', () => {
       expect(spy.mock.calls[0][0]).toBe('https://graph.facebook.com/v30.0/555/messages')
       expect(((spy.mock.calls[0][1] as RequestInit).headers as Record<string, string>).Authorization).toBe('Bearer OVR')
       expect(spy.mock.calls[1][0]).toBe('https://graph.facebook.com/v30.0/999/messages')
+    })
+
+    it('resolves phone access token from PhoneDirectory when META_SYSTEM_USER_TOKEN is absent', async () => {
+      delete process.env.META_SYSTEM_USER_TOKEN
+      const phoneDirectory = new InMemoryPhoneDirectory({
+        '123': { accessToken: 'DIR_TOKEN', tenantId: 'tenant-1' },
+      })
+      const customApp = createApp({ phoneDirectory })
+      const spy = mockFetch(jsonResponse({ messages: [{ id: 'wamid.DIR' }] }))
+
+      const res = await customApp.request('/v1/messages', authed(postJson(valid)))
+      expect(res.status).toBe(200)
+      const [, init] = spy.mock.calls[0] as [string, RequestInit]
+      expect((init.headers as Record<string, string>).Authorization).toBe('Bearer DIR_TOKEN')
+    })
+
+    it('prefers explicit X-Meta-Access-Token header over PhoneDirectory token', async () => {
+      delete process.env.META_SYSTEM_USER_TOKEN
+      const phoneDirectory = new InMemoryPhoneDirectory({
+        '123': { accessToken: 'DIR_TOKEN', tenantId: 'tenant-1' },
+      })
+      const customApp = createApp({ phoneDirectory })
+      const spy = mockFetch(jsonResponse({ messages: [{ id: 'wamid.DIR' }] }))
+
+      const res = await customApp.request(
+        '/v1/messages',
+        authed(postJson(valid, { 'x-meta-access-token': 'EXPLICIT_TOKEN' }))
+      )
+      expect(res.status).toBe(200)
+      const [, init] = spy.mock.calls[0] as [string, RequestInit]
+      expect((init.headers as Record<string, string>).Authorization).toBe('Bearer EXPLICIT_TOKEN')
     })
 
     it('maps Meta errors to classified error bodies (with type)', async () => {
@@ -987,6 +1018,19 @@ describe('HTTP route contracts', () => {
     it('needs a token', async () => {
       delete process.env.META_SYSTEM_USER_TOKEN
       expect((await app.request('/v24.0/789', authed())).status).toBe(500)
+    })
+
+    it('resolves phone token from PhoneDirectory when proxying', async () => {
+      delete process.env.META_SYSTEM_USER_TOKEN
+      const phoneDirectory = new InMemoryPhoneDirectory({
+        '123': { accessToken: 'PROXY_TOKEN' },
+      })
+      const proxyApp = createApp({ phoneDirectory })
+      const spy = mockFetch(jsonResponse({ messages: [{ id: 'm' }] }, 201))
+      const res = await proxyApp.request('/v24.0/123/messages', authed(postJson({ a: 1 })))
+      expect(res.status).toBe(201)
+      const [, init] = spy.mock.calls[0] as [string, RequestInit]
+      expect((init.headers as Headers).get('authorization')).toBe('Bearer PROXY_TOKEN')
     })
   })
 
