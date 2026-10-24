@@ -209,6 +209,62 @@ export interface InteractiveCtaUrlMessage {
   }
 }
 
+export interface InteractiveProductMessage {
+  type: 'product'
+  body?: { text: string }
+  footer?: { text: string }
+  action: {
+    catalog_id: string
+    product_retailer_id: string
+  }
+}
+
+export interface InteractiveProductListSection {
+  title: string
+  product_items: Array<{ product_retailer_id: string }>
+}
+
+export interface InteractiveProductListMessage {
+  type: 'product_list'
+  header: {
+    type: 'text'
+    text: string
+  }
+  body: { text: string }
+  footer?: { text: string }
+  action: {
+    catalog_id: string
+    sections: InteractiveProductListSection[]
+  }
+}
+
+export interface InteractiveOrderDetailsMessage {
+  type: 'order_details'
+  header?: {
+    type?: string
+    text?: string
+  }
+  body?: { text: string }
+  footer?: { text: string }
+  action: {
+    name: string
+    parameters: Record<string, unknown>
+  }
+}
+
+export interface NormalizedOrderItem {
+  productRetailerId: string
+  quantity: number
+  itemPrice: number
+  currency: string
+}
+
+export interface NormalizedOrder {
+  catalogId: string
+  text?: string
+  productItems: NormalizedOrderItem[]
+}
+
 export interface PollOption {
   id?: string
   title?: string
@@ -278,6 +334,7 @@ export interface NormalizedMessage {
     emoji: string
   }
   pollVote?: NormalizedPollVote
+  order?: NormalizedOrder
   location?: NormalizedLocation
   contacts?: ContactCard[]
   referral?: Record<string, unknown>

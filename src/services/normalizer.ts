@@ -7,6 +7,7 @@ import { isRecord } from '../utils/guards.js'
 import type {
   MetaInboundContact,
   MetaInboundMessage,
+  MetaInboundOrder,
   MetaMessageStatus,
   MetaWebhookPayload,
   MetaWebhookValue,
@@ -15,6 +16,8 @@ import type {
   ContactCard,
   NormalizedInteractiveReply,
   NormalizedMessage,
+  NormalizedOrder,
+  NormalizedOrderItem,
   NormalizedPollVote,
   NormalizedStatus,
   WatahubNormalizedEvent,
@@ -187,6 +190,11 @@ function normalizeMessage(msg: MetaInboundMessage, toMillis: ToMillis, senderNam
       return pollVote ? { ...base, pollVote } : base
     }
 
+    case 'order': {
+      const order = normalizeInboundOrder(msg.order)
+      return order ? { ...base, order } : base
+    }
+
     case 'reaction':
       return {
         ...base,
@@ -350,5 +358,27 @@ function extractPollVote(
     pollMessageId,
     selectedOptionIds,
     ...(data.timestamp && toMillis ? { timestamp: toMillis(data.timestamp) } : {}),
+  }
+}
+
+function normalizeInboundOrder(raw?: MetaInboundOrder): NormalizedOrder | undefined {
+  if (!raw) return undefined
+  const productItems: NormalizedOrderItem[] = []
+  if (Array.isArray(raw.product_items)) {
+    for (const item of raw.product_items) {
+      const quantity = typeof item.quantity === 'number' ? item.quantity : Number(item.quantity) || 0
+      const itemPrice = typeof item.item_price === 'number' ? item.item_price : Number(item.item_price) || 0
+      productItems.push({
+        productRetailerId: item.product_retailer_id || '',
+        quantity,
+        itemPrice,
+        currency: item.currency || '',
+      })
+    }
+  }
+  return {
+    catalogId: raw.catalog_id || '',
+    ...(raw.text ? { text: raw.text } : {}),
+    productItems,
   }
 }

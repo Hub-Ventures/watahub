@@ -40,6 +40,19 @@ export interface MetaInboundLocation {
   url?: string
 }
 
+export interface MetaOrderItem {
+  product_retailer_id: string
+  quantity: number | string
+  item_price: number | string
+  currency: string
+}
+
+export interface MetaInboundOrder {
+  catalog_id: string
+  text?: string
+  product_items: MetaOrderItem[]
+}
+
 export interface MetaContactAddress {
   street?: string
   city?: string
@@ -109,6 +122,7 @@ export interface MetaInboundMessage {
     | 'sticker'
     | 'poll'
     | 'poll_update'
+    | 'order'
     | 'unknown'
   text?: {
     body: string
@@ -162,6 +176,7 @@ export interface MetaInboundMessage {
     selected_options?: Array<string | { id?: string; title?: string; name?: string }>
     timestamp?: string
   }
+  order?: MetaInboundOrder
   context?: {
     from: string
     id: string

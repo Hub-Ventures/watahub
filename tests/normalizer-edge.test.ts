@@ -200,6 +200,26 @@ describe('normalizeMetaWebhook edge cases', () => {
       pollMessageId: '',
       selectedOptionIds: ['Option C'],
     })
+    expect(normalizeOne({ type: 'order' })?.order).toBeUndefined()
+    expect(
+      normalizeOne({
+        type: 'order',
+        order: {
+          catalog_id: 'C',
+          product_items: [{ product_retailer_id: '', quantity: 'abc', item_price: 'def', currency: '' }],
+        },
+      })?.order
+    ).toEqual({
+      catalogId: 'C',
+      productItems: [
+        {
+          productRetailerId: '',
+          quantity: 0,
+          itemPrice: 0,
+          currency: '',
+        },
+      ],
+    })
     expect(normalizeOne({ type: 'poll' })?.pollVote).toBeUndefined()
     expect(normalizeOne({ type: 'reaction', reaction: { message_id: 'wamid.t', emoji: '❤️' } })?.reaction).toEqual({
       targetMessageId: 'wamid.t',
