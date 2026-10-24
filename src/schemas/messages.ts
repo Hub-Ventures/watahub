@@ -129,6 +129,13 @@ export const SendMessageSchema = z
     if (isMedia && value.media && !value.media.id && !value.media.link) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['media'], message: 'media.id or media.link is required' })
     }
+    if (kind === 'sticker' && value.media && (value.media.caption || value.media.filename)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['media'],
+        message: 'Stickers do not support caption or filename',
+      })
+    }
   })
 
 export type SendMessageInput = z.infer<typeof SendMessageSchema>

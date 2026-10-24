@@ -254,6 +254,41 @@ describe('HTTP route contracts', () => {
       expect(res2.status).toBe(422)
       expect((await json(res2)).details.contacts).toBeDefined()
     })
+
+    it('sends sticker message without caption', async () => {
+      const spy = mockFetch(jsonResponse({ messages: [{ id: 'wamid.STICKER' }] }))
+      const stickerPayload = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'sticker',
+        media: { id: '987654321' },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(stickerPayload)))
+      expect(res.status).toBe(200)
+      expect(await json(res)).toEqual({
+        success: true,
+        messageId: 'wamid.STICKER',
+        recipient: '573001234567',
+        phoneNumberId: '123',
+      })
+
+      const [, init] = spy.mock.calls[0] as [string, RequestInit]
+      const sentBody = JSON.parse(String(init.body)) as Record<string, any>
+      expect(sentBody.type).toBe('sticker')
+      expect(sentBody.sticker).toEqual({ id: '987654321' })
+    })
+
+    it('rejects sticker message if caption or filename is provided', async () => {
+      const stickerWithCaption = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'sticker',
+        media: { id: '987654321', caption: 'Stickers cannot have caption' },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(stickerWithCaption)))
+      expect(res.status).toBe(422)
+      expect((await json(res)).details.media).toBeDefined()
+    })
   })
 
   describe('GET /v1/templates', () => {

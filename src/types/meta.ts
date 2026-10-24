@@ -106,6 +106,7 @@ export interface MetaInboundMessage {
     | 'reaction'
     | 'location'
     | 'contacts'
+    | 'sticker'
     | 'unknown'
   text?: {
     body: string
@@ -114,6 +115,7 @@ export interface MetaInboundMessage {
   audio?: MetaMediaAttachment & { voice?: boolean }
   video?: MetaMediaAttachment
   document?: MetaMediaAttachment & { filename?: string }
+  sticker?: MetaMediaAttachment & { animated?: boolean }
   location?: MetaInboundLocation
   contacts?: MetaInboundContact[]
   interactive?: {

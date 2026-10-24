@@ -298,6 +298,7 @@ export function buildMetaMessageBody(payload: SendMessagePayload): MetaOutboundM
     case 'audio':
     case 'video':
     case 'document':
+    case 'sticker':
       body[payload.kind] = buildMediaObject(payload)
       break
 
@@ -331,7 +332,7 @@ function buildMediaObject({ kind, media }: SendMessagePayload): Record<string, s
   const mediaObj: Record<string, string> = {}
   if (media?.id) mediaObj.id = media.id
   if (media?.link) mediaObj.link = media.link
-  if (media?.caption) mediaObj.caption = media.caption
+  if (kind !== 'sticker' && media?.caption) mediaObj.caption = media.caption
   if (kind === 'document' && media?.filename) mediaObj.filename = media.filename
   return mediaObj
 }

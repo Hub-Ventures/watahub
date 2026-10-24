@@ -380,6 +380,93 @@ describe('Meta Webhook Normalizer', () => {
     expect(events[0].message?.contacts).toBeUndefined()
   })
 
+  it('normalizes inbound sticker message with animated flag', () => {
+    const rawPayload: MetaWebhookPayload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_123',
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '15550293848',
+                  phone_number_id: 'PHONE_456',
+                },
+                messages: [
+                  {
+                    from: '573001234567',
+                    id: 'wamid.sticker123',
+                    timestamp: '1729620000',
+                    type: 'sticker',
+                    sticker: {
+                      id: 'STK_999',
+                      mime_type: 'image/webp',
+                      sha256: 'abc123sha',
+                      animated: true,
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const events = normalizeMetaWebhook(rawPayload)
+    expect(events).toHaveLength(1)
+    expect(events[0].message?.kind).toBe('sticker')
+    expect(events[0].message?.mediaId).toBe('STK_999')
+    expect(events[0].message?.mediaMime).toBe('image/webp')
+    expect(events[0].message?.animated).toBe(true)
+  })
+
+  it('normalizes inbound sticker message when static and mime_type is omitted', () => {
+    const rawPayload: MetaWebhookPayload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_123',
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '15550293848',
+                  phone_number_id: 'PHONE_456',
+                },
+                messages: [
+                  {
+                    from: '573001234567',
+                    id: 'wamid.sticker456',
+                    timestamp: '1729620000',
+                    type: 'sticker',
+                    sticker: {
+                      id: 'STK_STATIC',
+                      mime_type: '',
+                      sha256: 'xyz',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const events = normalizeMetaWebhook(rawPayload)
+    expect(events).toHaveLength(1)
+    expect(events[0].message?.kind).toBe('sticker')
+    expect(events[0].message?.mediaId).toBe('STK_STATIC')
+    expect(events[0].message?.mediaMime).toBe('image/webp')
+    expect(events[0].message?.animated).toBe(false)
+  })
+
   it('normalizes status delivery reports (sent, delivered, read)', () => {
     const rawPayload: MetaWebhookPayload = {
       object: 'whatsapp_business_account',

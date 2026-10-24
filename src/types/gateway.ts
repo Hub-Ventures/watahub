@@ -13,6 +13,7 @@ export const OUTBOUND_MESSAGE_KINDS = [
   'interactive',
   'location',
   'contacts',
+  'sticker',
 ] as const
 
 export type OutboundMessageKind = (typeof OUTBOUND_MESSAGE_KINDS)[number]
@@ -23,6 +24,7 @@ export const MEDIA_MESSAGE_KINDS = [
   'audio',
   'video',
   'document',
+  'sticker',
 ] as const satisfies readonly OutboundMessageKind[]
 
 export type MediaMessageKind = (typeof MEDIA_MESSAGE_KINDS)[number]
@@ -160,6 +162,7 @@ export interface NormalizedMessage {
   caption?: string
   filename?: string
   isVoice?: boolean
+  animated?: boolean
   interactiveReply?: NormalizedInteractiveReply
   reaction?: {
     targetMessageId: string

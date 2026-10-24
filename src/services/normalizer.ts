@@ -153,6 +153,14 @@ function normalizeMessage(msg: MetaInboundMessage, toMillis: ToMillis, senderNam
         caption: msg.document?.caption,
       }
 
+    case 'sticker':
+      return {
+        ...base,
+        mediaId: msg.sticker?.id,
+        mediaMime: msg.sticker?.mime_type || 'image/webp',
+        animated: msg.sticker?.animated === true,
+      }
+
     case 'interactive': {
       const interactiveReply = toInteractiveReply(msg.interactive)
       return interactiveReply ? { ...base, interactiveReply } : base
