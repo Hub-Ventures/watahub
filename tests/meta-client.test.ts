@@ -451,7 +451,15 @@ describe('MetaClient requests and bodies', () => {
       await expect(client.subscribeAppToWaba('WABA')).rejects.toBeInstanceOf(WatahubApiError)
       expect(spy.mock.calls[0][0]).toBe('https://graph.facebook.com/v24.0/WABA/subscribed_apps')
       expect(sentBody(spy)).toEqual({
-        subscribed_fields: ['messages', 'smb_message_echoes', 'history', 'smb_app_state_sync'],
+        subscribed_fields: ['messages'],
+      })
+    })
+
+    it('subscribes with custom subscribed_fields when provided', async () => {
+      const spy = mockFetch(okJson({ success: true }))
+      expect(await client.subscribeAppToWaba('WABA', ['messages', 'smb_message_echoes'])).toBe(true)
+      expect(sentBody(spy)).toEqual({
+        subscribed_fields: ['messages', 'smb_message_echoes'],
       })
     })
 

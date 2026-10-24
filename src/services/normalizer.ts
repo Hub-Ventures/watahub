@@ -29,9 +29,14 @@ type ChangeMetadata = MetaWebhookValue['metadata']
 
 const EMPTY_METADATA: ChangeMetadata = { display_phone_number: '', phone_number_id: '' }
 
+export function hasWebhookChanges(payload?: MetaWebhookPayload): boolean {
+  if (!payload || !Array.isArray(payload.entry)) return false
+  return payload.entry.some((entry) => Array.isArray(entry.changes) && entry.changes.length > 0)
+}
+
 /**
- * Flattens every `messages` change of a WhatsApp webhook into events.
- * Within a change, inbound messages come first, then status updates.
+ * Flattens every `messages` or `smb_message_echoes` change of a WhatsApp webhook into events.
+ * Within a change, inbound messages and echoes come first, then status updates.
  * The input is untrusted JSON, so every level is shape-checked at runtime.
  * `now` is only used when Meta sends an unparseable timestamp.
  */
@@ -43,7 +48,7 @@ export function normalizeMetaWebhook(payload: MetaWebhookPayload, now: Clock = s
     if (!Array.isArray(entry.changes)) continue
 
     for (const change of entry.changes) {
-      if (change.field !== 'messages') continue
+      if (change.field !== 'messages' && change.field !== 'smb_message_echoes') continue
       const value = change.value
       if (value?.messaging_product !== 'whatsapp') continue
 
@@ -69,6 +74,23 @@ function normalizeChangeValue(value: MetaWebhookValue, now: Clock): WatahubNorma
         displayPhoneNumber: metadata.display_phone_number,
         type: 'message',
         message: normalizeMessage(msg, toMillis, senderNames.get(msg.from)),
+      })
+    }
+  }
+
+  if (Array.isArray(value.message_echoes)) {
+    for (const msg of value.message_echoes) {
+      events.push({
+        id: msg.id,
+        timestamp: toMillis(msg.timestamp),
+        phoneNumberId: metadata.phone_number_id,
+        displayPhoneNumber: metadata.display_phone_number,
+        type: 'echo',
+        message: {
+          ...normalizeMessage(msg, toMillis, senderNames.get(msg.from)),
+          ...(msg.to ? { recipient: msg.to } : {}),
+          isEcho: true,
+        },
       })
     }
   }

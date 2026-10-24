@@ -2,7 +2,7 @@
   "name": "watahub",
   "version": "0.1.0",
   "description": "The open-source, self-hostable WhatsApp Cloud API Gateway & Infrastructure (IaaS)",
-  "author": "Hub Ventures <tech@hubventures.co>",
+  "author": "Hub Ventures <hola@elhub.ventures>",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",

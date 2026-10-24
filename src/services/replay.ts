@@ -24,10 +24,11 @@ export function newestEventTimestamp(payload: MetaWebhookPayload): number | unde
   for (const entry of Array.isArray(payload?.entry) ? payload.entry : []) {
     for (const change of Array.isArray(entry?.changes) ? entry.changes : []) {
       // Only live message traffic is aged; history sync legitimately carries old timestamps
-      if (change?.field !== 'messages') continue
+      if (change?.field !== 'messages' && change?.field !== 'smb_message_echoes') continue
       const value = change?.value
       const items = [
         ...(Array.isArray(value?.messages) ? value.messages : []),
+        ...(Array.isArray(value?.message_echoes) ? value.message_echoes : []),
         ...(Array.isArray(value?.statuses) ? value.statuses : []),
       ]
       for (const item of items) {
