@@ -329,6 +329,104 @@ describe('Meta Webhook Normalizer', () => {
     })
   })
 
+  it('normalizes inbound poll vote event (poll_update)', () => {
+    const rawPayload: MetaWebhookPayload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_123',
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '15550293848',
+                  phone_number_id: 'PHONE_456',
+                },
+                messages: [
+                  {
+                    from: '573001234567',
+                    id: 'wamid.poll_vote_1',
+                    timestamp: '1729620000',
+                    type: 'poll_update',
+                    context: {
+                      from: '15550293848',
+                      id: 'wamid.original_poll_msg',
+                    },
+                    poll_update: {
+                      poll_id: 'wamid.original_poll_msg',
+                      selected_options: ['opt_choice_1', 'opt_choice_2'],
+                      timestamp: '1729620005',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const events = normalizeMetaWebhook(rawPayload)
+    expect(events).toHaveLength(1)
+    expect(events[0].message?.kind).toBe('poll_update')
+    expect(events[0].message?.pollVote).toEqual({
+      pollMessageId: 'wamid.original_poll_msg',
+      selectedOptionIds: ['opt_choice_1', 'opt_choice_2'],
+      timestamp: 1729620005000,
+    })
+  })
+
+  it('normalizes inbound interactive poll_update with object options', () => {
+    const rawPayload: MetaWebhookPayload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_123',
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '15550293848',
+                  phone_number_id: 'PHONE_456',
+                },
+                messages: [
+                  {
+                    from: '573001234567',
+                    id: 'wamid.poll_vote_2',
+                    timestamp: '1729620000',
+                    type: 'interactive',
+                    context: {
+                      from: '15550293848',
+                      id: 'wamid.parent_poll',
+                    },
+                    interactive: {
+                      type: 'poll_update',
+                      poll_update: {
+                        selected_options: [{ id: 'choice_A' }, { name: 'choice_B' }],
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const events = normalizeMetaWebhook(rawPayload)
+    expect(events).toHaveLength(1)
+    expect(events[0].message?.kind).toBe('interactive')
+    expect(events[0].message?.pollVote).toEqual({
+      pollMessageId: 'wamid.parent_poll',
+      selectedOptionIds: ['choice_A', 'choice_B'],
+    })
+  })
+
   it('normalizes inbound location message with coordinates, name and address', () => {
     const rawPayload: MetaWebhookPayload = {
       object: 'whatsapp_business_account',

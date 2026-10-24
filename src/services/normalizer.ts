@@ -15,6 +15,7 @@ import type {
   ContactCard,
   NormalizedInteractiveReply,
   NormalizedMessage,
+  NormalizedPollVote,
   NormalizedStatus,
   WatahubNormalizedEvent,
 } from '../types/gateway.js'
@@ -171,8 +172,19 @@ function normalizeMessage(msg: MetaInboundMessage, toMillis: ToMillis, senderNam
       }
 
     case 'interactive': {
+      if (msg.interactive?.type === 'poll_update') {
+        const pollVote = extractPollVote(msg.interactive.poll_update, toMillis, msg.context?.id)
+        return pollVote ? { ...base, pollVote } : base
+      }
       const interactiveReply = toInteractiveReply(msg.interactive)
       return interactiveReply ? { ...base, interactiveReply } : base
+    }
+
+    case 'poll_update':
+    case 'poll': {
+      const pollData = msg.poll_update || msg.poll
+      const pollVote = extractPollVote(pollData, toMillis, msg.context?.id)
+      return pollVote ? { ...base, pollVote } : base
     }
 
     case 'reaction':
@@ -307,4 +319,36 @@ function toInteractiveReply(interactive: MetaInboundMessage['interactive']): Nor
     }
   }
   return undefined
+}
+
+interface RawPollData {
+  poll_id?: string
+  message_id?: string
+  selected_options?: Array<string | { id?: string; title?: string; name?: string }>
+  timestamp?: string
+}
+
+function extractPollVote(
+  data?: RawPollData,
+  toMillis?: (t: string) => number,
+  contextId?: string
+): NormalizedPollVote | undefined {
+  if (!data) return undefined
+  const pollMessageId = data.poll_id || data.message_id || contextId || ''
+  const selectedOptionIds: string[] = []
+  if (Array.isArray(data.selected_options)) {
+    for (const opt of data.selected_options) {
+      if (typeof opt === 'string' && opt.length > 0) {
+        selectedOptionIds.push(opt)
+      } else if (opt && typeof opt === 'object') {
+        const id = opt.id || opt.name || opt.title
+        if (id) selectedOptionIds.push(id)
+      }
+    }
+  }
+  return {
+    pollMessageId,
+    selectedOptionIds,
+    ...(data.timestamp && toMillis ? { timestamp: toMillis(data.timestamp) } : {}),
+  }
 }

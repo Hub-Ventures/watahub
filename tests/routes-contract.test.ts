@@ -607,6 +607,76 @@ describe('HTTP route contracts', () => {
       expect(res.status).toBe(422)
       expect((await json(res)).details.interactive).toBeDefined()
     })
+
+    it('sends interactive poll message with options and selectable_options_count', async () => {
+      const spy = mockFetch(jsonResponse({ messages: [{ id: 'wamid.POLL' }] }))
+      const pollPayload = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'interactive',
+        interactive: {
+          type: 'poll',
+          action: {
+            name: 'Which session will you attend?',
+            options: [
+              { id: 'opt_1', title: 'Morning (9:00 AM)' },
+              { id: 'opt_2', title: 'Afternoon (2:00 PM)' },
+              { id: 'opt_3', title: 'Evening (6:00 PM)' },
+            ],
+            selectable_options_count: 1,
+          },
+        },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(pollPayload)))
+      expect(res.status).toBe(200)
+      expect(await json(res)).toEqual({
+        success: true,
+        messageId: 'wamid.POLL',
+        recipient: '573001234567',
+        phoneNumberId: '123',
+      })
+
+      const [, init] = spy.mock.calls[0] as [string, RequestInit]
+      const sentBody = JSON.parse(String(init.body)) as Record<string, any>
+      expect(sentBody.type).toBe('interactive')
+      expect(sentBody.interactive).toEqual(pollPayload.interactive)
+    })
+
+    it('rejects interactive poll with fewer than 2 options', async () => {
+      const invalidPoll = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'interactive',
+        interactive: {
+          type: 'poll',
+          action: {
+            name: 'Too few choices',
+            options: ['Only one choice'],
+          },
+        },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(invalidPoll)))
+      expect(res.status).toBe(422)
+      expect((await json(res)).details.interactive).toBeDefined()
+    })
+
+    it('rejects interactive poll with invalid option objects', async () => {
+      const invalidOptionPoll = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'interactive',
+        interactive: {
+          type: 'poll',
+          action: {
+            name: 'Choices without names',
+            options: [{ id: 'opt_1' }, { id: 'opt_2' }],
+          },
+        },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(invalidOptionPoll)))
+      expect(res.status).toBe(422)
+      expect((await json(res)).details.interactive).toBeDefined()
+    })
   })
 
   describe('GET /v1/templates', () => {

@@ -189,6 +189,18 @@ describe('normalizeMetaWebhook edge cases', () => {
         interactive: { type: 'other' as any },
       })?.interactiveReply
     ).toBeUndefined()
+    expect(
+      normalizeOne({
+        type: 'poll',
+        poll: {
+          selected_options: [{ title: 'Option C' }, {} as any, ''],
+        },
+      })?.pollVote
+    ).toEqual({
+      pollMessageId: '',
+      selectedOptionIds: ['Option C'],
+    })
+    expect(normalizeOne({ type: 'poll' })?.pollVote).toBeUndefined()
     expect(normalizeOne({ type: 'reaction', reaction: { message_id: 'wamid.t', emoji: '❤️' } })?.reaction).toEqual({
       targetMessageId: 'wamid.t',
       emoji: '❤️',
