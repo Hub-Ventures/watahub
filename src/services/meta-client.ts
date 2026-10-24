@@ -305,6 +305,17 @@ export function buildMetaMessageBody(payload: SendMessagePayload): MetaOutboundM
       body.interactive = payload.interactive
       break
 
+    case 'location': {
+      const loc = payload.location
+      body.location = {
+        latitude: loc?.latitude,
+        longitude: loc?.longitude,
+        ...(loc?.name ? { name: loc.name } : {}),
+        ...(loc?.address ? { address: loc.address } : {}),
+      }
+      break
+    }
+
     default:
       throw new Error(`Unsupported message kind: ${String(payload.kind satisfies never)}`)
   }

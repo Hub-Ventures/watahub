@@ -32,6 +32,14 @@ export interface MetaWebhookValue {
   errors?: MetaWebhookError[]
 }
 
+export interface MetaInboundLocation {
+  latitude: number
+  longitude: number
+  name?: string
+  address?: string
+  url?: string
+}
+
 export interface MetaInboundMessage {
   from: string
   id: string
@@ -55,6 +63,7 @@ export interface MetaInboundMessage {
   audio?: MetaMediaAttachment & { voice?: boolean }
   video?: MetaMediaAttachment
   document?: MetaMediaAttachment & { filename?: string }
+  location?: MetaInboundLocation
   interactive?: {
     type: 'button_reply' | 'list_reply' | 'nfm_reply'
     button_reply?: {

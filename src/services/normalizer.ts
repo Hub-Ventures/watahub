@@ -160,6 +160,20 @@ function normalizeMessage(msg: MetaInboundMessage, toMillis: ToMillis, senderNam
         },
       }
 
+    case 'location':
+      return msg.location
+        ? {
+            ...base,
+            location: {
+              latitude: msg.location.latitude,
+              longitude: msg.location.longitude,
+              ...(msg.location.name ? { name: msg.location.name } : {}),
+              ...(msg.location.address ? { address: msg.location.address } : {}),
+              ...(msg.location.url ? { url: msg.location.url } : {}),
+            },
+          }
+        : base
+
     default:
       return base
   }

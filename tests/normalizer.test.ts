@@ -145,6 +145,91 @@ describe('Meta Webhook Normalizer', () => {
     })
   })
 
+  it('normalizes inbound location message with coordinates, name and address', () => {
+    const rawPayload: MetaWebhookPayload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_123',
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '15550293848',
+                  phone_number_id: 'PHONE_456',
+                },
+                messages: [
+                  {
+                    from: '573001234567',
+                    id: 'wamid.loc123',
+                    timestamp: '1729620000',
+                    type: 'location',
+                    location: {
+                      latitude: 37.758056,
+                      longitude: -122.425332,
+                      name: 'Meta HQ',
+                      address: '1 Hacker Way, Menlo Park, CA',
+                      url: 'https://maps.google.com/?q=37.758056,-122.425332',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const events = normalizeMetaWebhook(rawPayload)
+    expect(events).toHaveLength(1)
+    expect(events[0].message?.kind).toBe('location')
+    expect(events[0].message?.location).toEqual({
+      latitude: 37.758056,
+      longitude: -122.425332,
+      name: 'Meta HQ',
+      address: '1 Hacker Way, Menlo Park, CA',
+      url: 'https://maps.google.com/?q=37.758056,-122.425332',
+    })
+  })
+
+  it('normalizes inbound location message with missing location payload gracefully', () => {
+    const rawPayload: MetaWebhookPayload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_123',
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '15550293848',
+                  phone_number_id: 'PHONE_456',
+                },
+                messages: [
+                  {
+                    from: '573001234567',
+                    id: 'wamid.loc_empty',
+                    timestamp: '1729620000',
+                    type: 'location',
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const events = normalizeMetaWebhook(rawPayload)
+    expect(events).toHaveLength(1)
+    expect(events[0].message?.kind).toBe('location')
+    expect(events[0].message?.location).toBeUndefined()
+  })
+
   it('normalizes status delivery reports (sent, delivered, read)', () => {
     const rawPayload: MetaWebhookPayload = {
       object: 'whatsapp_business_account',

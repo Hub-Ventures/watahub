@@ -11,6 +11,7 @@ export const OUTBOUND_MESSAGE_KINDS = [
   'document',
   'reaction',
   'interactive',
+  'location',
 ] as const
 
 export type OutboundMessageKind = (typeof OUTBOUND_MESSAGE_KINDS)[number]
@@ -61,6 +62,12 @@ export interface SendMessagePayload {
     emoji: string
   }
   interactive?: Record<string, unknown>
+  location?: {
+    latitude: number
+    longitude: number
+    name?: string
+    address?: string
+  }
   replyToMessageId?: string
 }
 
@@ -80,6 +87,14 @@ export interface NormalizedInteractiveReply {
   type: 'button' | 'list'
 }
 
+export interface NormalizedLocation {
+  latitude: number
+  longitude: number
+  name?: string
+  address?: string
+  url?: string
+}
+
 export interface NormalizedMessage {
   id: string
   from: string
@@ -97,6 +112,7 @@ export interface NormalizedMessage {
     targetMessageId: string
     emoji: string
   }
+  location?: NormalizedLocation
   referral?: Record<string, unknown>
   replyToMessageId?: string
 }
