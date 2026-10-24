@@ -1,5 +1,6 @@
 import type { Context, MiddlewareHandler } from 'hono'
 import { getConfig } from '../config.js'
+import type { RateLimitStore } from '../deps.js'
 import type { Logger } from '../logger.js'
 import { timingSafeEqual } from '../services/crypto.js'
 import { isStrongApiKey } from '../utils/env.js'
@@ -12,7 +13,7 @@ import { apiKeyFailures, clientAddress, tooManyRequests } from './rate-limit.js'
  * refuses to serve these routes instead of exposing the Meta system user token
  * to anyone. Accepts either `Authorization: Bearer <key>` or `X-API-Key: <key>`.
  */
-export function requireApiKey(logger: Logger): MiddlewareHandler {
+export function requireApiKey(logger: Logger, limiter: RateLimitStore = apiKeyFailures): MiddlewareHandler {
   return async (c, next) => {
     const { apiKey } = getConfig(c)
     // Workers has no boot step, so the strength rules from validateEnv are enforced here too
@@ -26,9 +27,9 @@ export function requireApiKey(logger: Logger): MiddlewareHandler {
       // proxy or NAT share an address, and a correct key must never be locked out by
       // someone else's guesses. Guessing resistance comes from the 32+ character key.
       const client = clientAddress(c)
-      const retryAfter = apiKeyFailures.blockedFor(client)
+      const retryAfter = await limiter.blockedFor(client)
       if (retryAfter > 0) return tooManyRequests(c, retryAfter)
-      apiKeyFailures.hit(client)
+      await limiter.hit(client)
       return c.json({ error: 'Unauthorized: Invalid Watahub API key' }, 401)
     }
 

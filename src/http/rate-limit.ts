@@ -1,5 +1,6 @@
 import type { Context, MiddlewareHandler } from 'hono'
 import { getConfig } from '../config.js'
+import type { RateLimitStore } from '../deps.js'
 import { isRecord } from '../utils/guards.js'
 
 /**
@@ -9,7 +10,7 @@ import { isRecord } from '../utils/guards.js'
  * this is a best-effort brake: put Cloudflare rate limiting rules in front for
  * a global limit.
  */
-export class FixedWindowLimiter {
+export class FixedWindowLimiter implements RateLimitStore {
   private windows = new Map<string, { count: number; resetAt: number }>()
 
   constructor(
@@ -90,22 +91,32 @@ const requestLimiters = new Map<number, FixedWindowLimiter>()
  * RATE_LIMIT_PER_MINUTE. Meta enforces its own throughput limits; this one
  * protects the gateway and its token from a single noisy or leaked client.
  */
-export const rateLimitFromEnv: MiddlewareHandler = async (c, next) => {
-  const limit = Number(getConfig(c).rateLimitPerMinute)
-  if (!Number.isInteger(limit) || limit <= 0) return next()
+export function createRateLimitMiddleware(limiterFactory?: (limit: number) => RateLimitStore): MiddlewareHandler {
+  return async (c, next) => {
+    const limit = Number(getConfig(c).rateLimitPerMinute)
+    if (!Number.isInteger(limit) || limit <= 0) return next()
 
-  let limiter = requestLimiters.get(limit)
-  if (!limiter) {
-    limiter = new FixedWindowLimiter(limit, 60_000)
-    requestLimiters.set(limit, limiter)
+    let limiter: RateLimitStore
+    if (limiterFactory) {
+      limiter = limiterFactory(limit)
+    } else {
+      let existing = requestLimiters.get(limit)
+      if (!existing) {
+        existing = new FixedWindowLimiter(limit, 60_000)
+        requestLimiters.set(limit, existing)
+      }
+      limiter = existing
+    }
+
+    const key = clientAddress(c)
+    const retryAfter = await limiter.blockedFor(key)
+    if (retryAfter > 0) return tooManyRequests(c, retryAfter)
+    await limiter.hit(key)
+    await next()
   }
-
-  const key = clientAddress(c)
-  const retryAfter = limiter.blockedFor(key)
-  if (retryAfter > 0) return tooManyRequests(c, retryAfter)
-  limiter.hit(key)
-  await next()
 }
+
+export const rateLimitFromEnv: MiddlewareHandler = createRateLimitMiddleware()
 
 export function resetRateLimits(): void {
   apiKeyFailures.clear()

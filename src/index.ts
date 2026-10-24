@@ -6,7 +6,7 @@ import { requireApiKey } from './http/auth.js'
 import { corsFromEnv } from './http/cors.js'
 import { noStore, securityHeaders } from './http/headers.js'
 import { proxyBodyLimit, v1BodyLimit, webhookBodyLimit } from './http/limits.js'
-import { rateLimitFromEnv } from './http/rate-limit.js'
+import { createRateLimitMiddleware } from './http/rate-limit.js'
 import { createHealthRouter } from './routes/health.js'
 import { createMediaRouter } from './routes/media.js'
 import { createMessagesRouter } from './routes/messages.js'
@@ -36,12 +36,13 @@ export function createApp(overrides: Partial<GatewayDeps> = {}): Hono {
   // Off by default; CORS_ALLOWED_ORIGINS opts specific origins in (src/http/cors.ts)
   app.use('*', corsFromEnv)
 
-  const apiKeyGuard = requireApiKey(deps.logger)
+  const apiKeyGuard = requireApiKey(deps.logger, deps.apiKeyLimiter)
+  const rateLimitGuard = createRateLimitMiddleware(deps.createRequestLimiter)
   for (const surface of ['/v1/*', '/v24.0/*']) {
     // Order matters: no-store wraps every answer, floods are refused before auth,
     // and every machine-to-machine surface requires the gateway API key (fail closed)
     app.use(surface, noStore)
-    app.use(surface, rateLimitFromEnv)
+    app.use(surface, rateLimitGuard)
     app.use(surface, apiKeyGuard)
   }
 

@@ -1,6 +1,20 @@
 import { systemClock, type Clock } from './clock.js'
+import { apiKeyFailures, verifyTokenFailures } from './http/rate-limit.js'
 import { consoleLogger, type Logger } from './logger.js'
 import { MetaClient, type MetaClientConfig, type MetaGraphClient } from './services/meta-client.js'
+import { webhookDeliveryIds } from './services/replay.js'
+
+export interface ReplayStore {
+  has(id: string, nowMs?: number): boolean | Promise<boolean>
+  remember(id: string, nowMs?: number): boolean | Promise<boolean>
+  clear(): void | Promise<void>
+}
+
+export interface RateLimitStore {
+  blockedFor(key: string, nowMs?: number): number | Promise<number>
+  hit(key: string, nowMs?: number): void | Promise<void>
+  clear(): void | Promise<void>
+}
 
 /**
  * Collaborators the HTTP layer depends on. Pass overrides to `createApp` to
@@ -14,6 +28,14 @@ export interface GatewayDeps {
   fetch: typeof fetch
   now: Clock
   logger: Logger
+  /** Webhook replay protection store */
+  replayStore: ReplayStore
+  /** Rate limiter for failed API keys */
+  apiKeyLimiter: RateLimitStore
+  /** Rate limiter for failed webhook verify tokens */
+  verifyTokenLimiter: RateLimitStore
+  /** Optional factory for per-client request rate limiters */
+  createRequestLimiter?: (limit: number) => RateLimitStore
 }
 
 export function createDefaultDeps(overrides: Partial<GatewayDeps> = {}): GatewayDeps {
@@ -24,6 +46,9 @@ export function createDefaultDeps(overrides: Partial<GatewayDeps> = {}): Gateway
     fetch: fetchFn,
     now: systemClock,
     logger: consoleLogger,
+    replayStore: overrides.replayStore ?? webhookDeliveryIds,
+    apiKeyLimiter: overrides.apiKeyLimiter ?? apiKeyFailures,
+    verifyTokenLimiter: overrides.verifyTokenLimiter ?? verifyTokenFailures,
     ...overrides,
   }
 }
