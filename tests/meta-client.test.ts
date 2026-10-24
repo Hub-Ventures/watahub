@@ -171,6 +171,31 @@ describe('MetaClient requests and bodies', () => {
       expect(body.reaction).toEqual({ message_id: 'wamid.t', emoji: '👍' })
     })
 
+    it('builds a location body with latitude and longitude, including optional name and address', async () => {
+      const full = await send({
+        to: '1',
+        kind: 'location',
+        location: { latitude: 37.758056, longitude: -122.425332, name: 'Meta HQ', address: '1 Hacker Way' },
+      })
+      expect(full.body.type).toBe('location')
+      expect(full.body.location).toEqual({
+        latitude: 37.758056,
+        longitude: -122.425332,
+        name: 'Meta HQ',
+        address: '1 Hacker Way',
+      })
+
+      const minimal = await send({
+        to: '1',
+        kind: 'location',
+        location: { latitude: 10.5, longitude: -74.8 },
+      })
+      expect(minimal.body.location).toEqual({
+        latitude: 10.5,
+        longitude: -74.8,
+      })
+    })
+
     it('includes only provided media fields, filename only for documents', async () => {
       const media = { link: 'https://x/y.pdf', caption: 'c', filename: 'y.pdf' }
       const image = await send({ to: '1', kind: 'image', media })

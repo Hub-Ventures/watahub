@@ -38,6 +38,14 @@ export const SendMessageSchema = z
         emoji: z.string().min(1).max(16),
       })
       .optional(),
+    location: z
+      .object({
+        latitude: z.number().min(-90).max(90),
+        longitude: z.number().min(-180).max(180),
+        name: z.string().max(256).optional(),
+        address: z.string().max(512).optional(),
+      })
+      .optional(),
     interactive: z.record(z.unknown()).optional(),
     replyToMessageId: z.string().max(256).optional(),
   })

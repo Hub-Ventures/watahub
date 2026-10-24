@@ -155,6 +155,53 @@ describe('HTTP route contracts', () => {
       expect(res.status).toBe(502)
       expect(await json(res)).toEqual({ error: { message: 'Meta Graph API unreachable' } })
     })
+
+    it('sends location message with coordinates and optional metadata', async () => {
+      const spy = mockFetch(jsonResponse({ messages: [{ id: 'wamid.LOC' }] }))
+      const locPayload = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'location',
+        location: {
+          latitude: 4.711,
+          longitude: -74.0721,
+          name: 'Bogotá DC',
+          address: 'Plaza de Bolívar',
+        },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(locPayload)))
+      expect(res.status).toBe(200)
+      expect(await json(res)).toEqual({
+        success: true,
+        messageId: 'wamid.LOC',
+        recipient: '573001234567',
+        phoneNumberId: '123',
+      })
+
+      const [, init] = spy.mock.calls[0] as [string, RequestInit]
+      const sentBody = JSON.parse(String(init.body)) as Record<string, any>
+      expect(sentBody.type).toBe('location')
+      expect(sentBody.location).toEqual({
+        latitude: 4.711,
+        longitude: -74.0721,
+        name: 'Bogotá DC',
+        address: 'Plaza de Bolívar',
+      })
+    })
+
+    it('rejects location with coordinates out of bounds', async () => {
+      const invalidLat = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'location',
+        location: { latitude: 95, longitude: -74 },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(invalidLat)))
+      expect(res.status).toBe(422)
+      const body = await json(res)
+      expect(body.error).toBe('Validation failed')
+      expect(body.details.location).toBeDefined()
+    })
   })
 
   describe('GET /v1/templates', () => {
