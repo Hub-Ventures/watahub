@@ -106,6 +106,44 @@ export const InteractiveFlowSchema = z.object({
   }),
 })
 
+export const InteractiveLocationRequestSchema = z.object({
+  type: z.literal('location_request_message'),
+  body: z.object({
+    text: z.string().min(1, 'body.text is required').max(1024),
+  }),
+  action: z.object({
+    name: z.literal('send_location'),
+  }),
+})
+
+export const InteractiveCtaUrlSchema = z.object({
+  type: z.literal('cta_url'),
+  header: z
+    .object({
+      type: z.enum(['text', 'image', 'video', 'document']),
+      text: z.string().max(60).optional(),
+      image: z.record(z.unknown()).optional(),
+      video: z.record(z.unknown()).optional(),
+      document: z.record(z.unknown()).optional(),
+    })
+    .optional(),
+  body: z.object({
+    text: z.string().min(1, 'body.text is required').max(1024),
+  }),
+  footer: z
+    .object({
+      text: z.string().max(60),
+    })
+    .optional(),
+  action: z.object({
+    name: z.literal('cta_url'),
+    parameters: z.object({
+      display_text: z.string().min(1, 'display_text is required').max(20, 'display_text cannot exceed 20 characters'),
+      url: z.string().url('url must be a valid URL'),
+    }),
+  }),
+})
+
 /** POST /v1/messages body. Limits follow Meta's documented maximums. */
 export const SendMessageSchema = z
   .object({
@@ -191,14 +229,36 @@ export const SendMessageSchema = z
         message: 'Video messages do not support filename',
       })
     }
-    if (kind === 'interactive' && value.interactive?.type === 'flow') {
-      const flowResult = InteractiveFlowSchema.safeParse(value.interactive)
-      if (!flowResult.success) {
-        for (const issue of flowResult.error.issues) {
-          ctx.addIssue({
-            ...issue,
-            path: ['interactive', ...issue.path],
-          })
+    if (kind === 'interactive' && value.interactive) {
+      if (value.interactive.type === 'flow') {
+        const flowResult = InteractiveFlowSchema.safeParse(value.interactive)
+        if (!flowResult.success) {
+          for (const issue of flowResult.error.issues) {
+            ctx.addIssue({
+              ...issue,
+              path: ['interactive', ...issue.path],
+            })
+          }
+        }
+      } else if (value.interactive.type === 'location_request_message') {
+        const locResult = InteractiveLocationRequestSchema.safeParse(value.interactive)
+        if (!locResult.success) {
+          for (const issue of locResult.error.issues) {
+            ctx.addIssue({
+              ...issue,
+              path: ['interactive', ...issue.path],
+            })
+          }
+        }
+      } else if (value.interactive.type === 'cta_url') {
+        const ctaResult = InteractiveCtaUrlSchema.safeParse(value.interactive)
+        if (!ctaResult.success) {
+          for (const issue of ctaResult.error.issues) {
+            ctx.addIssue({
+              ...issue,
+              path: ['interactive', ...issue.path],
+            })
+          }
         }
       }
     }

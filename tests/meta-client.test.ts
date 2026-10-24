@@ -213,6 +213,28 @@ describe('MetaClient requests and bodies', () => {
       )
     })
 
+    it('builds interactive location request and cta_url bodies', async () => {
+      const locReq = {
+        type: 'location_request_message',
+        body: { text: 'Please share your location.' },
+        action: { name: 'send_location' },
+      }
+      expect((await send({ to: '1', kind: 'interactive', interactive: locReq })).body.interactive).toEqual(locReq)
+
+      const ctaUrl = {
+        type: 'cta_url',
+        body: { text: 'View invoice' },
+        action: {
+          name: 'cta_url',
+          parameters: {
+            display_text: 'Open Link',
+            url: 'https://example.com/inv/1',
+          },
+        },
+      }
+      expect((await send({ to: '1', kind: 'interactive', interactive: ctaUrl })).body.interactive).toEqual(ctaUrl)
+    })
+
     it('maps reactions to Meta field names, including clearing reactions with empty emoji', async () => {
       const react = await send({ to: '1', kind: 'reaction', reaction: { messageId: 'wamid.t', emoji: '👍' } })
       expect(react.body.type).toBe('reaction')

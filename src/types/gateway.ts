@@ -175,6 +175,40 @@ export interface InteractiveFlowMessage {
   }
 }
 
+export interface InteractiveLocationRequestMessage {
+  type: 'location_request_message'
+  body: {
+    text: string
+  }
+  action: {
+    name: 'send_location'
+  }
+}
+
+export interface InteractiveCtaUrlMessage {
+  type: 'cta_url'
+  header?: {
+    type: 'text' | 'image' | 'video' | 'document'
+    text?: string
+    image?: Record<string, unknown>
+    video?: Record<string, unknown>
+    document?: Record<string, unknown>
+  }
+  body: {
+    text: string
+  }
+  footer?: {
+    text: string
+  }
+  action: {
+    name: 'cta_url'
+    parameters: {
+      display_text: string
+      url: string
+    }
+  }
+}
+
 export interface NormalizedInteractiveReply {
   id?: string
   title?: string
