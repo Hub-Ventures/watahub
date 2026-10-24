@@ -243,6 +243,45 @@ describe('MetaClient requests and bodies', () => {
         },
       }
       expect((await send({ to: '1', kind: 'interactive', interactive: poll })).body.interactive).toEqual(poll)
+
+      const product = {
+        type: 'product',
+        body: { text: 'Check out this shoe' },
+        action: {
+          catalog_id: 'CAT_1',
+          product_retailer_id: 'SKU_SHOE_1',
+        },
+      }
+      expect((await send({ to: '1', kind: 'interactive', interactive: product })).body.interactive).toEqual(product)
+
+      const productList = {
+        type: 'product_list',
+        header: { type: 'text', text: 'Catalog' },
+        body: { text: 'Select an item' },
+        action: {
+          catalog_id: 'CAT_1',
+          sections: [
+            {
+              title: 'Footwear',
+              product_items: [{ product_retailer_id: 'SKU_1' }],
+            },
+          ],
+        },
+      }
+      expect((await send({ to: '1', kind: 'interactive', interactive: productList })).body.interactive).toEqual(
+        productList
+      )
+
+      const orderDetails = {
+        type: 'order_details',
+        action: {
+          name: 'review_and_pay',
+          parameters: { reference_id: 'REF_1', total_amount: { value: 1000, offset: 100 } },
+        },
+      }
+      expect((await send({ to: '1', kind: 'interactive', interactive: orderDetails })).body.interactive).toEqual(
+        orderDetails
+      )
     })
 
     it('maps reactions to Meta field names, including clearing reactions with empty emoji', async () => {

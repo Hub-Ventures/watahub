@@ -677,6 +677,163 @@ describe('HTTP route contracts', () => {
       expect(res.status).toBe(422)
       expect((await json(res)).details.interactive).toBeDefined()
     })
+
+    it('sends single product message', async () => {
+      const spy = mockFetch(jsonResponse({ messages: [{ id: 'wamid.SPM' }] }))
+      const productPayload = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'interactive',
+        interactive: {
+          type: 'product',
+          body: { text: 'Check out our featured sneaker' },
+          action: {
+            catalog_id: 'CATALOG_123',
+            product_retailer_id: 'SKU_SNEAKER_RED',
+          },
+        },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(productPayload)))
+      expect(res.status).toBe(200)
+      expect(await json(res)).toEqual({
+        success: true,
+        messageId: 'wamid.SPM',
+        recipient: '573001234567',
+        phoneNumberId: '123',
+      })
+
+      const [, init] = spy.mock.calls[0] as [string, RequestInit]
+      const sentBody = JSON.parse(String(init.body)) as Record<string, any>
+      expect(sentBody.type).toBe('interactive')
+      expect(sentBody.interactive).toEqual(productPayload.interactive)
+    })
+
+    it('sends multi-product list message with catalog sections', async () => {
+      const spy = mockFetch(jsonResponse({ messages: [{ id: 'wamid.MPM' }] }))
+      const mpmPayload = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'interactive',
+        interactive: {
+          type: 'product_list',
+          header: { type: 'text', text: 'Summer Collection' },
+          body: { text: 'Explore our latest arrivals' },
+          footer: { text: 'Free shipping on orders over $50' },
+          action: {
+            catalog_id: 'CATALOG_123',
+            sections: [
+              {
+                title: 'T-Shirts',
+                product_items: [{ product_retailer_id: 'SKU_TSHIRT_1' }, { product_retailer_id: 'SKU_TSHIRT_2' }],
+              },
+            ],
+          },
+        },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(mpmPayload)))
+      expect(res.status).toBe(200)
+      expect(await json(res)).toEqual({
+        success: true,
+        messageId: 'wamid.MPM',
+        recipient: '573001234567',
+        phoneNumberId: '123',
+      })
+
+      const [, init] = spy.mock.calls[0] as [string, RequestInit]
+      const sentBody = JSON.parse(String(init.body)) as Record<string, any>
+      expect(sentBody.type).toBe('interactive')
+      expect(sentBody.interactive).toEqual(mpmPayload.interactive)
+    })
+
+    it('sends order details interactive message', async () => {
+      const spy = mockFetch(jsonResponse({ messages: [{ id: 'wamid.ORDER_DET' }] }))
+      const orderDetPayload = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'interactive',
+        interactive: {
+          type: 'order_details',
+          body: { text: 'Here is your order summary:' },
+          action: {
+            name: 'review_and_pay',
+            parameters: {
+              reference_id: 'ORDER_123',
+              total_amount: { value: 5000, offset: 100 },
+              currency: 'USD',
+            },
+          },
+        },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(orderDetPayload)))
+      expect(res.status).toBe(200)
+      expect(await json(res)).toEqual({
+        success: true,
+        messageId: 'wamid.ORDER_DET',
+        recipient: '573001234567',
+        phoneNumberId: '123',
+      })
+
+      const [, init] = spy.mock.calls[0] as [string, RequestInit]
+      const sentBody = JSON.parse(String(init.body)) as Record<string, any>
+      expect(sentBody.type).toBe('interactive')
+      expect(sentBody.interactive).toEqual(orderDetPayload.interactive)
+    })
+
+    it('rejects invalid product list message (missing catalog_id or empty sections)', async () => {
+      const invalidMpm = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'interactive',
+        interactive: {
+          type: 'product_list',
+          header: { type: 'text', text: 'Title' },
+          body: { text: 'Body' },
+          action: {
+            catalog_id: '',
+            sections: [],
+          },
+        },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(invalidMpm)))
+      expect(res.status).toBe(422)
+      expect((await json(res)).details.interactive).toBeDefined()
+    })
+
+    it('rejects invalid single product message (missing catalog_id)', async () => {
+      const invalidProduct = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'interactive',
+        interactive: {
+          type: 'product',
+          action: {
+            catalog_id: '',
+            product_retailer_id: '',
+          },
+        },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(invalidProduct)))
+      expect(res.status).toBe(422)
+      expect((await json(res)).details.interactive).toBeDefined()
+    })
+
+    it('rejects invalid order details message (missing action name)', async () => {
+      const invalidOrderDetails = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'interactive',
+        interactive: {
+          type: 'order_details',
+          action: {
+            name: '',
+            parameters: {},
+          },
+        },
+      }
+      const res = await app.request('/v1/messages', authed(postJson(invalidOrderDetails)))
+      expect(res.status).toBe(422)
+      expect((await json(res)).details.interactive).toBeDefined()
+    })
   })
 
   describe('GET /v1/templates', () => {

@@ -427,6 +427,77 @@ describe('Meta Webhook Normalizer', () => {
     })
   })
 
+  it('normalizes inbound customer order message with product items and buyer note', () => {
+    const rawPayload: MetaWebhookPayload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_123',
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '15550293848',
+                  phone_number_id: 'PHONE_456',
+                },
+                messages: [
+                  {
+                    from: '573001234567',
+                    id: 'wamid.order_msg_1',
+                    timestamp: '1729620000',
+                    type: 'order',
+                    order: {
+                      catalog_id: 'CATALOG_999',
+                      text: 'Please deliver after 2 PM',
+                      product_items: [
+                        {
+                          product_retailer_id: 'SKU_SHIRT_BLUE',
+                          quantity: 2,
+                          item_price: 29.99,
+                          currency: 'USD',
+                        },
+                        {
+                          product_retailer_id: 'SKU_SOCKS_WHITE',
+                          quantity: '3',
+                          item_price: '5.50',
+                          currency: 'USD',
+                        },
+                      ],
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const events = normalizeMetaWebhook(rawPayload)
+    expect(events).toHaveLength(1)
+    expect(events[0].message?.kind).toBe('order')
+    expect(events[0].message?.order).toEqual({
+      catalogId: 'CATALOG_999',
+      text: 'Please deliver after 2 PM',
+      productItems: [
+        {
+          productRetailerId: 'SKU_SHIRT_BLUE',
+          quantity: 2,
+          itemPrice: 29.99,
+          currency: 'USD',
+        },
+        {
+          productRetailerId: 'SKU_SOCKS_WHITE',
+          quantity: 3,
+          itemPrice: 5.5,
+          currency: 'USD',
+        },
+      ],
+    })
+  })
+
   it('normalizes inbound location message with coordinates, name and address', () => {
     const rawPayload: MetaWebhookPayload = {
       object: 'whatsapp_business_account',

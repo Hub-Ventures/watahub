@@ -183,6 +183,62 @@ export const InteractivePollSchema = z.object({
   ]),
 })
 
+export const InteractiveProductSchema = z.object({
+  type: z.literal('product'),
+  body: z.object({ text: z.string().max(1024) }).optional(),
+  footer: z.object({ text: z.string().max(60) }).optional(),
+  action: z.object({
+    catalog_id: z.string().min(1, 'catalog_id is required').max(128),
+    product_retailer_id: z.string().min(1, 'product_retailer_id is required').max(128),
+  }),
+})
+
+export const InteractiveProductListSchema = z.object({
+  type: z.literal('product_list'),
+  header: z.object({
+    type: z.literal('text'),
+    text: z.string().min(1, 'header.text is required').max(60),
+  }),
+  body: z.object({
+    text: z.string().min(1, 'body.text is required').max(1024),
+  }),
+  footer: z.object({ text: z.string().max(60) }).optional(),
+  action: z.object({
+    catalog_id: z.string().min(1, 'catalog_id is required').max(128),
+    sections: z
+      .array(
+        z.object({
+          title: z.string().min(1, 'section title is required').max(24),
+          product_items: z
+            .array(
+              z.object({
+                product_retailer_id: z.string().min(1, 'product_retailer_id is required').max(128),
+              })
+            )
+            .min(1, 'section must contain at least 1 product'),
+        })
+      )
+      .min(1, 'product_list must have at least 1 section')
+      .max(10, 'product_list can have at most 10 sections'),
+  }),
+})
+
+export const InteractiveOrderDetailsSchema = z.object({
+  type: z.literal('order_details'),
+  header: z
+    .object({
+      type: z.string().max(32).optional(),
+      text: z.string().max(60).optional(),
+    })
+    .optional(),
+  body: z.object({ text: z.string().max(1024) }).optional(),
+  footer: z.object({ text: z.string().max(60) }).optional(),
+  action: z.object({
+    name: z.string().min(1, 'action.name is required').max(64),
+    parameters: z.record(z.unknown()),
+  }),
+})
+
 /** POST /v1/messages body. Limits follow Meta's documented maximums. */
 export const SendMessageSchema = z
   .object({
@@ -303,6 +359,36 @@ export const SendMessageSchema = z
         const pollResult = InteractivePollSchema.safeParse(value.interactive)
         if (!pollResult.success) {
           for (const issue of pollResult.error.issues) {
+            ctx.addIssue({
+              ...issue,
+              path: ['interactive', ...issue.path],
+            })
+          }
+        }
+      } else if (value.interactive.type === 'product') {
+        const prodResult = InteractiveProductSchema.safeParse(value.interactive)
+        if (!prodResult.success) {
+          for (const issue of prodResult.error.issues) {
+            ctx.addIssue({
+              ...issue,
+              path: ['interactive', ...issue.path],
+            })
+          }
+        }
+      } else if (value.interactive.type === 'product_list') {
+        const listResult = InteractiveProductListSchema.safeParse(value.interactive)
+        if (!listResult.success) {
+          for (const issue of listResult.error.issues) {
+            ctx.addIssue({
+              ...issue,
+              path: ['interactive', ...issue.path],
+            })
+          }
+        }
+      } else if (value.interactive.type === 'order_details') {
+        const orderResult = InteractiveOrderDetailsSchema.safeParse(value.interactive)
+        if (!orderResult.success) {
+          for (const issue of orderResult.error.issues) {
             ctx.addIssue({
               ...issue,
               path: ['interactive', ...issue.path],
