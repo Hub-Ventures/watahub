@@ -424,3 +424,18 @@ function normalizeReferral(raw?: MetaInboundReferral): NormalizedReferral | unde
     ...(raw.ctwa_clid ? { ctwaClid: raw.ctwa_clid } : {}),
   }
 }
+
+/**
+ * Extracts the first phone_number_id from a Meta webhook payload, if present.
+ */
+export function extractPhoneNumberId(payload?: MetaWebhookPayload): string | undefined {
+  if (!payload || !Array.isArray(payload.entry)) return undefined
+  for (const entry of payload.entry) {
+    if (!Array.isArray(entry.changes)) continue
+    for (const change of entry.changes) {
+      const id = change.value?.metadata?.phone_number_id
+      if (id) return id
+    }
+  }
+  return undefined
+}

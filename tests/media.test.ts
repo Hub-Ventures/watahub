@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import app from '../src/index.js'
+import app, { createApp, InMemoryPhoneDirectory } from '../src/index.js'
 import { jsonResponse, mockFetch } from './helpers/fetch-mock.js'
 
 const KEY = 'wh_secret_key_0123456789abcdef0123456789'
@@ -218,6 +218,27 @@ describe('Media Routes: GET /v1/media/:mediaId and POST /v1/media', () => {
         body: 'invalid-content',
       })
       expect(res.status).toBe(400)
+    })
+
+    it('resolves phone token from PhoneDirectory when META_SYSTEM_USER_TOKEN is absent', async () => {
+      delete process.env.META_SYSTEM_USER_TOKEN
+      const phoneDirectory = new InMemoryPhoneDirectory({
+        '123456789': { accessToken: 'MEDIA_PHONE_TOKEN' },
+      })
+      const mediaApp = createApp({ phoneDirectory })
+      const fetchSpy = mockFetch(jsonResponse({ id: 'UPLOADED_MEDIA_PHONE' }))
+
+      const res = await mediaApp.request('/v1/media/123456789', {
+        method: 'POST',
+        headers: {
+          ...auth,
+          'Content-Type': 'multipart/form-data; boundary=xyz',
+        },
+        body: 'file-stream',
+      })
+      expect(res.status).toBe(200)
+      const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+      expect((init.headers as Headers).get('authorization')).toBe('Bearer MEDIA_PHONE_TOKEN')
     })
   })
 })

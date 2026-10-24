@@ -6,7 +6,7 @@ import { clientAddress, tooManyRequests } from '../http/rate-limit.js'
 import { errorName } from '../logger.js'
 import { sha256Hex, timingSafeEqual, verifyMetaSignature } from '../services/crypto.js'
 import { deliverToSubscriber, DEFAULT_DELIVERY_POLICY } from '../services/delivery.js'
-import { hasWebhookChanges, normalizeMetaWebhook } from '../services/normalizer.js'
+import { extractPhoneNumberId, hasWebhookChanges, normalizeMetaWebhook } from '../services/normalizer.js'
 import { DEFAULT_WEBHOOK_MAX_AGE_SECONDS, isStale } from '../services/replay.js'
 import type { SubscriberPayload } from '../types/gateway.js'
 import type { MetaWebhookPayload } from '../types/meta.js'
@@ -67,9 +67,13 @@ export function createWebhookRouter(deps: GatewayDeps): Hono {
     // payload produces the same ID and the subscriber can drop the duplicate
     const deliveryId = await sha256Hex(rawBody)
 
+    const phoneNumberId = extractPhoneNumberId(payload)
+    const phoneConfig = phoneNumberId ? await deps.phoneDirectory.lookup(phoneNumberId) : null
+
     // Fail closed before acknowledging: a 503 makes Meta retry until the
     // subscriber secret is configured, instead of dropping the events
-    const { subscriberWebhookUrl: url, subscriberWebhookSecret: secret } = config
+    const url = phoneConfig?.subscriberUrl || config.subscriberWebhookUrl
+    const secret = phoneConfig?.subscriberSecret || config.subscriberWebhookSecret
     if (url && !secret) {
       deps.logger.error(
         '[watahub] SUBSCRIBER_WEBHOOK_SECRET is not set; refusing to accept events it cannot forward signed'
@@ -97,7 +101,12 @@ export function createWebhookRouter(deps: GatewayDeps): Hono {
     if (!url || !secret || (events.length === 0 && !hasChanges)) {
       await deps.replayStore.remember(deliveryId, now)
     } else {
-      const forward: SubscriberPayload = { timestamp: now, events, raw: payload }
+      const forward: SubscriberPayload = {
+        timestamp: now,
+        ...(phoneConfig?.tenantId ? { tenantId: phoneConfig.tenantId } : {}),
+        events,
+        raw: payload,
+      }
       const delivery = deliverToSubscriber(
         { url, body: JSON.stringify(forward), secret, deliveryId },
         DEFAULT_DELIVERY_POLICY,

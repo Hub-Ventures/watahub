@@ -20,7 +20,7 @@ export function createMediaRouter(deps: GatewayDeps): Hono {
       return validationError(c, { mediaId: ['Must be a numeric Meta Graph ID'] })
     }
 
-    const meta = metaClientFor(c, deps)
+    const meta = await metaClientFor(c, deps)
     if (!meta.ok) return meta.response
 
     try {
@@ -65,7 +65,7 @@ export function createMediaRouter(deps: GatewayDeps): Hono {
       return c.json({ error: 'Content-Type must be multipart/form-data' }, 400)
     }
 
-    const meta = metaClientFor(c, deps)
+    const meta = await metaClientFor(c, deps, phoneNumberId)
     if (!meta.ok) return meta.response
 
     try {

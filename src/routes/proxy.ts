@@ -60,12 +60,13 @@ export function createProxyRouter(deps: GatewayDeps): Hono {
   const router = new Hono()
 
   router.all('/v24.0/*', async (c) => {
-    const accessToken = resolveMetaAccessToken(c)
+    const subPath = c.req.path.replace(/^\/v24\.0\/?/, '')
+    const phoneMatch = /^(\d+)/.exec(subPath)
+    const phoneNumberId = phoneMatch ? phoneMatch[1] : undefined
+    const accessToken = await resolveMetaAccessToken(c, deps, phoneNumberId)
     if (!accessToken) {
       return c.json({ error: MISSING_META_TOKEN }, 500)
     }
-
-    const subPath = c.req.path.replace(/^\/v24\.0\/?/, '')
     // Without this allowlist the system user token could be used against any Graph
     // endpoint (WABA settings, phone number registration, template deletion...).
     if (!isAllowedProxyRoute(c.req.method, subPath)) {
