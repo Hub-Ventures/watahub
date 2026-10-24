@@ -923,4 +923,117 @@ describe('Meta Webhook Normalizer', () => {
       emoji: '',
     })
   })
+
+  it('normalizes inbound message with full Click-to-WhatsApp (CTWA) ad attribution referral metadata', () => {
+    const rawPayload: MetaWebhookPayload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_123',
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '15550293848',
+                  phone_number_id: 'PHONE_456',
+                },
+                messages: [
+                  {
+                    from: '573001234567',
+                    id: 'wamid.ctwa_msg_1',
+                    timestamp: '1729620000',
+                    type: 'text',
+                    text: { body: 'I saw your ad for the summer sale!' },
+                    referral: {
+                      source_type: 'ad',
+                      source_id: '23849201928301',
+                      source_url: 'https://fb.me/ad123',
+                      headline: 'Summer Clearance Sale',
+                      body: 'Get up to 50% off all items while supplies last!',
+                      media_type: 'image',
+                      image_url: 'https://images.example.com/ad-banner.jpg',
+                      video_url: 'https://videos.example.com/ad.mp4',
+                      thumbnail_url: 'https://images.example.com/ad-thumb.jpg',
+                      ctwa_clid: 'ARDeX7193jka_0912',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const events = normalizeMetaWebhook(rawPayload)
+    expect(events).toHaveLength(1)
+
+    const message = events[0].message
+    expect(message?.kind).toBe('text')
+    expect(message?.text).toBe('I saw your ad for the summer sale!')
+    expect(message?.referral).toEqual({
+      sourceType: 'ad',
+      sourceId: '23849201928301',
+      sourceUrl: 'https://fb.me/ad123',
+      headline: 'Summer Clearance Sale',
+      body: 'Get up to 50% off all items while supplies last!',
+      mediaType: 'image',
+      imageUrl: 'https://images.example.com/ad-banner.jpg',
+      videoUrl: 'https://videos.example.com/ad.mp4',
+      thumbnailUrl: 'https://images.example.com/ad-thumb.jpg',
+      ctwaClid: 'ARDeX7193jka_0912',
+    })
+  })
+
+  it('normalizes inbound post referral with partial attribution data and fallbacks', () => {
+    const rawPayload: MetaWebhookPayload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_123',
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '15550293848',
+                  phone_number_id: 'PHONE_456',
+                },
+                messages: [
+                  {
+                    from: '573001234567',
+                    id: 'wamid.ctwa_msg_2',
+                    timestamp: '1729620000',
+                    type: 'interactive',
+                    interactive: {
+                      type: 'button_reply',
+                      button_reply: { id: 'btn_yes', title: 'Yes, please' },
+                    },
+                    referral: {
+                      source_type: '',
+                      source_id: '',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const events = normalizeMetaWebhook(rawPayload)
+    expect(events).toHaveLength(1)
+
+    const message = events[0].message
+    expect(message?.kind).toBe('interactive')
+    expect(message?.interactiveReply?.type).toBe('button')
+    expect(message?.referral).toEqual({
+      sourceType: '',
+      sourceId: '',
+    })
+  })
 })

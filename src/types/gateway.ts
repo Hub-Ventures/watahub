@@ -315,6 +315,19 @@ export interface NormalizedLocation {
   url?: string
 }
 
+export interface NormalizedReferral {
+  sourceType: string
+  sourceId: string
+  sourceUrl?: string
+  headline?: string
+  body?: string
+  mediaType?: string
+  imageUrl?: string
+  videoUrl?: string
+  thumbnailUrl?: string
+  ctwaClid?: string
+}
+
 export interface NormalizedMessage {
   id: string
   from: string
@@ -337,7 +350,7 @@ export interface NormalizedMessage {
   order?: NormalizedOrder
   location?: NormalizedLocation
   contacts?: ContactCard[]
-  referral?: Record<string, unknown>
+  referral?: NormalizedReferral
   replyToMessageId?: string
 }
 
