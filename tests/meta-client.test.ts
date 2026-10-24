@@ -196,6 +196,18 @@ describe('MetaClient requests and bodies', () => {
       })
     })
 
+    it('builds a contacts body preserving vCard structures', async () => {
+      const contact = {
+        name: { formatted_name: 'John Doe', first_name: 'John', last_name: 'Doe' },
+        phones: [{ phone: '+123456789', type: 'WORK', wa_id: '123456789' }],
+        emails: [{ email: 'john@example.com', type: 'WORK' }],
+        org: { company: 'Acme Inc', title: 'VP' },
+      }
+      const { body } = await send({ to: '1', kind: 'contacts', contacts: [contact] })
+      expect(body.type).toBe('contacts')
+      expect(body.contacts).toEqual([contact])
+    })
+
     it('includes only provided media fields, filename only for documents', async () => {
       const media = { link: 'https://x/y.pdf', caption: 'c', filename: 'y.pdf' }
       const image = await send({ to: '1', kind: 'image', media })

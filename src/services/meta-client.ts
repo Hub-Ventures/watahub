@@ -316,6 +316,10 @@ export function buildMetaMessageBody(payload: SendMessagePayload): MetaOutboundM
       break
     }
 
+    case 'contacts':
+      body.contacts = payload.contacts
+      break
+
     default:
       throw new Error(`Unsupported message kind: ${String(payload.kind satisfies never)}`)
   }

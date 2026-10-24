@@ -12,6 +12,7 @@ export const OUTBOUND_MESSAGE_KINDS = [
   'reaction',
   'interactive',
   'location',
+  'contacts',
 ] as const
 
 export type OutboundMessageKind = (typeof OUTBOUND_MESSAGE_KINDS)[number]
@@ -68,6 +69,7 @@ export interface SendMessagePayload {
     name?: string
     address?: string
   }
+  contacts?: ContactCard[]
   replyToMessageId?: string
 }
 
@@ -80,6 +82,57 @@ export interface SendMessageResponse {
 
 /** A message template exactly as Graph returns it (`id`, `name`, `status`, `language`, `components`...) */
 export type MetaMessageTemplate = Record<string, unknown>
+
+export interface ContactAddress {
+  street?: string
+  city?: string
+  state?: string
+  zip?: string
+  country?: string
+  country_code?: string
+  type?: string
+}
+
+export interface ContactEmail {
+  email?: string
+  type?: string
+}
+
+export interface ContactName {
+  formatted_name: string
+  first_name?: string
+  last_name?: string
+  middle_name?: string
+  suffix?: string
+  prefix?: string
+}
+
+export interface ContactOrg {
+  company?: string
+  department?: string
+  title?: string
+}
+
+export interface ContactPhone {
+  phone?: string
+  type?: string
+  wa_id?: string
+}
+
+export interface ContactUrl {
+  url?: string
+  type?: string
+}
+
+export interface ContactCard {
+  name: ContactName
+  phones?: ContactPhone[]
+  emails?: ContactEmail[]
+  addresses?: ContactAddress[]
+  org?: ContactOrg
+  urls?: ContactUrl[]
+  birthday?: string
+}
 
 export interface NormalizedInteractiveReply {
   id: string
@@ -113,6 +166,7 @@ export interface NormalizedMessage {
     emoji: string
   }
   location?: NormalizedLocation
+  contacts?: ContactCard[]
   referral?: Record<string, unknown>
   replyToMessageId?: string
 }
