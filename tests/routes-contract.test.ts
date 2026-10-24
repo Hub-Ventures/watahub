@@ -202,6 +202,58 @@ describe('HTTP route contracts', () => {
       expect(body.error).toBe('Validation failed')
       expect(body.details.location).toBeDefined()
     })
+
+    it('sends contacts message with structured contact cards', async () => {
+      const spy = mockFetch(jsonResponse({ messages: [{ id: 'wamid.CONTACTS' }] }))
+      const contactPayload = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'contacts',
+        contacts: [
+          {
+            name: { formatted_name: 'Alice Cooper', first_name: 'Alice', last_name: 'Cooper' },
+            phones: [{ phone: '+123456789', type: 'WORK' }],
+            emails: [{ email: 'alice@example.com', type: 'WORK' }],
+            org: { company: 'Rock Inc' },
+          },
+        ],
+      }
+      const res = await app.request('/v1/messages', authed(postJson(contactPayload)))
+      expect(res.status).toBe(200)
+      expect(await json(res)).toEqual({
+        success: true,
+        messageId: 'wamid.CONTACTS',
+        recipient: '573001234567',
+        phoneNumberId: '123',
+      })
+
+      const [, init] = spy.mock.calls[0] as [string, RequestInit]
+      const sentBody = JSON.parse(String(init.body)) as Record<string, any>
+      expect(sentBody.type).toBe('contacts')
+      expect(sentBody.contacts).toEqual(contactPayload.contacts)
+    })
+
+    it('rejects contacts message when contacts array is empty or missing formatted_name', async () => {
+      const emptyContacts = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'contacts',
+        contacts: [],
+      }
+      const res1 = await app.request('/v1/messages', authed(postJson(emptyContacts)))
+      expect(res1.status).toBe(422)
+      expect((await json(res1)).details.contacts).toBeDefined()
+
+      const missingName = {
+        to: '+573001234567',
+        phoneNumberId: '123',
+        kind: 'contacts',
+        contacts: [{ name: { formatted_name: '' } }],
+      }
+      const res2 = await app.request('/v1/messages', authed(postJson(missingName)))
+      expect(res2.status).toBe(422)
+      expect((await json(res2)).details.contacts).toBeDefined()
+    })
   })
 
   describe('GET /v1/templates', () => {

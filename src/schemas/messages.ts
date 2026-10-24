@@ -2,6 +2,70 @@ import { z } from 'zod'
 import { isMediaKind, OUTBOUND_MESSAGE_KINDS } from '../types/gateway.js'
 import { GraphIdSchema } from './common.js'
 
+export const ContactSchema = z.object({
+  name: z.object({
+    formatted_name: z.string().min(1, 'formatted_name is required').max(256),
+    first_name: z.string().max(128).optional(),
+    last_name: z.string().max(128).optional(),
+    middle_name: z.string().max(128).optional(),
+    suffix: z.string().max(64).optional(),
+    prefix: z.string().max(64).optional(),
+  }),
+  phones: z
+    .array(
+      z.object({
+        phone: z.string().max(64),
+        type: z.string().max(32).optional(),
+        wa_id: z.string().max(64).optional(),
+      })
+    )
+    .max(10)
+    .optional(),
+  emails: z
+    .array(
+      z.object({
+        email: z.string().max(128),
+        type: z.string().max(32).optional(),
+      })
+    )
+    .max(10)
+    .optional(),
+  addresses: z
+    .array(
+      z.object({
+        street: z.string().max(256).optional(),
+        city: z.string().max(128).optional(),
+        state: z.string().max(128).optional(),
+        zip: z.string().max(32).optional(),
+        country: z.string().max(128).optional(),
+        country_code: z.string().max(8).optional(),
+        type: z.string().max(32).optional(),
+      })
+    )
+    .max(5)
+    .optional(),
+  org: z
+    .object({
+      company: z.string().max(128).optional(),
+      department: z.string().max(128).optional(),
+      title: z.string().max(128).optional(),
+    })
+    .optional(),
+  urls: z
+    .array(
+      z.object({
+        url: z.string().max(256),
+        type: z.string().max(32).optional(),
+      })
+    )
+    .max(5)
+    .optional(),
+  birthday: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'birthday must be in YYYY-MM-DD format')
+    .optional(),
+})
+
 /** POST /v1/messages body. Limits follow Meta's documented maximums. */
 export const SendMessageSchema = z
   .object({
@@ -46,6 +110,7 @@ export const SendMessageSchema = z
         address: z.string().max(512).optional(),
       })
       .optional(),
+    contacts: z.array(ContactSchema).min(1, 'contacts must contain at least 1 contact').max(10).optional(),
     interactive: z.record(z.unknown()).optional(),
     replyToMessageId: z.string().max(256).optional(),
   })

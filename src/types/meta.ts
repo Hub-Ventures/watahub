@@ -40,6 +40,57 @@ export interface MetaInboundLocation {
   url?: string
 }
 
+export interface MetaContactAddress {
+  street?: string
+  city?: string
+  state?: string
+  zip?: string
+  country?: string
+  country_code?: string
+  type?: string
+}
+
+export interface MetaContactEmail {
+  email?: string
+  type?: string
+}
+
+export interface MetaContactName {
+  formatted_name: string
+  first_name?: string
+  last_name?: string
+  middle_name?: string
+  suffix?: string
+  prefix?: string
+}
+
+export interface MetaContactOrg {
+  company?: string
+  department?: string
+  title?: string
+}
+
+export interface MetaContactPhone {
+  phone?: string
+  type?: string
+  wa_id?: string
+}
+
+export interface MetaContactUrl {
+  url?: string
+  type?: string
+}
+
+export interface MetaInboundContact {
+  addresses?: MetaContactAddress[]
+  birthday?: string
+  emails?: MetaContactEmail[]
+  name: MetaContactName
+  org?: MetaContactOrg
+  phones?: MetaContactPhone[]
+  urls?: MetaContactUrl[]
+}
+
 export interface MetaInboundMessage {
   from: string
   id: string
@@ -64,6 +115,7 @@ export interface MetaInboundMessage {
   video?: MetaMediaAttachment
   document?: MetaMediaAttachment & { filename?: string }
   location?: MetaInboundLocation
+  contacts?: MetaInboundContact[]
   interactive?: {
     type: 'button_reply' | 'list_reply' | 'nfm_reply'
     button_reply?: {

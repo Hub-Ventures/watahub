@@ -230,6 +230,156 @@ describe('Meta Webhook Normalizer', () => {
     expect(events[0].message?.location).toBeUndefined()
   })
 
+  it('normalizes inbound contacts message with rich vCard information', () => {
+    const rawPayload: MetaWebhookPayload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_123',
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '15550293848',
+                  phone_number_id: 'PHONE_456',
+                },
+                messages: [
+                  {
+                    from: '573001234567',
+                    id: 'wamid.contacts123',
+                    timestamp: '1729620000',
+                    type: 'contacts',
+                    contacts: [
+                      {
+                        name: {
+                          formatted_name: 'Jane Smith',
+                          first_name: 'Jane',
+                          last_name: 'Smith',
+                        },
+                        phones: [{ phone: '+15559876543', type: 'CELL', wa_id: '15559876543' }],
+                        emails: [{ email: 'jane@example.com', type: 'WORK' }],
+                        addresses: [{ street: '200 Main St', city: 'Springfield', zip: '12345' }],
+                        org: { company: 'Tech Inc', department: 'R&D', title: 'Director' },
+                        urls: [{ url: 'https://jane.example.com', type: 'WORK' }],
+                        birthday: '1985-05-15',
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const events = normalizeMetaWebhook(rawPayload)
+    expect(events).toHaveLength(1)
+    expect(events[0].message?.kind).toBe('contacts')
+    expect(events[0].message?.contacts).toEqual([
+      {
+        name: {
+          formatted_name: 'Jane Smith',
+          first_name: 'Jane',
+          last_name: 'Smith',
+        },
+        phones: [{ phone: '+15559876543', type: 'CELL', wa_id: '15559876543' }],
+        emails: [{ email: 'jane@example.com', type: 'WORK' }],
+        addresses: [{ street: '200 Main St', city: 'Springfield', zip: '12345' }],
+        org: { company: 'Tech Inc', department: 'R&D', title: 'Director' },
+        urls: [{ url: 'https://jane.example.com', type: 'WORK' }],
+        birthday: '1985-05-15',
+      },
+    ])
+  })
+
+  it('normalizes inbound contacts message with minimal contact card', () => {
+    const rawPayload: MetaWebhookPayload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_123',
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '15550293848',
+                  phone_number_id: 'PHONE_456',
+                },
+                messages: [
+                  {
+                    from: '573001234567',
+                    id: 'wamid.contacts_minimal',
+                    timestamp: '1729620000',
+                    type: 'contacts',
+                    contacts: [
+                      {
+                        name: {
+                          formatted_name: 'Only Name',
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const events = normalizeMetaWebhook(rawPayload)
+    expect(events).toHaveLength(1)
+    expect(events[0].message?.kind).toBe('contacts')
+    expect(events[0].message?.contacts).toEqual([
+      {
+        name: {
+          formatted_name: 'Only Name',
+        },
+      },
+    ])
+  })
+
+  it('normalizes inbound contacts message with empty contacts array gracefully', () => {
+    const rawPayload: MetaWebhookPayload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_123',
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '15550293848',
+                  phone_number_id: 'PHONE_456',
+                },
+                messages: [
+                  {
+                    from: '573001234567',
+                    id: 'wamid.contacts_empty',
+                    timestamp: '1729620000',
+                    type: 'contacts',
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const events = normalizeMetaWebhook(rawPayload)
+    expect(events).toHaveLength(1)
+    expect(events[0].message?.kind).toBe('contacts')
+    expect(events[0].message?.contacts).toBeUndefined()
+  })
+
   it('normalizes status delivery reports (sent, delivered, read)', () => {
     const rawPayload: MetaWebhookPayload = {
       object: 'whatsapp_business_account',

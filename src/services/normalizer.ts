@@ -3,8 +3,15 @@
  */
 
 import { systemClock, type Clock } from '../clock.js'
-import type { MetaInboundMessage, MetaMessageStatus, MetaWebhookPayload, MetaWebhookValue } from '../types/meta.js'
 import type {
+  MetaInboundContact,
+  MetaInboundMessage,
+  MetaMessageStatus,
+  MetaWebhookPayload,
+  MetaWebhookValue,
+} from '../types/meta.js'
+import type {
+  ContactCard,
   NormalizedInteractiveReply,
   NormalizedMessage,
   NormalizedStatus,
@@ -174,9 +181,76 @@ function normalizeMessage(msg: MetaInboundMessage, toMillis: ToMillis, senderNam
           }
         : base
 
+    case 'contacts': {
+      const contacts = normalizeInboundContacts(msg.contacts)
+      return contacts ? { ...base, contacts } : base
+    }
+
     default:
       return base
   }
+}
+
+function normalizeInboundContacts(contacts?: MetaInboundContact[]): ContactCard[] | undefined {
+  if (!Array.isArray(contacts) || contacts.length === 0) return undefined
+  return contacts.map((c) => ({
+    name: {
+      formatted_name: c.name?.formatted_name || '',
+      ...(c.name?.first_name ? { first_name: c.name.first_name } : {}),
+      ...(c.name?.last_name ? { last_name: c.name.last_name } : {}),
+      ...(c.name?.middle_name ? { middle_name: c.name.middle_name } : {}),
+      ...(c.name?.suffix ? { suffix: c.name.suffix } : {}),
+      ...(c.name?.prefix ? { prefix: c.name.prefix } : {}),
+    },
+    ...(Array.isArray(c.phones) && c.phones.length > 0
+      ? {
+          phones: c.phones.map((p) => ({
+            phone: p.phone || '',
+            ...(p.type ? { type: p.type } : {}),
+            ...(p.wa_id ? { wa_id: p.wa_id } : {}),
+          })),
+        }
+      : {}),
+    ...(Array.isArray(c.emails) && c.emails.length > 0
+      ? {
+          emails: c.emails.map((e) => ({
+            email: e.email || '',
+            ...(e.type ? { type: e.type } : {}),
+          })),
+        }
+      : {}),
+    ...(Array.isArray(c.addresses) && c.addresses.length > 0
+      ? {
+          addresses: c.addresses.map((a) => ({
+            ...(a.street ? { street: a.street } : {}),
+            ...(a.city ? { city: a.city } : {}),
+            ...(a.state ? { state: a.state } : {}),
+            ...(a.zip ? { zip: a.zip } : {}),
+            ...(a.country ? { country: a.country } : {}),
+            ...(a.country_code ? { country_code: a.country_code } : {}),
+            ...(a.type ? { type: a.type } : {}),
+          })),
+        }
+      : {}),
+    ...(c.org && (c.org.company || c.org.department || c.org.title)
+      ? {
+          org: {
+            ...(c.org.company ? { company: c.org.company } : {}),
+            ...(c.org.department ? { department: c.org.department } : {}),
+            ...(c.org.title ? { title: c.org.title } : {}),
+          },
+        }
+      : {}),
+    ...(Array.isArray(c.urls) && c.urls.length > 0
+      ? {
+          urls: c.urls.map((u) => ({
+            url: u.url || '',
+            ...(u.type ? { type: u.type } : {}),
+          })),
+        }
+      : {}),
+    ...(c.birthday ? { birthday: c.birthday } : {}),
+  }))
 }
 
 /** Button and list replies only; flow (nfm) replies are not normalized yet. */
