@@ -6,22 +6,31 @@
 [![Tests: Vitest](https://img.shields.io/badge/Tests-Vitest-yellow?logo=vitest)](https://vitest.dev/)
 
 > **What a hub for WhatsApp!**  
-> An open-source, high-performance WhatsApp Cloud API Gateway and Infrastructure (IaaS) built with [Hono](https://hono.dev). Connect your apps directly to Meta Cloud API with **zero middleman markups**, multi-tenant Embedded Signup, instant webhook normalization, cryptographic signature validation, and phone-level callback routing.
+> An open-source, high-performance WhatsApp Cloud API Gateway and Bridge built with [Hono](https://hono.dev). Connect your applications directly to Meta's Cloud API with **zero middleman markups**, normalized webhook events, cryptographic HMAC verification, streaming media uploads, and pluggable multi-tenant routing.
 
 Built with ❤️ by [Hub Ventures](https://github.com/Hub-Ventures).
 
 ---
 
+## 🎯 What is Watahub and Who is it For?
+
+**Watahub** is designed for engineering teams and developers who already use or plan to use the official Meta WhatsApp Cloud API and want:
+1. **Total Infrastructure Control:** Self-host your own gateway on Cloudflare Workers, Node.js, or Bun.
+2. **Zero Markups:** Pay Meta's official conversation rates directly without third-party SaaS surcharges.
+3. **Clean Developer Experience:** Receive normalized, flat JSON events instead of navigating Meta's deeply nested webhook structures.
+4. **Hardened Security by Default:** Cryptographic signature validation, replay protection, and rate limiting out of the box.
+
+---
+
 ## ⚡ Why Watahub?
 
-Most WhatsApp gateway providers charge extra message markups, enforce vendor lock-in, or add unnecessary latency. **Watahub** is designed as a direct self-hostable bridge between Meta's Graph API and your application ecosystem:
-
-* 🚀 **Zero Middleman Markup:** Pay only Meta's official conversation rates directly.
-* ⚡ **Ultra-lightweight & Fast:** Built on Hono with Web Standards (`crypto.subtle`, `fetch`), running seamlessly on **Cloudflare Workers**, **Node.js**, or **Bun**.
+* 🚀 **Zero Middleman Markup:** Pay only Meta's official conversation fees directly to Meta.
+* ⚡ **Ultra-lightweight & Fast:** Built on Hono with Web Standards (`crypto.subtle`, `fetch`, `ReadableStream`).
+* 🔄 **Event Normalization:** Transforms Meta's deeply nested webhook envelopes into clean, standardized event payloads (text, media, interactive buttons/lists, reactions, delivery status receipts).
 * 🔐 **Cryptographic Verification:** Automatic HMAC-SHA256 verification of incoming Meta webhooks (`X-Hub-Signature-256`) and outgoing subscriber payload signing (`X-Watahub-Signature`).
-* 🔄 **Event Normalization:** Transforms Meta's deeply nested webhook structures into clean, standardized event payloads (text, audio, images, documents, interactive button/list replies, delivery status receipts).
-* 🏢 **Embedded Signup & Multi-Tenant:** Direct support for OAuth code exchange, WABA subscription, and per-phone webhook callback overrides.
-* 🛡️ **Production-Hardened Error Engine:** Automated categorization of Meta Graph API errors (Rate Limits `130429`, Auth Expiry `190`, Billing/Payment Failures `131042`, Transient Failures `131016`).
+* 📤 **Streaming Media Support:** Native `/v1/media` endpoints and streaming proxy passthrough that handle uploads up to 100 MB without isolate memory buffering.
+* 🏢 **Pluggable Multi-Tenant Routing:** Modular `PhoneDirectory` port to dynamically resolve Meta access tokens and subscriber webhook targets per phone number.
+* 🛡️ **Production-Hardened Error Engine:** Automated classification of Meta Graph API errors (Rate Limits `130429`, Auth Expiry `190`, Billing/Payment Failures `131042`, Transient Network Failures `131016`).
 
 ---
 
@@ -31,14 +40,25 @@ Most WhatsApp gateway providers charge extra message markups, enforce vendor loc
 flowchart LR
     User["WhatsApp User"] <--> Meta["Meta Cloud API (v24.0)"]
     Meta <--> Watahub["🌊 Watahub Gateway (Hono)"]
-    Watahub <--> Backend["Your backend"]
+    Watahub <--> Backend["Your Backend / Webhook Subscriber"]
 ```
 
 ---
 
-## 📦 Quick Start
+## 📋 Prerequisites
 
-### 1. Installation
+Before setting up Watahub, ensure you have:
+
+1. **Meta for Developers Account:** An App with the **WhatsApp** product configured ([Meta Developer Portal](https://developers.facebook.com/)).
+2. **WhatsApp Business Account (WABA):** A configured WABA with at least one verified phone number ID.
+3. **Node.js Environment:** Node.js 20 or higher and `pnpm` (required for local development and build steps).
+4. *(Optional for Cloudflare Workers)*: A Cloudflare account and Wrangler CLI installed (`pnpm dlx wrangler`).
+
+---
+
+## 📦 Quick Start: From Zero to First Message
+
+### 1. Clone & Install
 
 ```bash
 git clone https://github.com/Hub-Ventures/watahub.git
@@ -54,7 +74,17 @@ Copy the example environment file:
 cp .env.example .env
 ```
 
-Configure your environment variables:
+Generate strong keys (min 32 characters) for your gateway and subscriber:
+
+```bash
+# Generate WATAHUB_API_KEY
+openssl rand -hex 32
+
+# Generate SUBSCRIBER_WEBHOOK_SECRET
+openssl rand -hex 32
+```
+
+Configure your `.env`:
 
 | Variable | Description | Default |
 | :--- | :--- | :--- |
@@ -66,7 +96,7 @@ Configure your environment variables:
 | `META_DEFAULT_PHONE_NUMBER_ID` | Default WhatsApp Business Phone Number ID | - |
 | `META_DEFAULT_WABA_ID` | Default WhatsApp Business Account ID | - |
 | `META_API_VERSION` | Graph API Version | `v24.0` |
-| `WATAHUB_API_KEY` | **Required.** Key for every `/v1/*` and `/v24.0/*` call (min 32 characters, `openssl rand -hex 32`). Without it those routes answer 503 | - |
+| `WATAHUB_API_KEY` | **Required.** Key for every `/v1/*` and `/v24.0/*` call (min 32 characters). Without it those routes answer 503 | - |
 | `SUBSCRIBER_WEBHOOK_URL` | Forwarding destination URL (https; `http://localhost` allowed for development) | - |
 | `SUBSCRIBER_WEBHOOK_SECRET` | Required with `SUBSCRIBER_WEBHOOK_URL`. Signs deliveries (min 32 characters) | - |
 | `META_WEBHOOK_MAX_AGE_SECONDS` | Signed deliveries whose newest event is older than this are acknowledged but not forwarded | `604800` (7 days) |
@@ -74,24 +104,140 @@ Configure your environment variables:
 | `TRUSTED_CLIENT_IP_HEADER` | Header with the real client IP when Node runs behind a reverse proxy (e.g. `X-Real-IP`) | - |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated exact origins allowed from browsers. No wildcards | off |
 
-On Node the gateway validates this configuration at boot and refuses to start if a required value is missing, too short or still the `.env.example` placeholder. Cloudflare Workers has no boot step, so the same rules are enforced per request on the routes they protect.
+> [!NOTE]
+> On Node.js, the gateway validates this configuration at boot and refuses to start if a required value is missing, too short, or retains the `.env.example` placeholder. Cloudflare Workers enforces these same rules per request on protected routes.
 
---- | :--- | :--- |
-| `PORT` | Local Node.js server port | `3000` |
-| `META_APP_ID` | Meta Developer App ID | - |
-| `META_APP_SECRET` | Meta Developer App Secret (used for HMAC verification) | - |
-| `META_SYSTEM_USER_TOKEN` | Meta System User permanent access token | - |
-| `META_WEBHOOK_VERIFY_TOKEN` | Custom token for Meta webhook handshake | - |
-| `META_DEFAULT_PHONE_NUMBER_ID` | Default WhatsApp Business Phone Number ID | - |
-| `META_DEFAULT_WABA_ID` | Default WhatsApp Business Account ID | - |
-| `META_API_VERSION` | Graph API Version | `v24.0` |
-| `SUBSCRIBER_WEBHOOK_URL` | Forwarding destination URL (e.g. your backend) | - |
-| `SUBSCRIBER_WEBHOOK_SECRET` | Shared secret to sign subscriber deliveries | - |
-| `WATAHUB_API_KEY` | Optional API key to protect `/v1/*` routes | - |
+### 3. Start the Gateway
+
+```bash
+pnpm run dev:node
+```
+
+### 4. Verify Gateway Health
+
+```bash
+curl http://localhost:3000/health
+```
+
+Expected response:
+```json
+{
+  "status": "ok",
+  "service": "watahub",
+  "version": "0.1.0",
+  "timestamp": 1729620000000
+}
+```
+
+### 5. Configure Meta Webhook Handshake
+
+1. Expose your local port (e.g., via `cloudflared tunnel` or `ngrok http 3000`).
+2. In your Meta Developer App Dashboard, go to **WhatsApp > Configuration > Edit Webhook**.
+3. Set **Callback URL** to `https://<your-public-url>/webhook`.
+4. Set **Verify Token** to the exact value of your `META_WEBHOOK_VERIFY_TOKEN`.
+5. Click **Verify and Save**. Meta will send a `GET /webhook` challenge handshake that Watahub verifies in constant time.
+6. Under **Webhook fields**, subscribe to `messages`.
+
+### 6. Send Your First Message
+
+```bash
+curl -X POST http://localhost:3000/v1/messages \
+  -H "Authorization: Bearer <WATAHUB_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "+15551234567",
+    "phoneNumberId": "100609346426000",
+    "kind": "text",
+    "text": {
+      "body": "Hello from Watahub!"
+    }
+  }'
+```
+
+Expected response:
+```json
+{
+  "success": true,
+  "messageId": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg...",
+  "recipient": "15551234567",
+  "phoneNumberId": "100609346426000"
+}
+```
+
+### 7. Receive Your First Normalized Webhook Event
+
+When a user replies on WhatsApp, Meta posts to Watahub's `/webhook`. Watahub verifies the HMAC signature, normalizes the payload, returns `200 OK` to Meta immediately, and forwards the signed payload to your `SUBSCRIBER_WEBHOOK_URL`.
 
 ---
 
-## 🚀 Running Watahub
+## 🔄 Normalized Webhook Events
+
+Meta's raw webhook format nests data under `entry[].changes[].value`. Watahub flattens these events into a clean, typed schema.
+
+### Sample Forwarded Payload (`POST $SUBSCRIBER_WEBHOOK_URL`)
+
+```json
+{
+  "timestamp": 1729620000000,
+  "events": [
+    {
+      "id": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg...",
+      "timestamp": 1729620000000,
+      "phoneNumberId": "100609346426000",
+      "displayPhoneNumber": "15550293848",
+      "type": "message",
+      "message": {
+        "from": "573001234567",
+        "senderName": "Jane Doe",
+        "kind": "text",
+        "text": "Hello Watahub!"
+      }
+    }
+  ],
+  "raw": {
+    "object": "whatsapp_business_account",
+    "entry": [ ... ]
+  }
+}
+```
+
+### Supported Event Types
+- **Inbound Messages (`type: "message"`):** `text`, `image`, `audio`, `video`, `document`, `location`, `contacts`, `reaction`, and `interactive` (button replies, list selections).
+- **Echoes (`type: "echo"`):** Outbound messages sent directly from the WhatsApp Business mobile app, normalized with recipient info and `isEcho: true`.
+- **Status Updates (`type: "status"`):** Delivery lifecycle tracking (`sent`, `delivered`, `read`, `failed` with classified error codes).
+
+---
+
+## 🏢 How Multi-Tenancy Works
+
+Watahub supports both single-operator bridge setups and multi-tenant architectures:
+
+### 1. Single-Operator Bridge (Default)
+By default, Watahub operates as a stateless bridge. It reads `META_SYSTEM_USER_TOKEN` and `SUBSCRIBER_WEBHOOK_URL` from the environment, delivering incoming events to your main application and authenticating outbound calls via the operator's `WATAHUB_API_KEY`.
+
+### 2. Multi-Tenant Hub via `PhoneDirectory`
+When running multiple clients or phone numbers on a single Watahub instance:
+- **Credential & Route Resolution:** Watahub defines the `PhoneDirectory` seam in `GatewayDeps`:
+  ```ts
+  export interface PhoneConfig {
+    tenantId?: string
+    accessToken?: string
+    subscriberUrl?: string
+    subscriberSecret?: string
+  }
+  ```
+- **Inbound Routing:** Webhooks are dispatched dynamically to the phone's dedicated `subscriberUrl` and signed with its `subscriberSecret`, falling back safely to environment variables.
+- **Outbound Resolution:** Outbound requests look up the phone's specific `accessToken` dynamically when `X-Meta-Access-Token` is omitted.
+- **Distributed Backends:** Includes ready-to-use `DistributedPhoneDirectory`, `DistributedReplayStore`, and `DistributedRateLimitStore` adapters compatible with Cloudflare KV, Redis, and Durable Objects.
+
+### 3. Embedded Signup Flow
+- `POST /v1/onboarding/exchange`: Exchanges Meta Embedded Signup OAuth `code` for an access token using the gateway's app credentials.
+- `POST /v1/onboarding/subscribe`: Subscribes the WABA to WhatsApp webhook topics.
+- `POST /v1/onboarding/override-callback`: Reconfigures Meta to route webhooks for a specific phone number to an external destination outside Watahub.
+
+---
+
+## 🚀 Running & Deploying Watahub
 
 ### Development (Node.js)
 ```bash
@@ -105,89 +251,66 @@ pnpm run dev:worker
 
 ### Typecheck, Lint & Test Suite
 ```bash
-pnpm check   # typecheck + lint + format check + tests with coverage
+pnpm check   # typecheck + eslint + prettier check + vitest with coverage
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the code layout and conventions.
+### Production Deploy (Cloudflare Workers)
 
-### Deploy to Cloudflare Workers
+Before deploying to Cloudflare Workers, configure required secrets using the Wrangler CLI:
+
+```bash
+npx wrangler secret put META_APP_SECRET
+npx wrangler secret put META_WEBHOOK_VERIFY_TOKEN
+npx wrangler secret put WATAHUB_API_KEY
+npx wrangler secret put META_SYSTEM_USER_TOKEN
+
+# Optional subscriber credentials
+npx wrangler secret put SUBSCRIBER_WEBHOOK_SECRET
+```
+
+Then deploy the worker:
 ```bash
 pnpm run deploy
 ```
 
 ---
 
-## 📡 API Reference
+## 📡 API Reference Summary
 
-### 1. Gateway Health
-* `GET /health`  
-Returns service status, version, and server timestamp.
-
-### 2. Webhooks
-* `GET /webhook`  
-Handles Meta's initial challenge handshake verification (`hub.mode`, `hub.verify_token`, `hub.challenge`).
-* `POST /webhook`  
-Receives raw webhooks from Meta, verifies `X-Hub-Signature-256`, normalizes events, dispatches them asynchronously to `SUBSCRIBER_WEBHOOK_URL`, and returns an immediate `200 OK`.
-
-### 3. Outbound Messages
-* `POST /v1/messages`  
-Unified endpoint to send text, templates, media, reactions, and interactive components.
-
-**Sample Request (Text Message):**
-```json
-POST /v1/messages
-Content-Type: application/json
-Authorization: Bearer <WATAHUB_API_KEY>
-
-{
-  "to": "+15551234567",
-  "phoneNumberId": "100609346426000",
-  "kind": "text",
-  "text": {
-    "body": "Hello from Watahub!"
-  }
-}
-```
-
-**Sample Request (Template Message):**
-```json
-POST /v1/messages
-Content-Type: application/json
-
-{
-  "to": "+15551234567",
-  "phoneNumberId": "100609346426000",
-  "kind": "template",
-  "template": {
-    "name": "welcome_confirmation",
-    "language": {
-      "code": "es"
-    }
-  }
-}
-```
-
-### 4. Template Management
-* `GET /v1/templates/:wabaId`  
-Lists approved HSM templates directly from Meta Graph API.
-
-### 5. Onboarding & Multi-Tenancy
-* `POST /v1/onboarding/exchange`: Exchanges Meta Embedded Signup `code` for an access token (body: `{ "code": "..." }`; uses the gateway's own Meta app).
-* `POST /v1/onboarding/subscribe`: Subscribes application to WABA message webhooks.
-* `POST /v1/onboarding/override-callback`: Overrides webhook routing URL for an individual phone number.
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/health` | Service status, version, and server timestamp |
+| `GET` | `/webhook` | Meta verification handshake (`hub.challenge`) |
+| `POST` | `/webhook` | Ingests Meta webhooks, verifies HMAC, normalizes & dispatches |
+| `POST` | `/v1/messages` | Unified message dispatch (text, template, media, interactive) |
+| `GET` | `/v1/media/:mediaId` | Resolves media ID to temporary CDN download URL |
+| `POST` | `/v1/media` | Uploads media file (`multipart/form-data`) streaming to Meta |
+| `POST` | `/v1/media/:phoneNumberId` | Uploads media scoped to a specific phone number |
+| `GET` | `/v1/templates/:wabaId` | Lists approved HSM templates from Meta Graph API |
+| `POST` | `/v1/onboarding/exchange` | Exchanges Meta Embedded Signup OAuth code |
+| `POST` | `/v1/onboarding/subscribe` | Subscribes application to WABA message webhooks |
+| `POST` | `/v1/onboarding/override-callback` | Overrides webhook URL for a specific phone number |
+| `ALL` | `/v24.0/*` | Direct Graph API passthrough proxy for allowlisted routes |
 
 ---
 
-## 🔒 Security model
+## 🔒 Security Model
 
-* **Authentication.** `/v1/*` and `/v24.0/*` require `WATAHUB_API_KEY` in `X-API-Key` or `Authorization: Bearer`, compared in constant time. Keys must be at least 32 characters, which is what makes guessing impractical. A client address with more than 10 failed attempts in a minute gets `429` with `Retry-After` for further wrong keys (separate counter for wrong `hub.verify_token` guesses on `GET /webhook`). A correct key is never refused, so callers that share an address with a guesser keep working.
-* **Inbound webhooks.** `POST /webhook` only accepts bodies with a valid `X-Hub-Signature-256`. Meta's signature has no timestamp, so the gateway also drops replays: a body the subscriber already confirmed is not forwarded again, and deliveries whose newest event is older than `META_WEBHOOK_MAX_AGE_SECONDS` are acknowledged with `200` but not forwarded.
-* **Outbound deliveries.** With `SUBSCRIBER_WEBHOOK_URL` set and no `SUBSCRIBER_WEBHOOK_SECRET`, `POST /webhook` answers `503` so Meta keeps retrying until the secret is configured. Every forward to `SUBSCRIBER_WEBHOOK_URL` carries `X-Watahub-Signature: sha256=<HMAC-SHA256(body, SUBSCRIBER_WEBHOOK_SECRET)>` and `X-Watahub-Delivery-Id` (also sent as `Idempotency-Key`). Your backend should verify the signature over the raw body, reject bodies whose `timestamp` field (ms) is more than a few minutes old, and dedupe on the delivery ID. Redirects are not followed.
-* **Graph proxy.** `/v24.0` forwards only `POST /{id}/messages`, `POST /{id}/media` and `GET /{id}`, with numeric IDs and only the `phone_number_id` query parameter.
-* **Callback overrides.** `callbackUrl` must be `https://` on a public host: loopback, private, link-local and internal names are rejected.
-* **Embedded Signup.** `POST /v1/onboarding/exchange` takes only `code` and always uses `META_APP_ID` / `META_APP_SECRET` (sending `appId` or `appSecret` is a `422`). The secret goes to Graph in a POST body, not the URL. Responses on `/v1` and `/v24.0` are `Cache-Control: no-store`.
-* **HTTP.** Security headers (deny-all CSP, `X-Frame-Options: DENY`, HSTS, `nosniff`) on every response. CORS is off unless `CORS_ALLOWED_ORIGINS` is set.
-* **Limits.** Request bodies are capped (webhook 3 MB, JSON 1 MB, media upload 100 MB). The rate limiter and replay cache live in memory: per process on Node, per isolate on Workers. For a global limit on Workers, add Cloudflare rate limiting rules in front. Behind a reverse proxy on Node, set `TRUSTED_CLIENT_IP_HEADER`; for `X-Forwarded-For` the last entry (written by your proxy) is used.
+* **Authentication:** `/v1/*` and `/v24.0/*` require `WATAHUB_API_KEY` (in `X-API-Key` or `Authorization: Bearer`), compared in constant time. Keys must be at least 32 characters. A client address with more than 10 failed attempts in a minute receives `429 Too Many Requests` with a `Retry-After` header.
+* **Inbound Webhooks:** `POST /webhook` strictly verifies `X-Hub-Signature-256`. Deliveries whose events are older than `META_WEBHOOK_MAX_AGE_SECONDS` are acknowledged with `200 OK` but dropped to protect against replay attacks.
+* **Outbound Deliveries:** If `SUBSCRIBER_WEBHOOK_URL` is set without `SUBSCRIBER_WEBHOOK_SECRET`, `POST /webhook` answers `503` so Meta retries until the signing secret is configured. Forwards include `X-Watahub-Signature: sha256=...` and `X-Watahub-Delivery-Id`.
+* **Streaming & Isolate Memory:** Media uploads stream directly to Meta via chunked Transfer-Encoding, preventing memory spikes and Workers isolate evictions on 100 MB payloads.
+* **Pluggable State Stores:** Replay cache and rate limiting use pluggable ports (`ReplayStore`, `RateLimitStore`), defaulting to in-memory on Node and easily swapped with `DistributedReplayStore` and `DistributedRateLimitStore` on Workers.
+* **Callback Overrides:** Destination URLs must be `https://` on a public host; loopback, private, link-local, and internal addresses are rejected.
+* **HTTP Hardening:** Security headers (`Content-Security-Policy: default-src 'none'`, `X-Frame-Options: DENY`, HSTS, `X-Content-Type-Options: nosniff`) are set on every response. Responses on authenticated surfaces carry `Cache-Control: no-store`.
+
+---
+
+## 🚦 Project Status
+
+Watahub is currently in active development (**v0.1.0**).
+
+The core WhatsApp bridge functionality (message dispatch, streaming media uploads, HMAC verification, replay protection, rate limiting, and the `PhoneDirectory` multi-tenant routing port) is production-ready and fully tested with 100% passing automated tests across Node.js and Cloudflare Workers.
 
 ---
 
