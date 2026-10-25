@@ -343,6 +343,10 @@ export interface NormalizedMessage {
   animated?: boolean
   isEcho?: boolean
   interactiveReply?: NormalizedInteractiveReply
+  button?: {
+    payload: string
+    text: string
+  }
   reaction?: {
     targetMessageId: string
     emoji: string
