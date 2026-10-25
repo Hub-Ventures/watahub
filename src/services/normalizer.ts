@@ -209,6 +209,25 @@ function normalizeMessage(msg: MetaInboundMessage, toMillis: ToMillis, senderNam
       return interactiveReply ? { ...base, interactiveReply } : base
     }
 
+    case 'button':
+      return {
+        ...base,
+        text: msg.button?.text || '',
+        ...(msg.button
+          ? {
+              button: {
+                payload: msg.button.payload || '',
+                text: msg.button.text || '',
+              },
+              interactiveReply: {
+                id: msg.button.payload || '',
+                title: msg.button.text || '',
+                type: 'button',
+              },
+            }
+          : {}),
+      }
+
     case 'poll_update':
     case 'poll': {
       const pollData = msg.poll_update || msg.poll

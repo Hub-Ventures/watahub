@@ -272,6 +272,124 @@ describe('Meta Webhook Normalizer', () => {
     })
   })
 
+  it('normalizes inbound template button quick replies (type: button)', () => {
+    const rawPayload: MetaWebhookPayload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_123',
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '15550293848',
+                  phone_number_id: 'PHONE_456',
+                },
+                messages: [
+                  {
+                    from: '573001234567',
+                    id: 'wamid.template_button_1',
+                    timestamp: '1729620000',
+                    type: 'button',
+                    button: {
+                      payload: 'CONFIRM_APPOINTMENT_ID_99',
+                      text: 'Confirmar Cita',
+                    },
+                    context: {
+                      from: '15550293848',
+                      id: 'wamid.ORIGINAL_TEMPLATE',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const events = normalizeMetaWebhook(rawPayload)
+    expect(events).toHaveLength(1)
+    const msg = events[0].message
+    expect(msg?.kind).toBe('button')
+    expect(msg?.text).toBe('Confirmar Cita')
+    expect(msg?.button).toEqual({
+      payload: 'CONFIRM_APPOINTMENT_ID_99',
+      text: 'Confirmar Cita',
+    })
+    expect(msg?.interactiveReply).toEqual({
+      id: 'CONFIRM_APPOINTMENT_ID_99',
+      title: 'Confirmar Cita',
+      type: 'button',
+    })
+    expect(msg?.replyToMessageId).toBe('wamid.ORIGINAL_TEMPLATE')
+  })
+
+  it('handles inbound template button messages with missing button object or empty fields', () => {
+    const rawPayload: MetaWebhookPayload = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: 'WABA_123',
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: {
+                  display_phone_number: '15550293848',
+                  phone_number_id: 'PHONE_456',
+                },
+                messages: [
+                  {
+                    from: '573001234567',
+                    id: 'wamid.template_button_missing',
+                    timestamp: '1729620000',
+                    type: 'button',
+                  },
+                  {
+                    from: '573001234567',
+                    id: 'wamid.template_button_empty_fields',
+                    timestamp: '1729620001',
+                    type: 'button',
+                    button: {
+                      payload: '',
+                      text: '',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const events = normalizeMetaWebhook(rawPayload)
+    expect(events).toHaveLength(2)
+
+    const first = events[0].message
+    expect(first?.kind).toBe('button')
+    expect(first?.text).toBe('')
+    expect(first?.button).toBeUndefined()
+    expect(first?.interactiveReply).toBeUndefined()
+
+    const second = events[1].message
+    expect(second?.kind).toBe('button')
+    expect(second?.text).toBe('')
+    expect(second?.button).toEqual({
+      payload: '',
+      text: '',
+    })
+    expect(second?.interactiveReply).toEqual({
+      id: '',
+      title: '',
+      type: 'button',
+    })
+  })
+
   it('normalizes inbound WhatsApp Flow completion (nfm_reply)', () => {
     const rawPayload: MetaWebhookPayload = {
       object: 'whatsapp_business_account',
