@@ -171,6 +171,27 @@ describe('POST /webhook → subscriber forwarding', () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
+  it('answers 503 (so Meta retries) when subscriber delivery fails in sync mode', async () => {
+    process.env.SUBSCRIBER_WEBHOOK_SECRET = 'sub-secret'
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('server error', { status: 500 }))
+
+    const res = await deliver()
+    expect(res.status).toBe(503)
+    const data = (await res.json()) as Record<string, unknown>
+    expect(data.error).toBe('Subscriber delivery failed')
+  })
+
+  it('supports WEBHOOK_DELIVERY_MODE=async and catches async dispatch errors', async () => {
+    process.env.WEBHOOK_DELIVERY_MODE = 'async'
+    process.env.SUBSCRIBER_WEBHOOK_SECRET = 'sub-secret'
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('connection reset'))
+
+    const res = await deliver()
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ status: 'received' })
+    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalled())
+  })
+
   it('forwards non-messages webhook changes (like history sync) with raw payload to subscriber', async () => {
     process.env.SUBSCRIBER_WEBHOOK_SECRET = 'sub-secret'
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'))

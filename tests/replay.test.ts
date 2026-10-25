@@ -137,19 +137,42 @@ describe('POST /webhook replay protection', () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('bad', { status: 400 }))
     const payload = payloadAt(nowSeconds())
 
-    await postSigned(payload)
-    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1))
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    const res1 = await postSigned(payload)
+    expect(res1.status).toBe(503)
+    expect(await res1.json()).toMatchObject({ error: 'Subscriber delivery failed' })
 
-    expect(await (await postSigned(payload)).json()).toMatchObject({ status: 'received' })
-    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2))
+    // When Meta retries and the subscriber recovers with 200, it succeeds and is marked seen
+    fetchSpy.mockResolvedValue(new Response('ok', { status: 200 }))
+    const res2 = await postSigned(payload)
+    expect(res2.status).toBe(200)
+    expect(await res2.json()).toMatchObject({ status: 'received' })
+
+    // Subsequent redelivery is dropped as duplicate
+    const res3 = await postSigned(payload)
+    expect(res3.status).toBe(200)
+    expect(await res3.json()).toMatchObject({ status: 'ignored', reason: 'duplicate' })
   })
 
-  it('remembers bodies that had nothing to forward', async () => {
+  it('fails closed with 503 when SUBSCRIBER_WEBHOOK_URL is missing so Meta retries', async () => {
     delete process.env.SUBSCRIBER_WEBHOOK_URL
     const payload = payloadAt(nowSeconds())
-    expect(await (await postSigned(payload)).json()).toMatchObject({ status: 'received' })
-    expect(await (await postSigned(payload)).json()).toMatchObject({ reason: 'duplicate' })
+    const res = await postSigned(payload)
+    expect(res.status).toBe(503)
+    expect(await res.json()).toMatchObject({ error: 'Gateway misconfigured: subscriber webhook URL is not set' })
+  })
+
+  it('remembers bodies that had no changes (e.g. empty heartbeats)', async () => {
+    const emptyPayload = {
+      object: 'whatsapp_business_account',
+      entry: [{ id: '1', changes: [] }],
+    }
+    const res1 = await postSigned(emptyPayload)
+    expect(res1.status).toBe(200)
+    expect(await res1.json()).toMatchObject({ status: 'received', eventsCount: 0 })
+
+    const res2 = await postSigned(emptyPayload)
+    expect(res2.status).toBe(200)
+    expect(await res2.json()).toMatchObject({ status: 'ignored', reason: 'duplicate' })
   })
 
   it('does not let unsigned bodies poison the duplicate cache', async () => {

@@ -11,17 +11,28 @@ Meta Cloud API sends webhooks with deeply nested, polymorphic payloads. Watahub 
 1. **Meta Delivery:** Meta sends an HTTP POST to Watahub's `/webhook`.
 2. **Signature Verification:** Watahub verifies Meta's `X-Hub-Signature-256` HMAC over the raw byte stream using `META_APP_SECRET`.
 3. **Replay & Stale Check:** Deliveries older than `META_WEBHOOK_MAX_AGE_SECONDS` or matching a previously delivered `deliveryId` are acknowledged with `200 OK` but dropped.
-4. **Immediate Meta ACK:** Watahub answers Meta with `200 OK` within milliseconds, preventing Meta from triggering webhook backoff retries.
-5. **Async Subscriber Forwarding:** In the background (using `waitUntil` on Workers or asynchronous promises on Node), Watahub normalizes the events and POSTs them to your `SUBSCRIBER_WEBHOOK_URL`.
-6. **Subscriber Idempotency & Signing:** Every forward carries `X-Watahub-Signature: sha256=...` and a stable `X-Watahub-Delivery-Id` (also mirrored in the `Idempotency-Key` header).
+4. **Heartbeat Handling:** Empty payloads without changes (e.g. Meta heartbeats) are acknowledged immediately.
+5. **Fail-Closed Configuration:** If `SUBSCRIBER_WEBHOOK_URL` or `SUBSCRIBER_WEBHOOK_SECRET` are missing, Watahub returns `503 Service Unavailable` so Meta retries when the configuration is supplied.
+6. **Delivery Execution (`WEBHOOK_DELIVERY_MODE`):**
+   - **Guaranteed Delivery (`sync`, Default):** Watahub delivers to your subscriber before acknowledging Meta. If your backend is unreachable or returns 5xx, Watahub responds `503 Service Unavailable` to Meta without marking the delivery as seen. Meta automatically retries with exponential backoff for up to 7 days, preventing any event loss.
+   - **Asynchronous Delivery (`async`):** For ultra-low latency requirements, Watahub acknowledges Meta immediately with `200 OK` and forwards to your backend in the background using `runInBackground`.
+7. **Subscriber Idempotency & Signing:** Every forward carries `X-Watahub-Signature: sha256=...` and a stable `X-Watahub-Delivery-Id` (also mirrored in `Idempotency-Key`).
+8. **Graceful Shutdown (Node.js):** When receiving `SIGTERM` or `SIGINT`, the gateway closes incoming connections and awaits active background deliveries (`drainBackgroundTasks`) before terminating.
 
 ```mermaid
-flowchart LR
-    Meta[Meta Webhook] -->|1. POST /webhook| Watahub[🌊 Watahub]
-    Watahub -->|2. Verify HMAC & Replays| Watahub
-    Watahub -->|3. 200 OK immediate| Meta
-    Watahub -->|4. Async Signed POST| Subscriber[Your Backend]
-```
+flowchart TD
+    Meta[Meta Webhook] -->|1. POST /webhook| Gateway[🌊 Watahub]
+    Gateway -->|2. Verify HMAC & Replays| Check{"Valid?"}
+    Check -->|Invalid| Reject["401 / 400"]
+    Check -->|Stale / Duplicate| AckDrop["200 OK (Ignored)"]
+    Check -->|Fresh| Deliver{"WEBHOOK_DELIVERY_MODE"}
+    
+    Deliver -->|sync (default)| SyncSub[Forward to Subscriber]
+    SyncSub -->|Success 200| Ack200["200 OK to Meta + Remember Replay"]
+    SyncSub -->|Failure / 5xx| Retry503["503 Service Unavailable (Meta Retries)"]
+    
+    Deliver -->|async| AsyncAck["200 OK to Meta"]
+    Deliver -->|async| BgTask[runInBackground & drain on SIGTERM]
 
 ---
 

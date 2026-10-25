@@ -58,6 +58,7 @@ const EnvSchema = z
       .optional(),
     SUBSCRIBER_WEBHOOK_URL: z.string().url().optional(),
     SUBSCRIBER_WEBHOOK_SECRET: z.string().min(32, 'must be at least 32 characters').optional(),
+    WEBHOOK_DELIVERY_MODE: z.enum(['sync', 'async']).optional(),
     META_WEBHOOK_MAX_AGE_SECONDS: z
       .string()
       .regex(/^[1-9]\d*$/, 'must be a positive number of seconds')

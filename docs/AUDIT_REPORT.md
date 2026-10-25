@@ -186,18 +186,18 @@ Executing `pnpm check` produces:
 > pnpm typecheck && pnpm lint && pnpm format:check && pnpm test:coverage
 
 All matched files use Prettier code style!
-326 passed across 18 test files (100% passing)
+333 passed across 19 test files (100% passing)
 
 % Coverage report from v8
 -------------------|---------|----------|---------|---------
 File               | % Stmts | % Branch | % Funcs | % Lines 
 -------------------|---------|----------|---------|---------
-All files          |   99.77 |    93.78 |     100 |   99.77 
- src               |     100 |    85.71 |     100 |     100 
- src/http          |    98.3 |    95.19 |     100 |    98.3 
- src/routes        |     100 |    97.95 |     100 |     100 
+All files          |   99.78 |    93.75 |     100 |   99.78 
+ src               |     100 |    86.36 |     100 |     100 
+ src/http          |   98.42 |    95.49 |     100 |   98.42 
+ src/routes        |     100 |    97.31 |     100 |     100 
  src/schemas       |     100 |       97 |     100 |     100 
- src/services      |   99.89 |    91.76 |     100 |   99.89 
+ src/services      |   99.89 |    91.78 |     100 |   99.89 
  src/utils         |     100 |    96.77 |     100 |     100 
 -------------------|---------|----------|---------|---------
 ```
