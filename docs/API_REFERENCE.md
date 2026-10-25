@@ -25,9 +25,8 @@ Calls omitting or providing an invalid API key receive `401 Unauthorized`. Clien
 
 ### 1.3 Meta Access Token Resolution Priority
 For endpoints communicating with Meta's Graph API (`/v1/messages`, `/v1/media`, `/v24.0/*`), Watahub resolves the Meta Access Token in the following order:
-1. **Explicit Header:** `X-Meta-Access-Token` provided in the HTTP request.
-2. **Phone Directory Lookup:** `PhoneDirectory.lookup(phoneNumberId)` returns an assigned `accessToken`.
-3. **Environment Default:** `META_SYSTEM_USER_TOKEN`.
+1. **Explicit Header:** `X-Meta-Access-Token` provided in the HTTP request (allows callers or wrappers like Enterprise Edition to supply tenant credentials).
+2. **Environment Variable:** `META_SYSTEM_USER_TOKEN` (the operator's default token).
 
 If no token is found, the endpoint returns `500 Internal Server Error` with `Missing Meta access token`.
 

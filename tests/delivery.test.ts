@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import app, { createApp, InMemoryPhoneDirectory } from '../src/index.js'
+import app from '../src/index.js'
 import { deliverToSubscriber, type DeliveryPolicy } from '../src/services/delivery.js'
 import { sha256Hex, signSubscriberPayload } from '../src/services/crypto.js'
 import { webhookDeliveryIds } from '../src/services/replay.js'
@@ -264,59 +264,5 @@ describe('POST /webhook → subscriber forwarding', () => {
       kind: 'text',
       text: 'Hello from WhatsApp mobile app',
     })
-  })
-
-  it('routes webhook to phone-specific subscriber URL and signs with phone-specific secret', async () => {
-    const customDir = new InMemoryPhoneDirectory({
-      '987': {
-        subscriberUrl: 'https://tenant-phone.example/webhook',
-        subscriberSecret: 'tenant-secret-123',
-        tenantId: 'tenant-xyz',
-      },
-    })
-    const tenantApp = createApp({ phoneDirectory: customDir })
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok', { status: 200 }))
-
-    const res = await tenantApp.request('/webhook', {
-      method: 'POST',
-      body,
-      headers: {
-        'Content-Type': 'application/json',
-        'x-hub-signature-256': await signSubscriberPayload(body, APP_SECRET),
-      },
-    })
-    expect(res.status).toBe(200)
-
-    await vi.waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1))
-    const [callUrl, callInit] = fetchSpy.mock.calls[0]
-    expect(callUrl).toBe('https://tenant-phone.example/webhook')
-
-    const headers = callInit?.headers as Record<string, string>
-    const sentBody = callInit?.body as string
-    const expectedSig = await signSubscriberPayload(sentBody, 'tenant-secret-123')
-    expect(headers['x-watahub-signature']).toBe(expectedSig)
-
-    const parsed = JSON.parse(sentBody) as { tenantId: string }
-    expect(parsed.tenantId).toBe('tenant-xyz')
-  })
-
-  it('fails closed with 503 when phone directory provides subscriberUrl but secret is missing', async () => {
-    delete process.env.SUBSCRIBER_WEBHOOK_SECRET
-    const customDir = new InMemoryPhoneDirectory({
-      '987': {
-        subscriberUrl: 'https://tenant-phone.example/webhook',
-      },
-    })
-    const tenantApp = createApp({ phoneDirectory: customDir })
-
-    const res = await tenantApp.request('/webhook', {
-      method: 'POST',
-      body,
-      headers: {
-        'Content-Type': 'application/json',
-        'x-hub-signature-256': await signSubscriberPayload(body, APP_SECRET),
-      },
-    })
-    expect(res.status).toBe(503)
   })
 })

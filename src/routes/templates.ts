@@ -26,7 +26,7 @@ export function createTemplatesRouter(deps: GatewayDeps): Hono {
       return validationError(c, { wabaId: ['Must be a numeric Meta Graph ID'] })
     }
 
-    const meta = await metaClientFor(c, deps)
+    const meta = metaClientFor(c, deps)
     if (!meta.ok) return meta.response
 
     try {

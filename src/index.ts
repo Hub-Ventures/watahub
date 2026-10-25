@@ -16,14 +16,24 @@ import { createTemplatesRouter } from './routes/templates.js'
 import { createWebhookRouter } from './routes/webhook.js'
 import { redactSecrets } from './utils/redact.js'
 
-export type { GatewayDeps, PhoneConfig, PhoneDirectory, RateLimitStore, ReplayStore } from './deps.js'
+export type { GatewayDeps, RateLimitStore, ReplayStore } from './deps.js'
+export { createDefaultDeps } from './deps.js'
 export { BODY_LIMITS } from './http/limits.js'
-export { InMemoryPhoneDirectory, defaultPhoneDirectory } from './services/phone-directory.js'
+export { requireApiKey, resolveMetaAccessToken } from './http/auth.js'
+export { DistributedRateLimitStore, DistributedReplayStore, type KeyValueStore } from './services/store-adapters.js'
+export { verifyMetaSignature, signSubscriberPayload, timingSafeEqual, sha256Hex } from './services/crypto.js'
 export {
-  DistributedPhoneDirectory,
-  DistributedRateLimitStore,
-  DistributedReplayStore,
-} from './services/store-adapters.js'
+  deliverToSubscriber,
+  DEFAULT_DELIVERY_POLICY,
+  type DeliveryPolicy,
+  type DeliveryRequest,
+  type DeliveryResult,
+} from './services/delivery.js'
+export { normalizeMetaWebhook, extractPhoneNumberId, hasWebhookChanges } from './services/normalizer.js'
+export { MetaClient, type MetaClientConfig, type MetaGraphClient } from './services/meta-client.js'
+export * from './types/gateway.js'
+export * from './types/meta.js'
+export { redactSecrets } from './utils/redact.js'
 
 /**
  * Builds the gateway app. Override `deps` to inject collaborators

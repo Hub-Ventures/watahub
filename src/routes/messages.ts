@@ -36,7 +36,7 @@ export function createMessagesRouter(deps: GatewayDeps): Hono {
       return validationError(c, { phoneNumberId: ['Must be a numeric Meta Graph ID'] })
     }
 
-    const meta = await metaClientFor(c, deps, phoneNumberId)
+    const meta = metaClientFor(c, deps)
     if (!meta.ok) return meta.response
 
     try {

@@ -413,18 +413,9 @@ describe('Pluggable state stores in createApp', () => {
     expect(customLimiter.hit).toHaveBeenCalled()
   })
 
-  it('uses injected phoneDirectory to resolve tokens on outbound messages', async () => {
+  it('passes explicit X-Meta-Access-Token to createMetaClient on outbound messages', async () => {
     let usedToken = ''
-    const customPhoneDirectory = {
-      lookup: vi.fn().mockImplementation((id: string) => {
-        if (id === '123456789') {
-          return Promise.resolve({ accessToken: 'TENANT_TOKEN', tenantId: 'tenant-1' })
-        }
-        return Promise.resolve(null)
-      }),
-    }
     const app = createApp({
-      phoneDirectory: customPhoneDirectory,
       createMetaClient: ({ accessToken }) => {
         usedToken = accessToken
         return fakeClient({
@@ -441,18 +432,21 @@ describe('Pluggable state stores in createApp', () => {
 
     const res = await app.request('/v1/messages', {
       method: 'POST',
-      headers: { ...auth, 'Content-Type': 'application/json' },
+      headers: {
+        ...auth,
+        'Content-Type': 'application/json',
+        'X-Meta-Access-Token': 'OPERATOR_OVERRIDE_TOKEN',
+      },
       body: JSON.stringify({
         to: '+15551234567',
         phoneNumberId: '123456789',
         kind: 'text',
-        text: { body: 'hello tenant' },
+        text: { body: 'hello operator' },
       }),
     })
 
     expect(res.status).toBe(200)
-    expect(customPhoneDirectory.lookup).toHaveBeenCalledWith('123456789')
-    expect(usedToken).toBe('TENANT_TOKEN')
+    expect(usedToken).toBe('OPERATOR_OVERRIDE_TOKEN')
   })
 })
 
@@ -502,56 +496,5 @@ describe('Distributed store adapters (store-adapters.ts)', () => {
     await store.hit('client-ip', 1000)
     expect(await store.blockedFor('client-ip', 1000)).toBe(0)
     await store.clear()
-  })
-
-  it('DistributedPhoneDirectory sets, looks up, handles invalid JSON and deletes', async () => {
-    const { DistributedPhoneDirectory } = await import('../src/services/store-adapters.js')
-    class MockDeletableKv extends MockKv {
-      delete(key: string): Promise<void> {
-        this.map.delete(key)
-        return Promise.resolve()
-      }
-    }
-    const kv = new MockDeletableKv()
-    const dir = new DistributedPhoneDirectory(kv)
-
-    expect(await dir.lookup('123456')).toBeNull()
-
-    await dir.set('123456', { accessToken: 'token-abc', tenantId: 'tenant-9' })
-    const lookedUp = await dir.lookup('123456')
-    expect(lookedUp).toEqual({ accessToken: 'token-abc', tenantId: 'tenant-9' })
-
-    // Malformed JSON returns null
-    kv.map.set('watahub:phone:123456', 'corrupted-json{')
-    expect(await dir.lookup('123456')).toBeNull()
-
-    // Delete phone config
-    await dir.delete('123456')
-    expect(await dir.lookup('123456')).toBeNull()
-  })
-})
-
-describe('InMemoryPhoneDirectory (phone-directory.ts)', () => {
-  it('supports initial config, lookup, set, delete, and clear', async () => {
-    const { InMemoryPhoneDirectory } = await import('../src/services/phone-directory.js')
-    const dir = new InMemoryPhoneDirectory({
-      '111': { accessToken: 'token-111', tenantId: 'tenant-a' },
-    })
-
-    expect(await dir.lookup('111')).toEqual({ accessToken: 'token-111', tenantId: 'tenant-a' })
-    expect(await dir.lookup('999')).toBeNull()
-
-    dir.set('222', { accessToken: 'token-222', subscriberUrl: 'https://tenant-b.example/hook' })
-    expect(dir.get('222')?.subscriberUrl).toBe('https://tenant-b.example/hook')
-
-    expect(dir.delete('111')).toBe(true)
-    expect(await dir.lookup('111')).toBeNull()
-
-    dir.clear()
-    expect(await dir.lookup('222')).toBeNull()
-
-    // Map initialization
-    const fromMap = new InMemoryPhoneDirectory(new Map([['333', { accessToken: 'token-333' }]]))
-    expect(await fromMap.lookup('333')).toEqual({ accessToken: 'token-333' })
   })
 })

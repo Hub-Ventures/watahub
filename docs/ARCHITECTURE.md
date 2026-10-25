@@ -48,10 +48,11 @@ flowchart TD
         end
 
         subgraph Ports["Pluggable Ports (GatewayDeps)"]
-            P_PhoneDir["PhoneDirectory (Token & URL Lookup)"]
             P_Replay["ReplayStore (Deduplication)"]
             P_RateLimit["RateLimitStore (Failure Brakes)"]
             P_MetaClient["MetaGraphClient (Request Engine)"]
+            P_Fetch["fetch (HTTP Transport)"]
+            P_Clock["Clock (System Time)"]
         end
 
         subgraph Services["Core Domain Services"]
@@ -127,7 +128,6 @@ sequenceDiagram
     actor Meta as Meta Webhook Engine
     participant Gateway as Watahub /webhook
     participant Normalizer as Event Normalizer
-    participant Directory as PhoneDirectory
     participant Delivery as Async Delivery Engine
     actor Sub as Your Backend (Subscriber)
 
@@ -141,8 +141,6 @@ sequenceDiagram
         alt Duplicate or Stale
             Gateway-->>Meta: 200 OK {"status": "ignored"}
         else Fresh & Unique
-            Gateway->>Directory: lookup(metadata.phone_number_id)
-            Directory-->>Gateway: PhoneConfig (subscriberUrl, secret)
             Gateway->>Normalizer: normalizeMetaWebhook(payload)
             Normalizer-->>Gateway: Normalized Events Array
             Gateway-->>Meta: 200 OK {"status": "received"} (Immediate Ack)
@@ -169,17 +167,13 @@ sequenceDiagram
     autonumber
     actor App as Your Application
     participant Gateway as Watahub /v1/messages
-    participant Directory as PhoneDirectory
     participant MetaClient as Meta Graph Client
     actor MetaAPI as Meta Cloud API (v24.0)
 
     App->>Gateway: POST /v1/messages (Payload + WATAHUB_API_KEY)
     Note over Gateway: 1. Validate Schema (SendMessageSchema)
     Note over Gateway: 2. Resolve phoneNumberId (Body > Header > Env)
-    
-    Gateway->>Directory: lookup(phoneNumberId)
-    Directory-->>Gateway: PhoneConfig (optional accessToken)
-    Note over Gateway: 3. Resolve Token (Header > PhoneConfig > Env)
+    Note over Gateway: 3. Resolve Token (X-Meta-Access-Token > META_SYSTEM_USER_TOKEN)
 
     Gateway->>MetaClient: sendMessage(phoneNumberId, payload)
     MetaClient->>MetaAPI: POST /{phoneNumberId}/messages (idempotent: false)
@@ -204,25 +198,7 @@ sequenceDiagram
 
 Watahub achieves portability and modularity by defining four primary ports:
 
-### 6.1 `PhoneDirectory` Port
-Enables dynamic, multi-tenant credential and target routing per phone number:
-```ts
-export interface PhoneConfig {
-  tenantId?: string
-  accessToken?: string
-  subscriberUrl?: string
-  subscriberSecret?: string
-}
-
-export interface PhoneDirectory {
-  lookup(phoneNumberId: string): Promise<PhoneConfig | null>
-}
-```
-- **Implementations:**
-  - `InMemoryPhoneDirectory`: Default in-memory Map implementation.
-  - `DistributedPhoneDirectory`: Key-Value adapter backed by any `KeyValueStore` (Cloudflare KV, Redis, Durable Objects).
-
-### 6.2 `ReplayStore` Port
+### 6.1 `ReplayStore` Port
 Deduplicates webhook deliveries to guarantee at-most-once processing:
 ```ts
 export interface ReplayStore {
@@ -235,7 +211,7 @@ export interface ReplayStore {
   - `DeliveryIdCache`: In-memory implementation with automatic expiration cleanup.
   - `DistributedReplayStore`: Key-Value adapter with TTL support.
 
-### 6.3 `RateLimitStore` Port
+### 6.2 `RateLimitStore` Port
 Provides brute-force attack prevention on authentication endpoints:
 ```ts
 export interface RateLimitStore {
@@ -244,6 +220,12 @@ export interface RateLimitStore {
   clear(): void | Promise<void>
 }
 ```
+- **Implementations:**
+  - `FixedWindowLimiter`: In-memory implementation with size caps.
+  - `DistributedRateLimitStore`: Key-Value adapter with TTL support.
+
+### 6.3 Open Core Library & Enterprise Edition (/ee)
+Watahub is structured as an open-core library. All core building blocks (`createApp`, `normalizeMetaWebhook`, `verifyMetaSignature`, `deliverToSubscriber`, `MetaClient`) can be imported into your own server. Multi-tenancy, per-tenant API keys, phone ownership verification, and dedicated tenant routing live in the private Enterprise Edition (`watahub-ee`), which wraps the open-source core.
 - **Implementations:**
   - `FixedWindowLimiter`: In-memory fixed-window counter with key eviction cap.
   - `DistributedRateLimitStore`: Key-Value adapter with window expiration.

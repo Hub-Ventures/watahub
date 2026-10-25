@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import app, { createApp, InMemoryPhoneDirectory } from '../src/index.js'
+import app from '../src/index.js'
 import { jsonResponse, mockFetch } from './helpers/fetch-mock.js'
 
 const KEY = 'wh_secret_key_0123456789abcdef0123456789'
@@ -78,15 +78,16 @@ describe('Media Routes: GET /v1/media/:mediaId and POST /v1/media', () => {
       expect(body.error).toBeDefined()
     })
 
-    it('resolves phone token from PhoneDirectory when phone_number_id is supplied', async () => {
+    it('resolves phone token from X-Meta-Access-Token header when META_SYSTEM_USER_TOKEN is absent', async () => {
       delete process.env.META_SYSTEM_USER_TOKEN
-      const phoneDirectory = new InMemoryPhoneDirectory({
-        '444555': { accessToken: 'MEDIA_GET_TOKEN' },
-      })
-      const mediaApp = createApp({ phoneDirectory })
       const fetchSpy = mockFetch(jsonResponse({ url: 'https://cdn.example.com/file' }))
 
-      const res = await mediaApp.request('/v1/media/123456789?phone_number_id=444555', { headers: auth })
+      const res = await app.request('/v1/media/123456789', {
+        headers: {
+          ...auth,
+          'X-Meta-Access-Token': 'MEDIA_GET_TOKEN',
+        },
+      })
       expect(res.status).toBe(200)
       const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
       expect((init.headers as Record<string, string>).Authorization).toBe('Bearer MEDIA_GET_TOKEN')
@@ -234,19 +235,16 @@ describe('Media Routes: GET /v1/media/:mediaId and POST /v1/media', () => {
       expect(res.status).toBe(400)
     })
 
-    it('resolves phone token from PhoneDirectory when META_SYSTEM_USER_TOKEN is absent', async () => {
+    it('resolves phone token from X-Meta-Access-Token header when META_SYSTEM_USER_TOKEN is absent', async () => {
       delete process.env.META_SYSTEM_USER_TOKEN
-      const phoneDirectory = new InMemoryPhoneDirectory({
-        '123456789': { accessToken: 'MEDIA_PHONE_TOKEN' },
-      })
-      const mediaApp = createApp({ phoneDirectory })
       const fetchSpy = mockFetch(jsonResponse({ id: 'UPLOADED_MEDIA_PHONE' }))
 
-      const res = await mediaApp.request('/v1/media/123456789', {
+      const res = await app.request('/v1/media/123456789', {
         method: 'POST',
         headers: {
           ...auth,
           'Content-Type': 'multipart/form-data; boundary=xyz',
+          'X-Meta-Access-Token': 'MEDIA_PHONE_TOKEN',
         },
         body: 'file-stream',
       })

@@ -12,7 +12,7 @@ Meta Cloud API sends webhooks with deeply nested, polymorphic payloads. Watahub 
 2. **Signature Verification:** Watahub verifies Meta's `X-Hub-Signature-256` HMAC over the raw byte stream using `META_APP_SECRET`.
 3. **Replay & Stale Check:** Deliveries older than `META_WEBHOOK_MAX_AGE_SECONDS` or matching a previously delivered `deliveryId` are acknowledged with `200 OK` but dropped.
 4. **Immediate Meta ACK:** Watahub answers Meta with `200 OK` within milliseconds, preventing Meta from triggering webhook backoff retries.
-5. **Async Subscriber Forwarding:** In the background (using `waitUntil` on Workers or asynchronous promises on Node), Watahub normalizes the events and POSTs them to your `SUBSCRIBER_WEBHOOK_URL` (or the phone-specific `subscriberUrl` resolved via `PhoneDirectory`).
+5. **Async Subscriber Forwarding:** In the background (using `waitUntil` on Workers or asynchronous promises on Node), Watahub normalizes the events and POSTs them to your `SUBSCRIBER_WEBHOOK_URL`.
 6. **Subscriber Idempotency & Signing:** Every forward carries `X-Watahub-Signature: sha256=...` and a stable `X-Watahub-Delivery-Id` (also mirrored in the `Idempotency-Key` header).
 
 ```mermaid
@@ -119,7 +119,6 @@ Every payload forwarded to your subscriber matches the `SubscriberPayload` TypeS
 ```ts
 export interface SubscriberPayload {
   timestamp: number             // Milliseconds epoch when Watahub processed the delivery
-  tenantId?: string             // Optional tenant ID (if resolved via PhoneDirectory)
   events: WatahubNormalizedEvent[]
   raw: unknown                  // Full original Meta webhook payload for escape-hatch needs
 }
