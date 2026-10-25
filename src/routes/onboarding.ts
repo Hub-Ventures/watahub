@@ -43,7 +43,7 @@ export function createOnboardingRouter(deps: GatewayDeps): Hono {
     const body = await parseJsonBody(c, SubscribeWabaSchema)
     if (!body.ok) return body.response
 
-    const meta = await metaClientFor(c, deps)
+    const meta = metaClientFor(c, deps)
     if (!meta.ok) return meta.response
     const { wabaId, subscribedFields } = body.value
 
@@ -64,7 +64,7 @@ export function createOnboardingRouter(deps: GatewayDeps): Hono {
     if (!body.ok) return body.response
 
     const { phoneNumberId, callbackUrl, verifyToken } = body.value
-    const meta = await metaClientFor(c, deps, phoneNumberId)
+    const meta = metaClientFor(c, deps)
     if (!meta.ok) return meta.response
 
     try {

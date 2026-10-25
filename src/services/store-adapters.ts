@@ -1,4 +1,4 @@
-import type { PhoneConfig, PhoneDirectory, RateLimitStore, ReplayStore } from '../deps.js'
+import type { RateLimitStore, ReplayStore } from '../deps.js'
 
 /**
  * Minimal Key-Value Store interface compatible with Cloudflare KV, Redis, etc.
@@ -84,35 +84,5 @@ export class DistributedRateLimitStore implements RateLimitStore {
 
   async clear(): Promise<void> {
     // Distributed TTL-based expiry handles cleanup
-  }
-}
-
-/**
- * PhoneDirectory adapter backed by a KeyValueStore (Cloudflare KV, Redis, etc.)
- */
-export class DistributedPhoneDirectory implements PhoneDirectory {
-  constructor(
-    private readonly kv: KeyValueStore,
-    private readonly prefix = 'watahub:phone:'
-  ) {}
-
-  async lookup(phoneNumberId: string): Promise<PhoneConfig | null> {
-    const raw = await this.kv.get(`${this.prefix}${phoneNumberId}`)
-    if (!raw) return null
-    try {
-      return JSON.parse(raw) as PhoneConfig
-    } catch {
-      return null
-    }
-  }
-
-  async set(phoneNumberId: string, config: PhoneConfig): Promise<void> {
-    await this.kv.set(`${this.prefix}${phoneNumberId}`, JSON.stringify(config))
-  }
-
-  async delete(phoneNumberId: string): Promise<void> {
-    if (this.kv.delete) {
-      await this.kv.delete(`${this.prefix}${phoneNumberId}`)
-    }
   }
 }

@@ -244,7 +244,6 @@ export const SendMessageSchema = z
   .object({
     to: z.string().min(1, 'Recipient phone number is required').max(64),
     phoneNumberId: GraphIdSchema.optional(),
-    tenantId: z.string().max(128).optional(),
     kind: z.enum(OUTBOUND_MESSAGE_KINDS),
     text: z
       .object({

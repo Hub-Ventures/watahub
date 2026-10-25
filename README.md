@@ -6,7 +6,7 @@
 [![Tests: Vitest](https://img.shields.io/badge/Tests-Vitest-yellow?logo=vitest)](https://vitest.dev/)
 
 > **What a hub for WhatsApp!**  
-> An open-source, high-performance WhatsApp Cloud API Gateway and Bridge built with [Hono](https://hono.dev). Connect your applications directly to Meta's Cloud API with **zero middleman markups**, normalized webhook events, cryptographic HMAC verification, streaming media uploads, and pluggable multi-tenant routing.
+> An open-source, high-performance WhatsApp Cloud API Gateway and Bridge built with [Hono](https://hono.dev). Connect your applications directly to Meta's Cloud API with **zero middleman markups**, normalized webhook events, cryptographic HMAC verification, streaming media uploads, and an importable library architecture.
 
 Built with ❤️ by [Hub Ventures](https://github.com/Hub-Ventures).
 
@@ -220,29 +220,25 @@ Meta's raw webhook format nests data under `entry[].changes[].value`. Watahub fl
 
 ---
 
-## 🏢 How Multi-Tenancy Works
+## 🏢 Open Core & Enterprise Edition (/ee)
 
-Watahub supports both single-operator bridge setups and multi-tenant architectures:
+Watahub is structured as an **open core** project:
 
-### 1. Single-Operator Bridge (Default)
-By default, Watahub operates as a stateless bridge. It reads `META_SYSTEM_USER_TOKEN` and `SUBSCRIBER_WEBHOOK_URL` from the environment, delivering incoming events to your main application and authenticating outbound calls via the operator's `WATAHUB_API_KEY`.
+### 1. Single-Operator Core (Open Source, MIT)
+The core gateway is a stateless, high-performance bridge designed for a single operator or team:
+- **Zero Tenant Leakage:** The core does not manage tenants, tenant routing, or tenant API keys.
+- **Operator Configuration:** Configured via `META_SYSTEM_USER_TOKEN` and `SUBSCRIBER_WEBHOOK_URL`.
+- **Dynamic Override:** Supports `X-Meta-Access-Token` to override the token per request (allowing custom orchestrators or wrappers to inject credentials).
+- **Library Package:** Published with standard TypeScript declarations and exports (`types` and `exports` in `package.json`). You can import `createApp`, `normalizeMetaWebhook`, `verifyMetaSignature`, `deliverToSubscriber`, and `MetaClient` directly into your application.
 
-### 2. Multi-Tenant Hub via `PhoneDirectory`
-When running multiple clients or phone numbers on a single Watahub instance:
-- **Credential & Route Resolution:** Watahub defines the `PhoneDirectory` seam in `GatewayDeps`:
-  ```ts
-  export interface PhoneConfig {
-    tenantId?: string
-    accessToken?: string
-    subscriberUrl?: string
-    subscriberSecret?: string
-  }
-  ```
-- **Inbound Routing:** Webhooks are dispatched dynamically to the phone's dedicated `subscriberUrl` and signed with its `subscriberSecret`, falling back safely to environment variables.
-- **Outbound Resolution:** Outbound requests look up the phone's specific `accessToken` dynamically when `X-Meta-Access-Token` is omitted.
-- **Distributed Backends:** Includes ready-to-use `DistributedPhoneDirectory`, `DistributedReplayStore`, and `DistributedRateLimitStore` adapters compatible with Cloudflare KV, Redis, and Durable Objects.
+### 2. Enterprise Edition (`/ee`, Private Repository)
+For multi-tenant SaaS platforms, agencies, and hosting providers requiring complete tenant isolation:
+- **`PhoneDirectory`:** Dynamic resolution of phone credentials, access tokens, and tenant subscriber endpoints across KV, Redis, or SQL.
+- **Tenant-Scoped Authentication:** Dedicated API keys per tenant with route-level enforcement that clients only access their assigned phone numbers.
+- **Granular Webhook Routing:** Webhooks are routed directly to tenant-specific callbacks with tenant-specific HMAC signatures and `tenantId` payloads.
+- **Token Custody & Embedded Signup:** Secure credential storage for multi-account onboarding.
 
-### 3. Embedded Signup Flow
+### 3. Embedded Signup Flow (Core)
 - `POST /v1/onboarding/exchange`: Exchanges Meta Embedded Signup OAuth `code` for an access token using the gateway's app credentials.
 - `POST /v1/onboarding/subscribe`: Subscribes the WABA to WhatsApp webhook topics.
 - `POST /v1/onboarding/override-callback`: Reconfigures Meta to route webhooks for a specific phone number to an external destination outside Watahub.
@@ -322,7 +318,7 @@ pnpm run deploy
 
 Watahub is currently in active development (**v0.1.0**).
 
-The core WhatsApp bridge functionality (message dispatch, streaming media uploads, HMAC verification, replay protection, rate limiting, and the `PhoneDirectory` multi-tenant routing port) is production-ready and fully tested with 100% passing automated tests across Node.js and Cloudflare Workers.
+The core WhatsApp bridge functionality (message dispatch, streaming media uploads, HMAC verification, replay protection, rate limiting, and library exports) is production-ready and fully tested with 100% passing automated tests across Node.js and Cloudflare Workers.
 
 ---
 

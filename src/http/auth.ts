@@ -1,6 +1,6 @@
 import type { Context, MiddlewareHandler } from 'hono'
 import { getConfig } from '../config.js'
-import type { GatewayDeps, RateLimitStore } from '../deps.js'
+import type { RateLimitStore } from '../deps.js'
 import type { Logger } from '../logger.js'
 import { timingSafeEqual } from '../services/crypto.js'
 import { isStrongApiKey } from '../utils/env.js'
@@ -51,23 +51,13 @@ async function hasValidApiKey(c: Context, apiKey: string): Promise<boolean> {
 }
 
 /**
- * Per-request Meta token:
- * 1. Explicit `X-Meta-Access-Token` header always wins.
- * 2. Dynamic lookup by phone number ID via PhoneDirectory.
- * 3. Fallback to global operator token in META_SYSTEM_USER_TOKEN env var.
+ * Resolves the Meta access token for the request:
+ * 1. Explicit `X-Meta-Access-Token` header always wins (allows operators or enterprise wrappers to supply tokens).
+ * 2. Fallback to operator token in META_SYSTEM_USER_TOKEN env var.
  */
-export async function resolveMetaAccessToken(
-  c: Context,
-  deps?: GatewayDeps,
-  phoneNumberId?: string
-): Promise<string | undefined> {
+export function resolveMetaAccessToken(c: Context): string | undefined {
   const headerToken = c.req.header('x-meta-access-token')
   if (headerToken) return headerToken
-
-  if (deps && phoneNumberId) {
-    const phone = await deps.phoneDirectory.lookup(phoneNumberId)
-    if (phone?.accessToken) return phone.accessToken
-  }
 
   return getConfig(c).metaSystemUserToken
 }

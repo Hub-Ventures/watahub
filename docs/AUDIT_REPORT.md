@@ -63,7 +63,6 @@ export interface GatewayDeps {
   replayStore: ReplayStore
   apiKeyLimiter: RateLimitStore
   verifyTokenLimiter: RateLimitStore
-  phoneDirectory: PhoneDirectory
   createRequestLimiter?: (limit: number) => RateLimitStore
 }
 ```
@@ -172,11 +171,11 @@ Watahub operates across three major JavaScript runtime targets:
 Prior to Issue #26, replay deduplication and rate-limiting were tracked in module-level `Map` singletons. Watahub now exposes clean store ports:
 - `ReplayStore`: `{ has(id): boolean | Promise<boolean>, remember(id): boolean | Promise<boolean>, clear(): void | Promise<void> }`
 - `RateLimitStore`: `{ blockedFor(key): number | Promise<number>, hit(key): void | Promise<void>, clear(): void | Promise<void> }`
-- `PhoneDirectory`: `{ lookup(phoneNumberId): Promise<PhoneConfig | null> }`
 
 ### 7.2 Storage Adapters
-- **Default In-Memory:** `DeliveryIdCache` (with TTL cleanup), `FixedWindowLimiter` (with eviction cap), and `InMemoryPhoneDirectory`.
-- **Distributed Store Adapters (`src/services/store-adapters.ts`):** `DistributedReplayStore`, `DistributedRateLimitStore`, and `DistributedPhoneDirectory` implemented against a minimal `KeyValueStore` interface (`get`, `set`, `delete`). Fully ready for Cloudflare KV, Redis, or Durable Objects.
+- **Default In-Memory:** `DeliveryIdCache` (with TTL cleanup) and `FixedWindowLimiter` (with eviction cap).
+- **Distributed Store Adapters (`src/services/store-adapters.ts`):** `DistributedReplayStore` and `DistributedRateLimitStore` implemented against a minimal `KeyValueStore` interface (`get`, `set`, `delete`). Fully ready for Cloudflare KV, Redis, or Durable Objects.
+- **Enterprise Isolation (`/ee`):** Per Julián's decision (`2026-10-25-core-abierto-y-ee.md`), all tenant directory ports and multi-tenant routing are encapsulated in the private Enterprise Edition (`watahub-ee`), keeping core 100% single-operator.
 
 ---
 
@@ -187,18 +186,18 @@ Executing `pnpm check` produces:
 > pnpm typecheck && pnpm lint && pnpm format:check && pnpm test:coverage
 
 All matched files use Prettier code style!
-331 passed across 18 test files (100% passing)
+326 passed across 18 test files (100% passing)
 
 % Coverage report from v8
 -------------------|---------|----------|---------|---------
 File               | % Stmts | % Branch | % Funcs | % Lines 
 -------------------|---------|----------|---------|---------
-All files          |   99.82 |    93.99 |     100 |   99.82 
- src               |     100 |    86.36 |     100 |     100 
- src/http          |   98.38 |    95.32 |     100 |   98.38 
- src/routes        |     100 |    98.08 |     100 |     100 
+All files          |   99.77 |    93.78 |     100 |   99.77 
+ src               |     100 |    85.71 |     100 |     100 
+ src/http          |    98.3 |    95.19 |     100 |    98.3 
+ src/routes        |     100 |    97.95 |     100 |     100 
  src/schemas       |     100 |       97 |     100 |     100 
- src/services      |     100 |    92.03 |     100 |     100 
+ src/services      |   99.89 |    91.76 |     100 |   99.89 
  src/utils         |     100 |    96.77 |     100 |     100 
 -------------------|---------|----------|---------|---------
 ```

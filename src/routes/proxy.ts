@@ -61,9 +61,7 @@ export function createProxyRouter(deps: GatewayDeps): Hono {
 
   router.all('/v24.0/*', async (c) => {
     const subPath = c.req.path.replace(/^\/v24\.0\/?/, '')
-    const phoneMatch = /^(\d+)/.exec(subPath)
-    const phoneNumberId = phoneMatch ? phoneMatch[1] : undefined
-    const accessToken = await resolveMetaAccessToken(c, deps, phoneNumberId)
+    const accessToken = resolveMetaAccessToken(c)
     if (!accessToken) {
       return c.json({ error: MISSING_META_TOKEN }, 500)
     }

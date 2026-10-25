@@ -42,7 +42,6 @@ export type TemplateComponent = Record<string, unknown>
 export interface SendMessagePayload {
   to: string
   phoneNumberId?: string
-  tenantId?: string
   kind: OutboundMessageKind
   text?: {
     body: string
@@ -379,7 +378,6 @@ export interface WatahubNormalizedEvent {
 /** Body POSTed to SUBSCRIBER_WEBHOOK_URL */
 export interface SubscriberPayload {
   timestamp: number
-  tenantId?: string
   events: WatahubNormalizedEvent[]
   raw: unknown
 }

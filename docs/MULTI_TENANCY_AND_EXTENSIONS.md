@@ -1,95 +1,56 @@
-# 🏢 Multi-Tenancy & Extensibility Guide
+# 🏢 Extensibility, Distributed Stores & Enterprise Edition (/ee)
 
-This guide explains how to scale Watahub from a single-operator bridge into a multi-tenant hub using the `PhoneDirectory` port and pluggable distributed state store adapters.
+This guide explains how Watahub is architected across its **Open-Source Core** and the **Enterprise Edition (`/ee`)**, and how to scale core deployments using pluggable distributed stores.
 
 ---
 
-## 1. Single-Operator vs Multi-Tenant Architecture
+## 1. Core vs. Enterprise Edition Architecture
 
-Watahub is architected to support two distinct operating models:
-
-| Dimension | Single-Operator Bridge (Default) | Multi-Tenant Hub (via `PhoneDirectory`) |
+| Dimension | Open-Source Core (MIT) | Enterprise Edition (`/ee`, Private Repo) |
 | :--- | :--- | :--- |
-| **Primary Use Case** | A single team or product self-hosting WhatsApp infrastructure. | Multiple clients, agencies, or phone numbers sharing an instance. |
-| **Meta Access Token** | Global permanent token (`META_SYSTEM_USER_TOKEN`). | Dynamically resolved per `phoneNumberId` from a database or KV. |
-| **Subscriber Webhook** | Single target URL (`SUBSCRIBER_WEBHOOK_URL`). | Dynamically routed to each tenant's specific webhook endpoint. |
-| **Signing Secret** | Single global secret (`SUBSCRIBER_WEBHOOK_SECRET`). | Dynamically signed per tenant using their own secret. |
-| **Deduplication & Limits**| In-memory process cache (`DeliveryIdCache`). | Distributed Key-Value store (`DistributedReplayStore`). |
+| **Tenancy Model** | **Single Operator** (Dedicated team or backend). | **Multi-Tenant** (Multiple clients, agencies, or phone numbers). |
+| **Meta Access Token** | Configured via `META_SYSTEM_USER_TOKEN` or dynamic caller override `X-Meta-Access-Token`. | Dynamically resolved per tenant and authenticated phone number. |
+| **Subscriber Webhook** | Single target URL (`SUBSCRIBER_WEBHOOK_URL`). | Dynamically routed to each tenant's dedicated webhook URL. |
+| **Subscriber HMAC Secret** | Single global secret (`SUBSCRIBER_WEBHOOK_SECRET`). | Signed using tenant-specific signing secrets. |
+| **API Keys & Ownership** | Single operator `WATAHUB_API_KEY`. | Dedicated tenant API keys with route-level phone ownership enforcement. |
+| **Package & Usage** | Standalone gateway server or importable TypeScript library. | Platform wrapper importing core building blocks. |
 
 ---
 
-## 2. The `PhoneDirectory` Port
+## 2. Consuming Watahub as an Importable Library
 
-Watahub models multi-tenancy through the `PhoneDirectory` port in `src/deps.ts`:
-
-```ts
-export interface PhoneConfig {
-  tenantId?: string
-  accessToken?: string
-  subscriberUrl?: string
-  subscriberSecret?: string
-}
-
-export interface PhoneDirectory {
-  lookup(phoneNumberId: string): Promise<PhoneConfig | null>
-}
-```
-
-### 2.1 Inbound Routing Behavior
-When a webhook arrives at `POST /webhook`:
-1. Watahub extracts `phoneNumberId` from `entry[].changes[].value.metadata.phone_number_id`.
-2. It calls `await deps.phoneDirectory.lookup(phoneNumberId)`.
-3. If `PhoneConfig` defines `subscriberUrl`:
-   - Watahub dispatches events to that specific URL.
-   - It signs the payload using `phoneConfig.subscriberSecret` (falling back to `SUBSCRIBER_WEBHOOK_SECRET` if not overridden).
-   - It injects `tenantId` into the `SubscriberPayload`.
-4. If no phone config exists, it defaults safely to environment variables.
-
-### 2.2 Outbound Token Resolution Behavior
-When sending messages (`POST /v1/messages`), uploading media (`POST /v1/media`), or proxying requests (`/v24.0/*`):
-1. An explicit `X-Meta-Access-Token` request header **always wins** (caller override).
-2. If omitted, Watahub queries `await deps.phoneDirectory.lookup(phoneNumberId)`. If `phoneConfig.accessToken` is present, it is used.
-3. If not found, it falls back to `META_SYSTEM_USER_TOKEN`.
-
----
-
-## 3. Built-In Implementations
-
-Watahub includes two standard implementations out of the box:
-
-### 3.1 `InMemoryPhoneDirectory`
-Ideal for testing, development, and single-instance Node.js deployments:
+Watahub is published with full TypeScript declarations (`types: dist/index.d.ts` and `exports` in `package.json`). You can import its core components directly to build custom gateways, serverless handlers, or enterprise platforms:
 
 ```ts
-import { InMemoryPhoneDirectory } from 'watahub'
+import {
+  createApp,
+  verifyMetaSignature,
+  normalizeMetaWebhook,
+  deliverToSubscriber,
+  MetaClient,
+  type GatewayDeps,
+  type WatahubNormalizedEvent,
+} from 'watahub'
 
-// Initialize with static map
-const directory = new InMemoryPhoneDirectory({
-  '100609346426001': {
-    tenantId: 'tenant_alpha',
-    accessToken: 'EAAG_TOKEN_ALPHA',
-    subscriberUrl: 'https://alpha.example.com/webhook',
-    subscriberSecret: 'secret_alpha_32chars_min_length',
-  },
-  '100609346426002': {
-    tenantId: 'tenant_beta',
-    accessToken: 'EAAG_TOKEN_BETA',
-    subscriberUrl: 'https://beta.example.com/webhook',
-    subscriberSecret: 'secret_beta_32chars_min_length',
-  },
+// 1. Instantiate the gateway app with custom collaborators
+const app = createApp({
+  fetch: customFetchEngine,
+  now: () => Date.now(),
 })
 
-// Dynamically register or update a phone
-directory.set('100609346426003', {
-  tenantId: 'tenant_gamma',
-  subscriberUrl: 'https://gamma.example.com/webhook',
-})
+// 2. Or use individual building blocks in your own server
+const isAuthentic = await verifyMetaSignature(rawBody, signatureHeader, appSecret)
+const events = normalizeMetaWebhook(rawMetaPayload)
 ```
 
 ---
 
-### 3.2 `DistributedPhoneDirectory` (Key-Value Backed)
-Designed for serverless and distributed edge platforms (Cloudflare Workers, Vercel, AWS Lambda) using any backend conforming to `KeyValueStore`:
+## 3. Distributed State Stores Suite (Core)
+
+In distributed serverless environments (such as Cloudflare Workers with multi-isolate execution) or cluster deployments, memory is not shared across isolates. Watahub provides pluggable distributed store adapters in `src/services/store-adapters.ts`:
+
+### 3.1 `KeyValueStore` Contract
+All distributed stores accept any storage engine conforming to this minimal asynchronous contract:
 
 ```ts
 export interface KeyValueStore {
@@ -99,35 +60,25 @@ export interface KeyValueStore {
 }
 ```
 
-```ts
-import { DistributedPhoneDirectory, createApp } from 'watahub'
-
-// Example: Cloudflare KV binding
-const app = createApp({
-  phoneDirectory: new DistributedPhoneDirectory(env.PHONES_KV),
-})
-```
-
----
-
-## 4. Distributed State Stores Suite
-
-In serverless environments like Cloudflare Workers, isolate memory resets across invocations. Watahub provides pluggable adapters in `src/services/store-adapters.ts`:
-
-### 4.1 Distributed Replay Protection (`DistributedReplayStore`)
-Ensures webhook deduplication works across independent serverless isolates:
+### 3.2 Distributed Replay Protection (`DistributedReplayStore`)
+Deduplicates webhook deliveries across edge isolates using TTL-based expiration:
 
 ```ts
 import { DistributedReplayStore, createApp } from 'watahub'
 
-const app = createApp({
-  // 24-hour delivery deduplication window across all edge locations
-  replayStore: new DistributedReplayStore(env.DELIVERIES_KV, 86400),
-})
+export default {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext) {
+    const app = createApp({
+      // 24-hour delivery deduplication window across all edge locations
+      replayStore: new DistributedReplayStore(env.DELIVERIES_KV, 86400),
+    })
+    return app.fetch(req, env, ctx)
+  },
+}
 ```
 
-### 4.2 Distributed Rate Limiter (`DistributedRateLimitStore`)
-Enforces brute-force braking on failed API keys globally:
+### 3.3 Distributed Rate Limiter (`DistributedRateLimitStore`)
+Enforces brute-force attack prevention on invalid API keys globally:
 
 ```ts
 import { DistributedRateLimitStore, createApp } from 'watahub'
@@ -139,36 +90,10 @@ const app = createApp({
 
 ---
 
-## 5. Custom Enterprise Database Adapter Recipe
+## 4. How Enterprise Edition (`/ee`) Wraps Core
 
-To connect Watahub to PostgreSQL, MySQL, Supabase, or Prisma in a custom backend:
+Enterprise Edition does not modify the core engine; it **wraps** it as a higher-level platform:
 
-```ts
-import { Hono } from 'hono'
-import { createApp, type PhoneConfig, type PhoneDirectory } from 'watahub'
-import { db } from './my-database.js'
-
-class PostgresPhoneDirectory implements PhoneDirectory {
-  async lookup(phoneNumberId: string): Promise<PhoneConfig | null> {
-    const row = await db.query(
-      'SELECT tenant_id, meta_access_token, subscriber_url, subscriber_secret FROM whatsapp_channels WHERE phone_number_id = $1 LIMIT 1',
-      [phoneNumberId]
-    )
-
-    if (row.rows.length === 0) return null
-
-    const channel = row.rows[0]
-    return {
-      tenantId: channel.tenant_id,
-      accessToken: channel.meta_access_token,
-      subscriberUrl: channel.subscriber_url,
-      subscriberSecret: channel.subscriber_secret,
-    }
-  }
-}
-
-// Bootstrap Watahub with PostgreSQL directory
-export const app = createApp({
-  phoneDirectory: new PostgresPhoneDirectory(),
-})
-```
+1. **Authentication Layer:** Inspects incoming client API keys, authenticates the tenant, and validates that requested `phoneNumberId` belongs to the tenant.
+2. **Credential Injection:** Looks up the tenant's WhatsApp token in its `PhoneDirectory` (PostgreSQL, KV, or Redis) and injects it into the request as an `X-Meta-Access-Token` header before passing it to the core router.
+3. **Dedicated Webhook Dispatch:** Intercepts incoming Meta webhooks, verifies HMAC and normalizes payloads using core's `verifyMetaSignature` and `normalizeMetaWebhook`, and dispatches directly to the specific tenant's endpoint with their private secret.
