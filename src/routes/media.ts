@@ -20,7 +20,8 @@ export function createMediaRouter(deps: GatewayDeps): Hono {
       return validationError(c, { mediaId: ['Must be a numeric Meta Graph ID'] })
     }
 
-    const meta = await metaClientFor(c, deps)
+    const phoneNumberId = c.req.query('phone_number_id') || c.req.header('x-phone-number-id')
+    const meta = await metaClientFor(c, deps, phoneNumberId)
     if (!meta.ok) return meta.response
 
     try {

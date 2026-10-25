@@ -22,6 +22,18 @@ Built with ❤️ by [Hub Ventures](https://github.com/Hub-Ventures).
 
 ---
 
+## 📚 Documentation Suite
+
+- 📖 [**Getting Started Guide**](docs/GETTING_STARTED.md): Step-by-step walkthrough from prerequisites to your first message and webhook.
+- 📡 [**API Reference**](docs/API_REFERENCE.md): Full endpoints specification, schemas, and interactive examples for all routes.
+- 🔔 [**Webhooks & Event Catalog**](docs/WEBHOOKS_AND_EVENTS.md): HMAC verification in TypeScript, Python & Go, deduplication, and normalized event JSONs.
+- 📐 [**Architecture & Design**](docs/ARCHITECTURE.md): Deep dive into ports & adapters, dependency inversion, request lifecycles, and error engine.
+- 🏢 [**Multi-Tenancy & Extensibility**](docs/MULTI_TENANCY_AND_EXTENSIONS.md): Scaling with `PhoneDirectory`, KV adapters, and custom enterprise databases.
+- 🚢 [**Production Deployment**](docs/DEPLOYMENT.md): Production setups for Cloudflare Workers, Node.js (Docker/PM2), and Nginx reverse proxies.
+- 🛡️ [**System & Security Audit Report**](docs/AUDIT_REPORT.md): Comprehensive technical audit, cryptographic verification, and test coverage metrics.
+
+---
+
 ## ⚡ Why Watahub?
 
 * 🚀 **Zero Middleman Markup:** Pay only Meta's official conversation fees directly to Meta.
