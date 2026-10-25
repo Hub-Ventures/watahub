@@ -77,6 +77,20 @@ describe('Media Routes: GET /v1/media/:mediaId and POST /v1/media', () => {
       const body = (await res.json()) as Record<string, unknown>
       expect(body.error).toBeDefined()
     })
+
+    it('resolves phone token from PhoneDirectory when phone_number_id is supplied', async () => {
+      delete process.env.META_SYSTEM_USER_TOKEN
+      const phoneDirectory = new InMemoryPhoneDirectory({
+        '444555': { accessToken: 'MEDIA_GET_TOKEN' },
+      })
+      const mediaApp = createApp({ phoneDirectory })
+      const fetchSpy = mockFetch(jsonResponse({ url: 'https://cdn.example.com/file' }))
+
+      const res = await mediaApp.request('/v1/media/123456789?phone_number_id=444555', { headers: auth })
+      expect(res.status).toBe(200)
+      const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+      expect((init.headers as Record<string, string>).Authorization).toBe('Bearer MEDIA_GET_TOKEN')
+    })
   })
 
   describe('POST /v1/media and POST /v1/media/:phoneNumberId', () => {
