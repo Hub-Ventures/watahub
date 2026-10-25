@@ -67,17 +67,6 @@ export function createWebhookRouter(deps: GatewayDeps): Hono {
     // payload produces the same ID and the subscriber can drop the duplicate
     const deliveryId = await sha256Hex(rawBody)
 
-    // Fail closed before acknowledging: a 503 makes Meta retry until the
-    // subscriber secret is configured, instead of dropping the events
-    const url = config.subscriberWebhookUrl
-    const secret = config.subscriberWebhookSecret
-    if (url && !secret) {
-      deps.logger.error(
-        '[watahub] SUBSCRIBER_WEBHOOK_SECRET is not set; refusing to accept events it cannot forward signed'
-      )
-      return c.json({ error: 'Gateway misconfigured: subscriber signing secret is not set' }, 503)
-    }
-
     // Replay protection (src/services/replay.ts). Both cases answer 200 so Meta
     // stops retrying, but nothing is forwarded.
     const now = deps.now()
@@ -95,30 +84,75 @@ export function createWebhookRouter(deps: GatewayDeps): Hono {
     const events = normalizeMetaWebhook(payload, deps.now)
     const hasChanges = hasWebhookChanges(payload)
 
-    if (!url || !secret || (events.length === 0 && !hasChanges)) {
+    // Payloads with no changes (e.g. empty heartbeats) are acknowledged without forwarding
+    if (events.length === 0 && !hasChanges) {
       await deps.replayStore.remember(deliveryId, now)
-    } else {
-      const forward: SubscriberPayload = {
-        timestamp: now,
-        events,
-        raw: payload,
-      }
-      const delivery = deliverToSubscriber(
-        { url, body: JSON.stringify(forward), secret, deliveryId },
-        DEFAULT_DELIVERY_POLICY,
-        { fetch: deps.fetch, logger: deps.logger }
+      return c.json({ status: 'received', eventsCount: 0 }, 200)
+    }
+
+    // Fail closed: if subscriber destination or secret are missing, respond 503 so Meta retries
+    const url = config.subscriberWebhookUrl
+    const secret = config.subscriberWebhookSecret
+
+    if (!url) {
+      deps.logger.error(
+        `[watahub] SUBSCRIBER_WEBHOOK_URL is not set; rejecting delivery ${deliveryId} with 503 so Meta retries`
       )
-        // Only a confirmed delivery marks the body as seen, so a failed one can still be replayed
+      return c.json({ error: 'Gateway misconfigured: subscriber webhook URL is not set' }, 503)
+    }
+    if (!secret) {
+      deps.logger.error(
+        `[watahub] SUBSCRIBER_WEBHOOK_SECRET is not set; rejecting delivery ${deliveryId} with 503 so Meta retries`
+      )
+      return c.json({ error: 'Gateway misconfigured: subscriber signing secret is not set' }, 503)
+    }
+
+    const forward: SubscriberPayload = {
+      timestamp: now,
+      events,
+      raw: payload,
+    }
+
+    const deliveryRequest = { url, body: JSON.stringify(forward), secret, deliveryId }
+    const deliveryMode = config.webhookDeliveryMode || 'sync'
+
+    if (deliveryMode === 'async') {
+      const asyncDelivery = deliverToSubscriber(deliveryRequest, DEFAULT_DELIVERY_POLICY, {
+        fetch: deps.fetch,
+        logger: deps.logger,
+      })
         .then(async (result) => {
           if (result.delivered) await deps.replayStore.remember(deliveryId, deps.now())
         })
         .catch((err: unknown) => deps.logger.error(`[watahub] Async dispatch error: ${errorName(err)}`))
 
-      // Meta gets its 200 now; the delivery finishes after the response
-      runInBackground(c, delivery)
+      runInBackground(c, asyncDelivery)
+      return c.json({ status: 'received', eventsCount: events.length }, 200)
     }
 
-    // Meta expects an immediate 200 OK
+    // Default: Guaranteed Synchronous Delivery
+    const result = await deliverToSubscriber(deliveryRequest, DEFAULT_DELIVERY_POLICY, {
+      fetch: deps.fetch,
+      logger: deps.logger,
+    })
+
+    if (!result.delivered) {
+      deps.logger.error(
+        `[watahub] Delivery to subscriber failed for ${deliveryId} after ${result.attempts} attempts; responding 503 so Meta retries`
+      )
+      return c.json(
+        {
+          error: 'Subscriber delivery failed',
+          deliveryId,
+          attempts: result.attempts,
+          subscriberStatus: result.status,
+        },
+        503
+      )
+    }
+
+    // Only mark as seen once confirmed delivered to subscriber
+    await deps.replayStore.remember(deliveryId, deps.now())
     return c.json({ status: 'received', eventsCount: events.length }, 200)
   })
 

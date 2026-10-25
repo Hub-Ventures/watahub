@@ -145,14 +145,20 @@ sequenceDiagram
             Normalizer-->>Gateway: Normalized Events Array
             Gateway-->>Meta: 200 OK {"status": "received"} (Immediate Ack)
             
-            critical Async Background Delivery
-                Gateway->>Delivery: runInBackground(deliverToSubscriber)
+            alt Guaranteed Delivery (sync, default)
+                Gateway->>Delivery: deliverToSubscriber(subscriberUrl)
                 Delivery->>Sub: POST subscriberUrl (signed with X-Watahub-Signature)
                 alt Sub answers 200/202
-                    Delivery->>Gateway: remember(deliveryId) in ReplayStore
-                else Sub fails (5xx / Timeout)
-                    Note over Delivery: Retry with Exponential Backoff (Max 3 attempts)
+                    Delivery-->>Gateway: Delivery Success
+                    Gateway->>Gateway: remember(deliveryId) in ReplayStore
+                    Gateway-->>Meta: 200 OK {"status": "received"}
+                else Sub fails (5xx / Timeout after 3 retries)
+                    Delivery-->>Gateway: Delivery Failure
+                    Gateway-->>Meta: 503 Service Unavailable (Meta retries up to 7 days)
                 end
+            else Asynchronous Delivery (async)
+                Gateway->>Delivery: runInBackground(deliverToSubscriber)
+                Gateway-->>Meta: 200 OK {"status": "received"}
             end
         end
     end

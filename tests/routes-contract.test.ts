@@ -1052,6 +1052,9 @@ describe('HTTP route contracts', () => {
 
     beforeEach(() => {
       process.env.META_APP_SECRET = APP_SECRET
+      process.env.SUBSCRIBER_WEBHOOK_URL = 'https://subscriber.example/hook'
+      process.env.SUBSCRIBER_WEBHOOK_SECRET = 'SUB_SECRET_32_CHARS_MINIMUM_LENGTH!'
+      mockFetch(jsonResponse({}))
       webhookDeliveryIds.clear()
     })
 
@@ -1068,9 +1071,10 @@ describe('HTTP route contracts', () => {
       expect((await app.request('/webhook', await signed('{'))).status).toBe(400)
     })
 
-    it('forwards signed events to the subscriber via waitUntil', async () => {
+    it('forwards signed events to the subscriber via waitUntil in async mode', async () => {
+      process.env.WEBHOOK_DELIVERY_MODE = 'async'
       process.env.SUBSCRIBER_WEBHOOK_URL = 'https://subscriber.example/hook'
-      process.env.SUBSCRIBER_WEBHOOK_SECRET = 'SUB_SECRET'
+      process.env.SUBSCRIBER_WEBHOOK_SECRET = 'SUB_SECRET_32_CHARS_MINIMUM_LENGTH!'
       const spy = mockFetch(jsonResponse({}))
       const pending: Array<Promise<unknown>> = []
       const executionCtx = {
@@ -1086,7 +1090,9 @@ describe('HTTP route contracts', () => {
       expect(url).toBe('https://subscriber.example/hook')
       const headers = init.headers as Record<string, string>
       expect(headers['User-Agent']).toBe('Watahub-Gateway/0.1.0')
-      expect(headers['x-watahub-signature']).toBe(await signSubscriberPayload(String(init.body), 'SUB_SECRET'))
+      expect(headers['x-watahub-signature']).toBe(
+        await signSubscriberPayload(String(init.body), 'SUB_SECRET_32_CHARS_MINIMUM_LENGTH!')
+      )
       const forwarded = JSON.parse(String(init.body))
       expect(forwarded.raw).toEqual(payload)
       expect(forwarded.events).toHaveLength(1)

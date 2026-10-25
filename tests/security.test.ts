@@ -75,6 +75,9 @@ describe('Webhook signature enforcement', () => {
 
   it('accepts deliveries signed over the exact raw body', async () => {
     process.env.META_APP_SECRET = APP_SECRET
+    process.env.SUBSCRIBER_WEBHOOK_URL = 'https://subscriber.example/hook'
+    process.env.SUBSCRIBER_WEBHOOK_SECRET = 's'.repeat(32)
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'))
     const signature = await signSubscriberPayload(metaPayload, APP_SECRET)
     const res = await postWebhook(metaPayload, signature)
     expect(res.status).toBe(200)

@@ -1,4 +1,5 @@
 import { serve } from '@hono/node-server'
+import { drainBackgroundTasks } from './http/background.js'
 import app from './index.js'
 import { validateEnv } from './utils/env.js'
 
@@ -25,7 +26,21 @@ console.log(`
 └───────────────────────────────────────────────┘
 `)
 
-serve({
+const server = serve({
   fetch: app.fetch,
   port,
 })
+
+const handleShutdown = (signal: string) => {
+  console.log(`[watahub] Received ${signal}, starting graceful shutdown...`)
+  server.close(() => {
+    console.log('[watahub] Server closed to new connections, draining background tasks...')
+    void drainBackgroundTasks(15_000).then(() => {
+      console.log('[watahub] Graceful shutdown complete.')
+      process.exit(0)
+    })
+  })
+}
+
+process.on('SIGTERM', () => handleShutdown('SIGTERM'))
+process.on('SIGINT', () => handleShutdown('SIGINT'))
