@@ -5,7 +5,7 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['dist/', '.wrangler/', 'node_modules/'] },
+  { ignores: ['dist/', '.wrangler/', 'node_modules/', '.claude/', '.dev.vars*'] },
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,

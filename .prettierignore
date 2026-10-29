@@ -1,5 +1,7 @@
 dist/
 .wrangler/
 node_modules/
+.claude/
+.dev.vars*
 pnpm-lock.yaml
 *.md
