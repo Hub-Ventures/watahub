@@ -7,7 +7,7 @@ import { errorName } from '../logger.js'
 import { sha256Hex, timingSafeEqual, verifyMetaSignature } from '../services/crypto.js'
 import { deliverToSubscriber, DEFAULT_DELIVERY_POLICY } from '../services/delivery.js'
 import { hasWebhookChanges, normalizeMetaWebhook } from '../services/normalizer.js'
-import { DEFAULT_WEBHOOK_MAX_AGE_SECONDS, isStale } from '../services/replay.js'
+import { DEFAULT_WEBHOOK_MAX_AGE_SECONDS, isStale, replayTtlSeconds } from '../services/replay.js'
 import type { SubscriberPayload } from '../types/gateway.js'
 import type { MetaWebhookPayload } from '../types/meta.js'
 
@@ -71,6 +71,8 @@ export function createWebhookRouter(deps: GatewayDeps): Hono {
     // stops retrying, but nothing is forwarded.
     const now = deps.now()
     const maxAgeSeconds = Number(config.metaWebhookMaxAgeSeconds) || DEFAULT_WEBHOOK_MAX_AGE_SECONDS
+    // Remember for the whole window: a forgotten ID would let a still-fresh body through again
+    const replayTtl = replayTtlSeconds(maxAgeSeconds)
     if (isStale(payload, maxAgeSeconds, now)) {
       deps.logger.error(
         `[watahub] Ignoring webhook ${deliveryId}: events older than ${maxAgeSeconds}s (possible replay)`
@@ -86,7 +88,7 @@ export function createWebhookRouter(deps: GatewayDeps): Hono {
 
     // Payloads with no changes (e.g. empty heartbeats) are acknowledged without forwarding
     if (events.length === 0 && !hasChanges) {
-      await deps.replayStore.remember(deliveryId, now)
+      await deps.replayStore.remember(deliveryId, now, replayTtl)
       return c.json({ status: 'received', eventsCount: 0 }, 200)
     }
 
@@ -122,7 +124,7 @@ export function createWebhookRouter(deps: GatewayDeps): Hono {
         logger: deps.logger,
       })
         .then(async (result) => {
-          if (result.delivered) await deps.replayStore.remember(deliveryId, deps.now())
+          if (result.delivered) await deps.replayStore.remember(deliveryId, deps.now(), replayTtl)
         })
         .catch((err: unknown) => deps.logger.error(`[watahub] Async dispatch error: ${errorName(err)}`))
 
@@ -152,7 +154,7 @@ export function createWebhookRouter(deps: GatewayDeps): Hono {
     }
 
     // Only mark as seen once confirmed delivered to subscriber
-    await deps.replayStore.remember(deliveryId, deps.now())
+    await deps.replayStore.remember(deliveryId, deps.now(), replayTtl)
     return c.json({ status: 'received', eventsCount: events.length }, 200)
   })
 

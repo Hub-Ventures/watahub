@@ -1,4 +1,5 @@
 import type { RateLimitStore, ReplayStore } from '../deps.js'
+import { DEFAULT_REPLAY_TTL_SECONDS } from './replay.js'
 
 /**
  * Minimal Key-Value Store interface compatible with Cloudflare KV, Redis, etc.
@@ -15,7 +16,7 @@ export interface KeyValueStore {
 export class DistributedReplayStore implements ReplayStore {
   constructor(
     private readonly kv: KeyValueStore,
-    private readonly ttlSeconds = 24 * 60 * 60,
+    private readonly ttlSeconds = DEFAULT_REPLAY_TTL_SECONDS,
     private readonly prefix = 'watahub:delivery:'
   ) {}
 
@@ -24,11 +25,11 @@ export class DistributedReplayStore implements ReplayStore {
     return value !== null
   }
 
-  async remember(id: string): Promise<boolean> {
+  async remember(id: string, _nowMs?: number, ttlSeconds = 0): Promise<boolean> {
     const key = `${this.prefix}${id}`
     const existing = await this.kv.get(key)
     if (existing !== null) return false
-    await this.kv.set(key, '1', { ttlSeconds: this.ttlSeconds })
+    await this.kv.set(key, '1', { ttlSeconds: Math.max(this.ttlSeconds, ttlSeconds) })
     return true
   }
 

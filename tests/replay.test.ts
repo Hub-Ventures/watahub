@@ -1,7 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import app from '../src/index.js'
+import app, { createApp } from '../src/index.js'
+import type { ReplayStore } from '../src/deps.js'
 import { signSubscriberPayload } from '../src/services/crypto.js'
-import { DeliveryIdCache, isStale, newestEventTimestamp, webhookDeliveryIds } from '../src/services/replay.js'
+import {
+  DEFAULT_WEBHOOK_MAX_AGE_SECONDS,
+  DeliveryIdCache,
+  isStale,
+  newestEventTimestamp,
+  webhookDeliveryIds,
+} from '../src/services/replay.js'
 import type { MetaWebhookPayload } from '../src/types/meta.js'
 
 const APP_SECRET = 'meta-app-secret'
@@ -68,6 +75,22 @@ describe('replay helpers', () => {
     expect(cache.remember('a', 1_500)).toBe(true)
   })
 
+  it('by default keeps delivery ids for the whole 7-day age window', () => {
+    const cache = new DeliveryIdCache()
+    const hour = 3_600_000
+    expect(cache.remember('a', 0)).toBe(true)
+    expect(cache.has('a', 25 * hour)).toBe(true)
+    expect(cache.has('a', 6 * 24 * hour)).toBe(true)
+    expect(cache.has('a', DEFAULT_WEBHOOK_MAX_AGE_SECONDS * 1000)).toBe(true)
+  })
+
+  it('keeps an id for the ttl it is given when that outlasts the cache ttl', () => {
+    const cache = new DeliveryIdCache(1_000, 10)
+    expect(cache.remember('a', 0, 10)).toBe(true)
+    expect(cache.has('a', 5_000)).toBe(true)
+    expect(cache.has('a', 10_001)).toBe(false)
+  })
+
   it('stays bounded when full', () => {
     const cache = new DeliveryIdCache(60_000, 3)
     for (const id of ['a', 'b', 'c', 'd']) cache.remember(id, 0)
@@ -130,6 +153,65 @@ describe('POST /webhook replay protection', () => {
     expect(await (await postSigned(payload)).json()).toMatchObject({ status: 'ignored', reason: 'duplicate' })
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+
+  describe('dedupe lasts the whole age window', () => {
+    const hourMs = 3_600_000
+    const t0 = 1_800_000_000_000
+
+    async function postSignedTo(target: ReturnType<typeof createApp>, payload: MetaWebhookPayload) {
+      const body = JSON.stringify(payload)
+      return target.request('/webhook', {
+        method: 'POST',
+        body,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-hub-signature-256': await signSubscriberPayload(body, APP_SECRET),
+        },
+      })
+    }
+
+    it('drops the same signed body replayed at 25 h and at 6 days without forwarding it', async () => {
+      let clock = t0
+      const fetchSpy = vi.fn().mockResolvedValue(new Response('ok'))
+      const gateway = createApp({
+        now: () => clock,
+        fetch: fetchSpy as unknown as typeof fetch,
+        replayStore: new DeliveryIdCache(),
+      })
+      const payload = payloadAt(t0 / 1000)
+
+      expect(await (await postSignedTo(gateway, payload)).json()).toMatchObject({ status: 'received' })
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
+
+      for (const elapsed of [25 * hourMs, 6 * 24 * hourMs]) {
+        clock = t0 + elapsed
+        const replay = await postSignedTo(gateway, payload)
+        expect(replay.status).toBe(200)
+        expect(await replay.json()).toMatchObject({ status: 'ignored', reason: 'duplicate' })
+      }
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it.each([
+      ['the default window', undefined, DEFAULT_WEBHOOK_MAX_AGE_SECONDS],
+      ['META_WEBHOOK_MAX_AGE_SECONDS', '864000', 864_000],
+    ])('asks the store to keep the id at least as long as %s', async (_label, maxAge, windowSeconds) => {
+      if (maxAge) process.env.META_WEBHOOK_MAX_AGE_SECONDS = maxAge
+      const remember = vi.fn().mockReturnValue(true)
+      const store: ReplayStore = { has: () => false, remember, clear: () => undefined }
+      const gateway = createApp({
+        now: () => t0,
+        fetch: vi.fn().mockResolvedValue(new Response('ok')) as unknown as typeof fetch,
+        replayStore: store,
+      })
+
+      expect((await postSignedTo(gateway, payloadAt(t0 / 1000))).status).toBe(200)
+      expect(remember).toHaveBeenCalledTimes(1)
+      const ttlSeconds: unknown = remember.mock.calls[0]?.[2]
+      expect(typeof ttlSeconds).toBe('number')
+      expect(ttlSeconds as number).toBeGreaterThanOrEqual(windowSeconds)
+    })
   })
 
   it('lets a body whose delivery failed be replayed', async () => {

@@ -6,7 +6,11 @@ import { webhookDeliveryIds } from './services/replay.js'
 
 export interface ReplayStore {
   has(id: string, nowMs?: number): boolean | Promise<boolean>
-  remember(id: string, nowMs?: number): boolean | Promise<boolean>
+  /**
+   * Records a delivered ID. `ttlSeconds` is how long it must be kept so a replay
+   * inside the webhook age window is still caught; keep it at least that long.
+   */
+  remember(id: string, nowMs?: number, ttlSeconds?: number): boolean | Promise<boolean>
   clear(): void | Promise<void>
 }
 
