@@ -8,7 +8,9 @@
  *   window are acknowledged but not forwarded.
  * - Duplicates: the delivery ID (SHA-256 of the signed body) is remembered once
  *   the subscriber confirmed it, so an identical body is not forwarded twice.
- *   A failed delivery is not remembered and can be replayed.
+ *   A failed delivery is not remembered and can be replayed. IDs are kept for
+ *   the whole age window plus a margin: forgetting one earlier would let a body
+ *   still young enough to pass the age check be forwarded again.
  *   The cache is per process / per Worker isolate: subscribers must still
  *   dedupe on x-watahub-delivery-id.
  */
@@ -18,6 +20,16 @@ import type { MetaWebhookPayload } from '../types/meta.js'
 
 /** Meta retries failed deliveries for up to 7 days; a tighter default would drop real retries */
 export const DEFAULT_WEBHOOK_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
+
+/** Extra time a delivery ID outlives the age window, so clock skew cannot reopen a gap */
+const REPLAY_TTL_MARGIN_SECONDS = 60 * 60
+
+/** How long a delivery ID must be remembered for a given age window */
+export function replayTtlSeconds(maxAgeSeconds: number): number {
+  return maxAgeSeconds + REPLAY_TTL_MARGIN_SECONDS
+}
+
+export const DEFAULT_REPLAY_TTL_SECONDS = replayTtlSeconds(DEFAULT_WEBHOOK_MAX_AGE_SECONDS)
 
 /** Newest Meta event timestamp in the payload (unix seconds), or undefined when it has none */
 export function newestEventTimestamp(payload: MetaWebhookPayload): number | undefined {
@@ -53,7 +65,7 @@ export class DeliveryIdCache implements ReplayStore {
   private seen = new Map<string, number>()
 
   constructor(
-    private readonly ttlMs = 24 * 60 * 60 * 1000,
+    private readonly ttlMs = DEFAULT_REPLAY_TTL_SECONDS * 1000,
     private readonly maxEntries = 10_000
   ) {}
 
@@ -62,13 +74,16 @@ export class DeliveryIdCache implements ReplayStore {
     return expiresAt !== undefined && expiresAt > nowMs
   }
 
-  /** Records the ID; returns false if it was already seen inside the TTL */
-  remember(id: string, nowMs = Date.now()): boolean {
+  /**
+   * Records the ID for `ttlSeconds` or the cache TTL, whichever is longer;
+   * returns false if it was already seen inside the TTL
+   */
+  remember(id: string, nowMs = Date.now(), ttlSeconds = 0): boolean {
     if (this.has(id, nowMs)) return false
 
     this.seen.delete(id)
     if (this.seen.size >= this.maxEntries) this.evict(nowMs)
-    this.seen.set(id, nowMs + this.ttlMs)
+    this.seen.set(id, nowMs + Math.max(this.ttlMs, ttlSeconds * 1000))
     return true
   }
 

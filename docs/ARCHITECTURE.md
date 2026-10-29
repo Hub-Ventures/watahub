@@ -209,7 +209,8 @@ Deduplicates webhook deliveries to guarantee at-most-once processing:
 ```ts
 export interface ReplayStore {
   has(id: string, nowMs?: number): boolean | Promise<boolean>
-  remember(id: string, nowMs?: number): boolean | Promise<boolean>
+  // ttlSeconds: keep the ID at least this long (the webhook age window plus a margin)
+  remember(id: string, nowMs?: number, ttlSeconds?: number): boolean | Promise<boolean>
   clear(): void | Promise<void>
 }
 ```

@@ -474,6 +474,27 @@ describe('Distributed store adapters (store-adapters.ts)', () => {
     await store.clear()
   })
 
+  it('DistributedReplayStore keeps keys for the whole age window, or longer when asked', async () => {
+    const { DistributedReplayStore } = await import('../src/services/store-adapters.js')
+    const { DEFAULT_WEBHOOK_MAX_AGE_SECONDS } = await import('../src/services/replay.js')
+    const ttls: (number | undefined)[] = []
+    const kv = {
+      get: () => Promise.resolve(null),
+      set: (_key: string, _value: string, options?: { ttlSeconds?: number }) => {
+        ttls.push(options?.ttlSeconds)
+        return Promise.resolve()
+      },
+    }
+
+    await new DistributedReplayStore(kv).remember('default-ttl')
+    await new DistributedReplayStore(kv, 86_400).remember('asked-ttl', 0, 900_000)
+    await new DistributedReplayStore(kv, 2_000_000).remember('constructor-ttl', 0, 900_000)
+
+    expect(ttls[0]).toBeGreaterThanOrEqual(DEFAULT_WEBHOOK_MAX_AGE_SECONDS)
+    expect(ttls[1]).toBe(900_000)
+    expect(ttls[2]).toBe(2_000_000)
+  })
+
   it('DistributedRateLimitStore tracks hits, blocks, and recovers after window', async () => {
     const { DistributedRateLimitStore } = await import('../src/services/store-adapters.js')
     const kv = new MockKv()
