@@ -19,7 +19,8 @@ export interface MetaApiErrorBody {
   }
 }
 
-export type ErrorCategory = 'auth' | 'billing' | 'rate_limit' | 'meta_server' | 'validation' | 'unknown'
+export type ErrorCategory =
+  'auth' | 'billing' | 'rate_limit' | 'meta_server' | 'validation' | 'unknown' | 'unknown_outcome'
 
 export interface ErrorClassification {
   category: ErrorCategory
@@ -171,6 +172,16 @@ export function classifyMetaError(err: WatahubApiError): ErrorClassification {
     retryable: false,
     action: 'Inspect error code and payload details in Meta developer documentation',
   }
+}
+
+/**
+ * A message send that timed out, lost its connection or got a 5xx from Meta may
+ * or may not have been delivered. Retrying blindly can send it twice.
+ */
+export const UNKNOWN_SEND_OUTCOME: ErrorClassification = {
+  category: 'unknown_outcome',
+  retryable: false,
+  action: 'The message may have been sent. Confirm it with the status webhook before retrying',
 }
 
 export interface TransportFailure {

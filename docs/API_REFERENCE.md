@@ -47,6 +47,21 @@ When an error occurs, Watahub returns a structured JSON body:
 }
 ```
 
+**Uncertain send outcome.** A message send is not idempotent. When `POST /v1/messages` times out (`504`), loses its connection to Meta (`502`) or gets a `5xx` from Meta, the message may or may not have been delivered. The status code is kept and the body says so:
+
+```json
+{
+  "error": {
+    "message": "Meta Graph API request timed out",
+    "category": "unknown_outcome",
+    "retryable": false,
+    "action": "The message may have been sent. Confirm it with the status webhook before retrying"
+  }
+}
+```
+
+Confirm the outcome with the message status webhook before sending again, or the recipient may get the message twice.
+
 ---
 
 ## 2. Health & System
@@ -378,6 +393,8 @@ Drop-in passthrough proxy that mirrors Meta's native Graph API endpoints. Enable
 - `POST /v24.0/:phoneNumberId/messages`
 - `POST /v24.0/:phoneNumberId/media`
 - `GET /v24.0/:mediaId` (forwards `?phone_number_id=`)
+
+Meta's responses are passed through as they are. For `POST /v24.0/:phoneNumberId/messages`, a timeout or connection failure answers Watahub's error body with `"category": "unknown_outcome"`, and a `5xx` from Meta keeps Meta's body and adds the header `X-Watahub-Outcome: unknown`. In both cases the message may have been delivered: confirm with the status webhook before retrying.
 
 #### Example Proxy Call
 ```bash

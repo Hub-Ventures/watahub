@@ -21,6 +21,11 @@ export function isAllowedProxyRoute(method: string, subPath: string): boolean {
   return ALLOWED_PROXY_ROUTES.some((route) => route.method === method && route.pattern.test(subPath))
 }
 
+/** Message sends are not idempotent, so a failed one has an unknown outcome */
+function isMessageSend(method: string, subPath: string): boolean {
+  return method === 'POST' && /^\d+\/messages$/.test(subPath)
+}
+
 /**
  * Graph URL for an allowlisted sub-path. Only allowlisted query params are kept:
  * Graph honors ?method=delete (verb tunneling), ?fields={...} (node expansion)
@@ -71,6 +76,7 @@ export function createProxyRouter(deps: GatewayDeps): Hono {
       return c.json({ error: 'Endpoint not allowed through the Watahub proxy' }, 403)
     }
 
+    const messageSend = isMessageSend(c.req.method, subPath)
     const headers = new Headers({ Authorization: `Bearer ${accessToken}` })
     const contentType = c.req.header('content-type')
     if (contentType) headers.set('Content-Type', contentType)
@@ -89,9 +95,11 @@ export function createProxyRouter(deps: GatewayDeps): Hono {
       responseHeaders.delete('content-encoding')
       responseHeaders.delete('content-length')
       stripForeignHeaders(responseHeaders)
+      // Meta's body is passed through untouched, so a 5xx on a send is flagged in a header
+      if (messageSend && res.status >= 500) responseHeaders.set('X-Watahub-Outcome', 'unknown')
       return new Response(res.body, { status: res.status, headers: responseHeaders })
     } catch (err: unknown) {
-      return errorResponse(c, err, deps.logger)
+      return errorResponse(c, err, deps.logger, { messageSend })
     }
   })
 
