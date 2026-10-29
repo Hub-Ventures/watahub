@@ -162,9 +162,47 @@ describe('HTTP route contracts', () => {
       expect(res.status).toBe(502)
     })
 
-    it('returns a generic 502 for transport failures without echoing the error', async () => {
+    const unknownOutcome = {
+      category: 'unknown_outcome',
+      retryable: false,
+      action: 'The message may have been sent. Confirm it with the status webhook before retrying',
+    }
+
+    it('returns a generic 502 for transport failures, flagged as an unknown outcome, without echoing the error', async () => {
       vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('socket hang up 10.0.0.7'))
       const res = await app.request('/v1/messages', authed(postJson(valid)))
+      expect(res.status).toBe(502)
+      expect(await json(res)).toEqual({ error: { message: 'Meta Graph API unreachable', ...unknownOutcome } })
+    })
+
+    it('flags a send timeout (504) as an unknown outcome that must not be retried blindly', async () => {
+      vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(
+        new DOMException('The operation was aborted due to timeout', 'TimeoutError')
+      )
+      const res = await app.request('/v1/messages', authed(postJson(valid)))
+      expect(res.status).toBe(504)
+      expect(await json(res)).toEqual({ error: { message: 'Meta Graph API request timed out', ...unknownOutcome } })
+    })
+
+    it('flags a Meta 5xx on a send as an unknown outcome instead of retryable', async () => {
+      mockFetch(jsonResponse(metaError(1, 'An unknown error occurred'), 500))
+      const res = await app.request('/v1/messages', authed(postJson(valid)))
+      expect(res.status).toBe(500)
+      expect(await json(res)).toMatchObject({ error: { code: 1, ...unknownOutcome } })
+    })
+
+    it('keeps the classification of a Meta 4xx on a send, where Meta did not send it', async () => {
+      mockFetch(jsonResponse(metaError(100, 'Invalid parameter'), 400))
+      const res = await app.request('/v1/messages', authed(postJson(valid)))
+      expect(res.status).toBe(400)
+      const body = await json(res)
+      expect(body.error).toMatchObject({ code: 100 })
+      expect(body.error.category).not.toBe('unknown_outcome')
+    })
+
+    it('keeps the plain transport error body on routes that do not send messages', async () => {
+      vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('socket hang up 10.0.0.7'))
+      const res = await app.request('/v1/templates/456', authed())
       expect(res.status).toBe(502)
       expect(await json(res)).toEqual({ error: { message: 'Meta Graph API unreachable' } })
     })
@@ -1000,6 +1038,33 @@ describe('HTTP route contracts', () => {
     it('needs a token', async () => {
       delete process.env.META_SYSTEM_USER_TOKEN
       expect((await app.request('/v24.0/789', authed())).status).toBe(500)
+    })
+
+    it("flags a Meta 5xx on a proxied send with X-Watahub-Outcome and leaves Meta's body untouched", async () => {
+      const metaBody = metaError(1, 'An unknown error occurred')
+      mockFetch(jsonResponse(metaBody, 500))
+      const res = await app.request('/v24.0/123/messages', authed(postJson({ a: 1 })))
+      expect(res.status).toBe(500)
+      expect(res.headers.get('x-watahub-outcome')).toBe('unknown')
+      expect(await json(res)).toEqual(metaBody)
+    })
+
+    it('does not flag proxied sends that succeed, or a 5xx on a media lookup', async () => {
+      mockFetch(jsonResponse({ messages: [{ id: 'm' }] }, 200), jsonResponse(metaError(1), 500))
+      const sent = await app.request('/v24.0/123/messages', authed(postJson({ a: 1 })))
+      const media = await app.request('/v24.0/789', authed())
+      expect(sent.headers.get('x-watahub-outcome')).toBeNull()
+      expect(media.status).toBe(500)
+      expect(media.headers.get('x-watahub-outcome')).toBeNull()
+    })
+
+    it('flags a proxied send that times out as an unknown outcome in the body', async () => {
+      vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(
+        new DOMException('The operation was aborted due to timeout', 'TimeoutError')
+      )
+      const res = await app.request('/v24.0/123/messages', authed(postJson({ a: 1 })))
+      expect(res.status).toBe(504)
+      expect(await json(res)).toMatchObject({ error: { category: 'unknown_outcome', retryable: false } })
     })
 
     it('resolves token from X-Meta-Access-Token when proxying', async () => {
