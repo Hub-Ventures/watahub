@@ -10,6 +10,8 @@ dist/
 .env
 .env.local
 .env.*.local
+# Wrangler local secrets (wrangler dev)
+.dev.vars*
 
 # Logs
 npm-debug.log*
@@ -24,3 +26,6 @@ Thumbs.db
 # Local security audit reports
 .gstack/
 coverage/
+
+# Claude Code local state and worktrees (copies of the repo)
+.claude/

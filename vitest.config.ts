@@ -1,7 +1,9 @@
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
+    // .claude/ holds Claude Code worktrees: full copies of the repo whose tests must not run here
+    exclude: [...configDefaults.exclude, '.claude/**', '.dev.vars*'],
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
