@@ -313,7 +313,8 @@ export function buildMetaMessageBody(payload: SendMessagePayload): MetaOutboundM
   const body: MetaOutboundMessageBody = {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
-    to: payload.to.replace(/^\+/, '').trim(),
+    // Trim first: a leading space would otherwise keep the + in place
+    to: payload.to.trim().replace(/^\+/, ''),
     ...(payload.replyToMessageId ? { context: { message_id: payload.replyToMessageId } } : {}),
     type: payload.kind,
   }
