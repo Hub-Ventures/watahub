@@ -94,6 +94,75 @@ describe('Media Routes: GET /v1/media/:mediaId and POST /v1/media', () => {
     })
   })
 
+  describe('GET /v1/media/:mediaId/content', () => {
+    const lookup = () => jsonResponse({ url: 'https://lookaside.fbsbx.com/media/test.jpg' })
+
+    it('downloads the file from the CDN with the token and streams it back, without a redirect', async () => {
+      const spy = mockFetch(
+        lookup(),
+        new Response('JPEG-BYTES', {
+          status: 200,
+          headers: {
+            'content-type': 'image/jpeg',
+            'content-disposition': 'inline; filename="a.jpg"',
+            'set-cookie': 'x=1',
+          },
+        })
+      )
+      const res = await app.request('/v1/media/123456789/content', { headers: auth })
+
+      expect(res.status).toBe(200)
+      expect(await res.text()).toBe('JPEG-BYTES')
+      expect(res.headers.get('content-type')).toBe('image/jpeg')
+      expect(res.headers.get('content-disposition')).toBe('inline; filename="a.jpg"')
+      expect(res.headers.get('set-cookie')).toBeNull()
+      expect(res.headers.get('location')).toBeNull()
+
+      const [cdnUrl, cdnInit] = spy.mock.calls[1] as [string, RequestInit]
+      expect(cdnUrl).toBe('https://lookaside.fbsbx.com/media/test.jpg')
+      expect(new Headers(cdnInit.headers).get('authorization')).toBe('Bearer test-meta-token')
+    })
+
+    it('uses the X-Meta-Access-Token header for the download when given', async () => {
+      const spy = mockFetch(lookup(), new Response('B', { status: 200 }))
+      await app.request('/v1/media/123456789/content', { headers: { ...auth, 'X-Meta-Access-Token': 'OVERRIDE' } })
+      expect(new Headers((spy.mock.calls[1] as [string, RequestInit])[1].headers).get('authorization')).toBe(
+        'Bearer OVERRIDE'
+      )
+    })
+
+    it('answers 502 when the CDN rejects the download', async () => {
+      mockFetch(lookup(), new Response('nope', { status: 404 }))
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      const res = await app.request('/v1/media/123456789/content', { headers: auth })
+      expect(res.status).toBe(502)
+      expect(await res.json()).toEqual({ error: { message: 'Media download from Meta failed' } })
+    })
+
+    it('never sends the token to a non-https URL', async () => {
+      const spy = mockFetch(jsonResponse({ url: 'http://lookaside.fbsbx.com/media/test.jpg' }))
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      const res = await app.request('/v1/media/123456789/content', { headers: auth })
+      expect(res.status).toBe(502)
+      expect(spy).toHaveBeenCalledTimes(1)
+    })
+
+    it('surfaces a failed media lookup with the standard error envelope, without downloading', async () => {
+      const spy = mockFetch(
+        jsonResponse({ error: { message: 'Invalid token', code: 190, type: 'OAuthException' } }, 401)
+      )
+      const res = await app.request('/v1/media/123456789/content', { headers: auth })
+      expect(res.status).toBe(401)
+      expect(await res.json()).toMatchObject({ error: { code: 190, category: 'auth' } })
+      expect(spy).toHaveBeenCalledTimes(1)
+    })
+
+    it('rejects a non-numeric mediaId with 422', async () => {
+      const res = await app.request('/v1/media/abc/content', { headers: auth })
+      expect(res.status).toBe(422)
+    })
+  })
+
   describe('POST /v1/media and POST /v1/media/:phoneNumberId', () => {
     it('requires API key', async () => {
       const res = await app.request('/v1/media/123456', { method: 'POST' })

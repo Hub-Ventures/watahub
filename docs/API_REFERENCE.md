@@ -256,7 +256,7 @@ X-Meta-Access-Token: <optional-override-token>
 Resolves a Meta WhatsApp media ID to a temporary downloadable CDN URL.
 
 #### Query Parameters
-- `redirect`: (`boolean`, default: `false`). When `true`, returns a `302 Found` redirecting directly to the CDN asset.
+- `redirect`: (`boolean`, default: `false`). When `true`, returns a `302 Found` redirecting directly to the CDN asset. Meta's CDN only answers requests that carry the access token, so a client that follows the redirect without it gets `401`. To download the file, use `GET /v1/media/:mediaId/content`.
 - `phone_number_id`: (`string`, optional). Used to look up the phone's access token if `META_SYSTEM_USER_TOKEN` is unset.
 
 #### Response (`200 OK`)
@@ -266,6 +266,17 @@ Resolves a Meta WhatsApp media ID to a temporary downloadable CDN URL.
   "url": "https://lookaside.fbsbx.com/whatsapp_business/attachments/?mid=..."
 }
 ```
+
+---
+
+### `GET /v1/media/:mediaId/content`
+Downloads the media file through the gateway. Watahub resolves the CDN URL, fetches it from Meta with the access token, and streams the bytes back with Meta's `Content-Type` (and `Content-Disposition`, if Meta sends one). The caller never needs the Meta token.
+
+#### Responses
+- `200 OK`: the file bytes.
+- `422`: `mediaId` is not a numeric Graph ID.
+- `502`: Meta's CDN answered with an error, or returned a non-`https` URL.
+- Errors from the media lookup use the standard error envelope.
 
 ---
 
