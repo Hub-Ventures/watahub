@@ -2,13 +2,64 @@ import type { Context } from 'hono'
 import { Hono } from 'hono'
 import { getConfig } from '../config.js'
 import type { GatewayDeps } from '../deps.js'
+import { resolveMetaAccessToken } from '../http/auth.js'
 import { validationError } from '../http/body.js'
 import { errorResponse } from '../http/errors.js'
 import { metaClientFor } from '../http/meta.js'
 import { isGraphId } from '../schemas/common.js'
 
+// Upper bound for one media download from Meta's CDN; large videos can take a while
+const MEDIA_DOWNLOAD_TIMEOUT_MS = 60_000
+
+// Only these headers describe the bytes; encoding and length are recomputed by the runtime
+const FORWARDED_MEDIA_HEADERS = ['content-type', 'content-disposition'] as const
+
 export function createMediaRouter(deps: GatewayDeps): Hono {
   const router = new Hono()
+
+  /**
+   * Download media bytes through the gateway
+   * GET /v1/media/:mediaId/content
+   * Meta's CDN URL only answers with the access token, so redirecting the caller to
+   * it cannot work; the gateway fetches it with the token and streams it back.
+   */
+  router.get('/v1/media/:mediaId/content', async (c) => {
+    const mediaId = c.req.param('mediaId')
+    if (!isGraphId(mediaId)) {
+      return validationError(c, { mediaId: ['Must be a numeric Meta Graph ID'] })
+    }
+
+    const meta = metaClientFor(c, deps)
+    if (!meta.ok) return meta.response
+    const accessToken = resolveMetaAccessToken(c) ?? ''
+
+    try {
+      const url = await meta.value.getMediaUrl(mediaId)
+      // The token only ever goes to an https URL that Meta itself returned
+      if (!url.startsWith('https://')) {
+        deps.logger.error(`[watahub] Meta returned a non-https URL for media ${mediaId}; not downloading`)
+        return c.json({ error: { message: 'Meta returned an unexpected media URL' } }, 502)
+      }
+
+      const res = await deps.fetch(url, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        signal: AbortSignal.timeout(MEDIA_DOWNLOAD_TIMEOUT_MS),
+      })
+      if (!res.ok) {
+        deps.logger.error(`[watahub] Media download for ${mediaId} failed with status ${res.status}`)
+        return c.json({ error: { message: 'Media download from Meta failed' } }, 502)
+      }
+
+      const headers = new Headers()
+      for (const name of FORWARDED_MEDIA_HEADERS) {
+        const value = res.headers.get(name)
+        if (value) headers.set(name, value)
+      }
+      return new Response(res.body, { status: 200, headers })
+    } catch (err: unknown) {
+      return errorResponse(c, err, deps.logger)
+    }
+  })
 
   /**
    * Resolve media ID to temporary CDN download URL
