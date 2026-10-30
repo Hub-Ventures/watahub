@@ -7,6 +7,7 @@ import { isRecord } from '../utils/guards.js'
 import type {
   MetaInboundContact,
   MetaInboundMessage,
+  MetaWebhookContact,
   MetaInboundOrder,
   MetaInboundReferral,
   MetaMessageStatus,
@@ -62,7 +63,7 @@ export function normalizeMetaWebhook(payload: MetaWebhookPayload, now: Clock = s
 function normalizeChangeValue(value: MetaWebhookValue, now: Clock): WatahubNormalizedEvent[] {
   const toMillis = (unixSeconds: string) => unixSecondsToMillis(unixSeconds, now)
   const metadata = value.metadata || EMPTY_METADATA
-  const senderNames = indexSenderNames(value.contacts)
+  const contacts = indexContacts(value.contacts)
   const events: WatahubNormalizedEvent[] = []
 
   if (Array.isArray(value.messages)) {
@@ -73,7 +74,7 @@ function normalizeChangeValue(value: MetaWebhookValue, now: Clock): WatahubNorma
         phoneNumberId: metadata.phone_number_id,
         displayPhoneNumber: metadata.display_phone_number,
         type: 'message',
-        message: normalizeMessage(msg, toMillis, senderNames.get(msg.from)),
+        message: normalizeMessage(msg, toMillis, senderIdentity(msg, contacts)),
       })
     }
   }
@@ -87,8 +88,10 @@ function normalizeChangeValue(value: MetaWebhookValue, now: Clock): WatahubNorma
         displayPhoneNumber: metadata.display_phone_number,
         type: 'echo',
         message: {
-          ...normalizeMessage(msg, toMillis, senderNames.get(msg.from)),
+          ...normalizeMessage(msg, toMillis, senderIdentity(msg, contacts)),
           ...(msg.to ? { recipient: msg.to } : {}),
+          ...(msg.to_user_id ? { recipientUserId: msg.to_user_id } : {}),
+          ...(msg.to_parent_user_id ? { recipientParentUserId: msg.to_parent_user_id } : {}),
           isEcho: true,
         },
       })
@@ -118,23 +121,52 @@ function unixSecondsToMillis(unixSeconds: string, now: Clock): number {
   return parseInt(unixSeconds, 10) * 1000 || now()
 }
 
-function indexSenderNames(contacts: MetaWebhookValue['contacts']): Map<string, string> {
-  const names = new Map<string, string>()
-  if (!Array.isArray(contacts)) return names
+/** Contacts of this value, by every ID Meta may use for a user: phone, BSUID and parent BSUID */
+function indexContacts(contacts: MetaWebhookValue['contacts']): Map<string, MetaWebhookContact> {
+  const index = new Map<string, MetaWebhookContact>()
+  if (!Array.isArray(contacts)) return index
 
   for (const contact of contacts) {
-    if (contact.wa_id && contact.profile?.name) {
-      names.set(contact.wa_id, contact.profile.name)
+    for (const id of [contact.wa_id, contact.user_id, contact.parent_user_id]) {
+      if (id) index.set(id, contact)
     }
   }
-  return names
+  return index
+}
+
+/**
+ * Who sent a message. `from` is only ever a phone number (Meta's `from`, or the
+ * contact's `wa_id`) and stays absent when a user with a WhatsApp username hides it;
+ * the business-scoped user IDs (BSUID) go in their own fields, as Yampi keeps them.
+ */
+interface SenderIdentity {
+  from?: string
+  fromUserId?: string
+  fromParentUserId?: string
+  username?: string
+  senderName?: string
+}
+
+function senderIdentity(msg: MetaInboundMessage, contacts: Map<string, MetaWebhookContact>): SenderIdentity {
+  const contact = [msg.from, msg.from_user_id, msg.from_parent_user_id]
+    .map((id) => (id ? contacts.get(id) : undefined))
+    .find((match) => match !== undefined)
+  return {
+    from: msg.from || contact?.wa_id,
+    fromUserId: msg.from_user_id || contact?.user_id,
+    fromParentUserId: msg.from_parent_user_id || contact?.parent_user_id,
+    username: contact?.profile?.username,
+    senderName: contact?.profile?.name || undefined,
+  }
 }
 
 function normalizeStatus(status: MetaMessageStatus, toMillis: ToMillis): NormalizedStatus {
   const firstError = status.errors?.[0]
   return {
     id: status.id,
-    recipient: status.recipient_id,
+    ...(status.recipient_id ? { recipient: status.recipient_id } : {}),
+    ...(status.recipient_user_id ? { recipientUserId: status.recipient_user_id } : {}),
+    ...(status.recipient_parent_user_id ? { recipientParentUserId: status.recipient_parent_user_id } : {}),
     status: status.status,
     timestamp: toMillis(status.timestamp),
     category: status.pricing?.category,
@@ -143,12 +175,15 @@ function normalizeStatus(status: MetaMessageStatus, toMillis: ToMillis): Normali
   }
 }
 
-function normalizeMessage(msg: MetaInboundMessage, toMillis: ToMillis, senderName?: string): NormalizedMessage {
+function normalizeMessage(msg: MetaInboundMessage, toMillis: ToMillis, sender: SenderIdentity): NormalizedMessage {
   const referral = normalizeReferral(msg.referral)
   const base: NormalizedMessage = {
     id: msg.id,
-    from: msg.from,
-    senderName,
+    ...(sender.from ? { from: sender.from } : {}),
+    ...(sender.fromUserId ? { fromUserId: sender.fromUserId } : {}),
+    ...(sender.fromParentUserId ? { fromParentUserId: sender.fromParentUserId } : {}),
+    ...(sender.username ? { username: sender.username } : {}),
+    senderName: sender.senderName,
     timestamp: toMillis(msg.timestamp),
     kind: msg.type,
     replyToMessageId: msg.context?.id,

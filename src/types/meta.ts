@@ -21,16 +21,28 @@ export interface MetaWebhookValue {
     display_phone_number: string
     phone_number_id: string
   }
-  contacts?: Array<{
-    profile: {
-      name: string
-    }
-    wa_id: string
-  }>
+  contacts?: MetaWebhookContact[]
   messages?: MetaInboundMessage[]
   message_echoes?: MetaInboundMessage[]
   statuses?: MetaMessageStatus[]
   errors?: MetaWebhookError[]
+}
+
+/**
+ * Sender (or, in echoes, recipient) of the changes in this value. Since April 2026
+ * `wa_id` can be missing when the user has a WhatsApp username and does not share
+ * their phone; `user_id` (their business-scoped user ID, BSUID) is always sent.
+ * https://developers.facebook.com/documentation/business-messaging/whatsapp/business-scoped-user-ids/
+ */
+export interface MetaWebhookContact {
+  profile: {
+    name: string
+    username?: string
+  }
+  wa_id?: string
+  user_id?: string
+  /** Only for businesses enrolled in parent BSUIDs */
+  parent_user_id?: string
 }
 
 export interface MetaInboundLocation {
@@ -119,8 +131,16 @@ export interface MetaInboundReferral {
 }
 
 export interface MetaInboundMessage {
-  from: string
+  /** Sender's phone number; missing when a user with a username does not share it */
+  from?: string
+  /** Sender's BSUID */
+  from_user_id?: string
+  from_parent_user_id?: string
+  /** Echoes: the customer's phone number, which can also be missing */
   to?: string
+  /** Echoes: the customer's BSUID */
+  to_user_id?: string
+  to_parent_user_id?: string
   id: string
   timestamp: string
   type:
@@ -214,7 +234,10 @@ export interface MetaMessageStatus {
   id: string
   status: 'sent' | 'delivered' | 'read' | 'failed'
   timestamp: string
-  recipient_id: string
+  /** Recipient's phone number; missing when the message went to a BSUID without a shared phone */
+  recipient_id?: string
+  recipient_user_id?: string
+  recipient_parent_user_id?: string
   conversation?: {
     id: string
     expiration_timestamp?: string

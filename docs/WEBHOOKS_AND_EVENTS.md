@@ -159,6 +159,25 @@ export interface SubscriberPayload {
 }
 ```
 
+**Users with a WhatsApp username (BSUID).** Since April 2026, Meta identifies every user with a business-scoped user ID (BSUID, e.g. `CO.13491208655302741918`) and may omit their phone number when they have a username and do not share it ([Meta's guide](https://developers.facebook.com/documentation/business-messaging/whatsapp/business-scoped-user-ids/)). Watahub keeps `from` for the phone number only, so `from` can be absent; key your users on `fromUserId` instead:
+
+```json
+"message": {
+  "id": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg...",
+  "fromUserId": "CO.13491208655302741918",
+  "username": "jane.doe",
+  "senderName": "Jane Doe",
+  "timestamp": 1729620000000,
+  "kind": "text",
+  "text": "Hello, I need assistance with my account."
+}
+```
+
+- `from`: the sender's phone number, when Meta shares it. Never a BSUID.
+- `fromUserId`: the sender's BSUID. `fromParentUserId`: their parent BSUID, only for businesses enrolled in parent BSUIDs.
+- `username`: the sender's WhatsApp username, when they have one.
+- Echoes (`type: "echo"`) carry the customer in `recipient` (phone, when shared), `recipientUserId` and `recipientParentUserId`. Statuses carry `recipient` (phone, when shared), `recipientUserId` and `recipientParentUserId`.
+
 ---
 
 ### 4.2 Inbound Image / Media Message
