@@ -203,7 +203,8 @@ export const InteractiveOrderDetailsSchema = z.object({
 /** POST /v1/messages body. Limits follow Meta's documented maximums. */
 export const SendMessageSchema = z
   .object({
-    to: z.string().min(1, 'Recipient phone number is required').max(64),
+    // A phone number, or a business-scoped user ID (BSUID); a parent BSUID is up to 135 characters
+    to: z.string().min(1, 'Recipient phone number or BSUID is required').max(135),
     phoneNumberId: GraphIdSchema.optional(),
     kind: z.enum(OUTBOUND_MESSAGE_KINDS),
     text: z

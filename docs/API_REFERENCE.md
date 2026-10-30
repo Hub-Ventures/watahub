@@ -139,7 +139,7 @@ X-Meta-Access-Token: <optional-override-token>
 #### Request Schema (`SendMessagePayload`)
 | Field | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `to` | `string` | Yes | Recipient phone number in E.164 format (e.g. `"+15551234567"`) |
+| `to` | `string` | Yes | Recipient: a phone number in E.164 format (e.g. `"+15551234567"`), or a business-scoped user ID (BSUID, e.g. `"US.13491208655302741918"` or `"US.ENT.11815799212886844830"`) for users who hide their number. A BSUID is sent to Meta as `recipient` and passed through unchanged. Authentication templates need a phone number: Meta rejects them for a BSUID with error 131062 |
 | `phoneNumberId` | `string` | Optional | Sender phone ID (if omitted, uses header or `META_DEFAULT_PHONE_NUMBER_ID`) |
 | `tenantId` | `string` | Optional | Tenant identifier for multi-tenant tracing |
 | `kind` | `string` | Yes | One of: `text`, `template`, `image`, `audio`, `video`, `document`, `sticker`, `location`, `contacts`, `reaction`, `interactive` |
