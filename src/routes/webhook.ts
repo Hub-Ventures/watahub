@@ -17,6 +17,14 @@ export function createWebhookRouter(deps: GatewayDeps): Hono {
   const router = new Hono()
 
   /**
+   * Deliveries in flight in this app, by delivery ID, resolving to whether the
+   * subscriber confirmed it. The replay store only remembers an ID after delivery,
+   * so two concurrent copies of one body would both pass `has` and both deliver.
+   * Per app (D3): one router per createApp, and per process / Worker isolate.
+   */
+  const inFlight = new Map<string, Promise<boolean>>()
+
+  /**
    * Meta Webhook Verification Handshake
    * GET /webhook
    */
@@ -90,79 +98,123 @@ export function createWebhookRouter(deps: GatewayDeps): Hono {
       return c.json({ status: 'ignored', reason: 'duplicate', eventsCount: 0 }, 200)
     }
 
-    const events = normalizeMetaWebhook(payload, deps.now)
-    const hasChanges = hasWebhookChanges(payload)
-
-    // Payloads with no changes (e.g. empty heartbeats) are acknowledged without forwarding
-    if (events.length === 0 && !hasChanges) {
-      await deps.replayStore.remember(deliveryId, now, replayTtl)
-      return c.json({ status: 'received', eventsCount: 0 }, 200)
-    }
-
-    // Fail closed: if subscriber destination or secret are missing, respond 503 so Meta retries
-    const url = config.subscriberWebhookUrl
-    const secret = config.subscriberWebhookSecret
-
-    if (!url) {
-      deps.logger.error(
-        `[watahub] SUBSCRIBER_WEBHOOK_URL is not set; rejecting delivery ${deliveryId} with 503 so Meta retries`
-      )
-      return c.json({ error: 'Gateway misconfigured: subscriber webhook URL is not set' }, 503)
-    }
-    if (!secret) {
-      deps.logger.error(
-        `[watahub] SUBSCRIBER_WEBHOOK_SECRET is not set; rejecting delivery ${deliveryId} with 503 so Meta retries`
-      )
-      return c.json({ error: 'Gateway misconfigured: subscriber signing secret is not set' }, 503)
-    }
-
-    const forward: SubscriberPayload = {
-      timestamp: now,
-      events,
-      raw: payload,
-    }
-
-    const deliveryRequest = { url, body: JSON.stringify(forward), secret, deliveryId }
+    // Single flight: a copy that arrives while the same body is being delivered does
+    // not deliver again. In sync mode it waits for the first copy and answers 503 if
+    // that delivery failed, so Meta retries; in async mode the first copy already
+    // answered 200, so it does too.
     const deliveryMode = config.webhookDeliveryMode || 'sync'
+    const pending = inFlight.get(deliveryId)
+    if (pending) {
+      if (deliveryMode === 'sync' && !(await pending)) {
+        return c.json({ error: 'Subscriber delivery failed', deliveryId }, 503)
+      }
+      return c.json({ status: 'ignored', reason: 'duplicate', eventsCount: 0 }, 200)
+    }
+    // Registered in the same tick as the lookup above, so no other copy can slip in between
+    let settle!: (delivered: boolean) => void
+    inFlight.set(
+      deliveryId,
+      new Promise<boolean>((resolve) => {
+        settle = resolve
+      })
+    )
+    const finish = (delivered: boolean): void => {
+      inFlight.delete(deliveryId)
+      settle(delivered)
+    }
 
-    if (deliveryMode === 'async') {
-      const asyncDelivery = deliverToSubscriber(deliveryRequest, DEFAULT_DELIVERY_POLICY, {
+    try {
+      const { response, delivered } = await forwardOnce()
+      // Async mode settles when the background delivery ends, sync mode right away
+      void Promise.resolve(delivered).then(finish)
+      return response
+    } catch (err) {
+      finish(false)
+      throw err
+    }
+
+    /** Forwards the body once; `delivered` is whether the subscriber confirmed it */
+    async function forwardOnce(): Promise<{ response: Response; delivered: boolean | Promise<boolean> }> {
+      const events = normalizeMetaWebhook(payload, deps.now)
+      const hasChanges = hasWebhookChanges(payload)
+
+      // Payloads with no changes (e.g. empty heartbeats) are acknowledged without forwarding
+      if (events.length === 0 && !hasChanges) {
+        await deps.replayStore.remember(deliveryId, now, replayTtl)
+        return { response: c.json({ status: 'received', eventsCount: 0 }, 200), delivered: true }
+      }
+
+      // Fail closed: if subscriber destination or secret are missing, respond 503 so Meta retries
+      const url = config.subscriberWebhookUrl
+      const secret = config.subscriberWebhookSecret
+
+      if (!url) {
+        deps.logger.error(
+          `[watahub] SUBSCRIBER_WEBHOOK_URL is not set; rejecting delivery ${deliveryId} with 503 so Meta retries`
+        )
+        const response = c.json({ error: 'Gateway misconfigured: subscriber webhook URL is not set' }, 503)
+        return { response, delivered: false }
+      }
+      if (!secret) {
+        deps.logger.error(
+          `[watahub] SUBSCRIBER_WEBHOOK_SECRET is not set; rejecting delivery ${deliveryId} with 503 so Meta retries`
+        )
+        const response = c.json({ error: 'Gateway misconfigured: subscriber signing secret is not set' }, 503)
+        return { response, delivered: false }
+      }
+
+      const forward: SubscriberPayload = {
+        timestamp: now,
+        events,
+        raw: payload,
+      }
+
+      const deliveryRequest = { url, body: JSON.stringify(forward), secret, deliveryId }
+
+      if (deliveryMode === 'async') {
+        const delivered = deliverToSubscriber(deliveryRequest, DEFAULT_DELIVERY_POLICY, {
+          fetch: deps.fetch,
+          logger: deps.logger,
+        })
+          .then(async (result) => {
+            if (result.delivered) await deps.replayStore.remember(deliveryId, deps.now(), replayTtl)
+            return result.delivered
+          })
+          .catch((err: unknown) => {
+            deps.logger.error(`[watahub] Async dispatch error: ${errorName(err)}`)
+            return false
+          })
+
+        runInBackground(c, delivered)
+        return { response: c.json({ status: 'received', eventsCount: events.length }, 200), delivered }
+      }
+
+      // Default: Guaranteed Synchronous Delivery
+      const result = await deliverToSubscriber(deliveryRequest, DEFAULT_DELIVERY_POLICY, {
         fetch: deps.fetch,
         logger: deps.logger,
       })
-        .then(async (result) => {
-          if (result.delivered) await deps.replayStore.remember(deliveryId, deps.now(), replayTtl)
-        })
-        .catch((err: unknown) => deps.logger.error(`[watahub] Async dispatch error: ${errorName(err)}`))
 
-      runInBackground(c, asyncDelivery)
-      return c.json({ status: 'received', eventsCount: events.length }, 200)
+      if (!result.delivered) {
+        deps.logger.error(
+          `[watahub] Delivery to subscriber failed for ${deliveryId} after ${result.attempts} attempts; responding 503 so Meta retries`
+        )
+        const response = c.json(
+          {
+            error: 'Subscriber delivery failed',
+            deliveryId,
+            attempts: result.attempts,
+            subscriberStatus: result.status,
+          },
+          503
+        )
+        return { response, delivered: false }
+      }
+
+      // Only mark as seen once confirmed delivered to subscriber
+      await deps.replayStore.remember(deliveryId, deps.now(), replayTtl)
+      return { response: c.json({ status: 'received', eventsCount: events.length }, 200), delivered: true }
     }
-
-    // Default: Guaranteed Synchronous Delivery
-    const result = await deliverToSubscriber(deliveryRequest, DEFAULT_DELIVERY_POLICY, {
-      fetch: deps.fetch,
-      logger: deps.logger,
-    })
-
-    if (!result.delivered) {
-      deps.logger.error(
-        `[watahub] Delivery to subscriber failed for ${deliveryId} after ${result.attempts} attempts; responding 503 so Meta retries`
-      )
-      return c.json(
-        {
-          error: 'Subscriber delivery failed',
-          deliveryId,
-          attempts: result.attempts,
-          subscriberStatus: result.status,
-        },
-        503
-      )
-    }
-
-    // Only mark as seen once confirmed delivered to subscriber
-    await deps.replayStore.remember(deliveryId, deps.now(), replayTtl)
-    return c.json({ status: 'received', eventsCount: events.length }, 200)
   })
 
   return router
