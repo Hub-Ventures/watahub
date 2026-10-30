@@ -361,14 +361,17 @@ function toInteractiveReply(interactive: MetaInboundMessage['interactive']): Nor
           responseJson = parsed
         }
       } catch {
-        // malformed json string remains undefined
+        // flagged below: the normalizer is pure and has no logger
       }
     }
+    // A Flow answer the gateway could not read must not look like an empty one
+    const responseJsonError = Boolean(nfm?.response_json) && !responseJson
     return {
       type: 'nfm_reply',
       name: nfm?.name || '',
       body: nfm?.body || '',
       ...(responseJson ? { responseJson } : {}),
+      ...(responseJsonError ? { responseJsonError: true as const } : {}),
     }
   }
   return undefined
