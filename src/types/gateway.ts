@@ -304,8 +304,19 @@ export interface NormalizedReferral {
 
 export interface NormalizedMessage {
   id: string
-  from: string
+  /** Sender's phone number, only ever a phone: absent when a user with a WhatsApp username hides it */
+  from?: string
+  /** Sender's business-scoped user ID (BSUID), e.g. CO.13491208655302741918 */
+  fromUserId?: string
+  /** Sender's parent BSUID, only for businesses enrolled in them */
+  fromParentUserId?: string
+  /** Sender's WhatsApp username, when they have one */
+  username?: string
+  /** Echoes: the customer's phone number */
   recipient?: string
+  /** Echoes: the customer's BSUID */
+  recipientUserId?: string
+  recipientParentUserId?: string
   senderName?: string
   timestamp: number
   kind: string
@@ -336,7 +347,10 @@ export interface NormalizedMessage {
 
 export interface NormalizedStatus {
   id: string
-  recipient: string
+  /** Recipient's phone number; absent when the message went to a BSUID without a shared phone */
+  recipient?: string
+  recipientUserId?: string
+  recipientParentUserId?: string
   status: 'sent' | 'delivered' | 'read' | 'failed'
   timestamp: number
   category?: string
