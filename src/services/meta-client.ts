@@ -50,7 +50,6 @@ export const DEFAULT_RETRY_POLICY: RetryPolicy = {
 
 /** Default fields subscribed when an app is attached to a WABA. */
 export const DEFAULT_WABA_SUBSCRIBED_FIELDS = ['messages'] as const
-export const WABA_SUBSCRIBED_FIELDS = DEFAULT_WABA_SUBSCRIBED_FIELDS
 
 type GraphBody = Record<string, unknown>
 
