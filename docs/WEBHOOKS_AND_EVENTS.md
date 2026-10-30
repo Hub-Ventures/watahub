@@ -14,7 +14,7 @@ Meta Cloud API sends webhooks with deeply nested, polymorphic payloads. Watahub 
 4. **Heartbeat Handling:** Empty payloads without changes (e.g. Meta heartbeats) are acknowledged immediately.
 5. **Fail-Closed Configuration:** If `SUBSCRIBER_WEBHOOK_URL` or `SUBSCRIBER_WEBHOOK_SECRET` are missing, Watahub returns `503 Service Unavailable` so Meta retries when the configuration is supplied.
 6. **Delivery Execution (`WEBHOOK_DELIVERY_MODE`):**
-   - **Guaranteed Delivery (`sync`, Default):** Watahub delivers to your subscriber before acknowledging Meta, with a single attempt of up to 3 seconds and no retries of its own, because Meta is waiting on that request. If your backend is unreachable, slower than 3 seconds or returns 5xx, Watahub responds `503 Service Unavailable` to Meta without marking the delivery as seen. Meta automatically retries with exponential backoff for up to 7 days, preventing any event loss.
+   - **Guaranteed Delivery (`sync`, Default):** Watahub delivers to your subscriber before acknowledging Meta, with a single attempt of up to 3 seconds and no retries of its own, because Meta is waiting on that request. If your backend is unreachable, slower than 3 seconds, or returns 5xx, 408, 425 or 429, Watahub responds `503 Service Unavailable` to Meta without marking the delivery as seen. If your backend answers any other 4xx, it has refused that event for good: Watahub logs the rejection with the delivery ID, marks the delivery as seen and answers `200` so Meta stops retrying, and from then on the event exists only in the gateway log. Meta automatically retries with exponential backoff for up to 7 days, preventing any event loss.
    - **Asynchronous Delivery (`async`):** For ultra-low latency requirements, Watahub acknowledges Meta immediately with `200 OK` and forwards to your backend in the background using `runInBackground`.
 7. **Subscriber Idempotency & Signing:** Every forward carries `X-Watahub-Signature: sha256=...` and a stable `X-Watahub-Delivery-Id` (also mirrored in `Idempotency-Key`).
    - **Deduplicate on your side.** Watahub drops duplicates only within one process (Node) or one Worker isolate. Copies of a body that arrive while it is still being delivered are delivered once there, and the extra copies answer `200` (`ignored`/`duplicate`), or `503` if that delivery failed. Another process or isolate can still deliver the same body, so your subscriber must deduplicate on `X-Watahub-Delivery-Id`.
@@ -30,7 +30,8 @@ flowchart TD
     
     Deliver -->|sync (default)| SyncSub[Forward to Subscriber]
     SyncSub -->|Success 200| Ack200["200 OK to Meta + Remember Replay"]
-    SyncSub -->|Failure / 5xx| Retry503["503 Service Unavailable (Meta Retries)"]
+    SyncSub -->|No answer in 3 s / 5xx / 408 / 425 / 429| Retry503["503 Service Unavailable (Meta Retries)"]
+    SyncSub -->|Other 4xx| AckLog["200 OK to Meta + Remember Replay (rejection only in the log)"]
     
     Deliver -->|async| AsyncAck["200 OK to Meta"]
     Deliver -->|async| BgTask[runInBackground & drain on SIGTERM]

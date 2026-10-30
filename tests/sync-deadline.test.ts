@@ -95,6 +95,36 @@ describe('synchronous delivery deadline', () => {
     expect(elapsed).toBeLessThan(4_500)
   }, 10_000)
 
+  it.each([400, 403, 404, 422])(
+    'acknowledges a final %i from the subscriber with 200, logs it and marks the body seen',
+    async (status) => {
+      const errors: string[] = []
+      const fetchSpy = vi.fn().mockResolvedValue(new Response('no', { status }))
+      const app = createApp({
+        fetch: fetchSpy as unknown as typeof fetch,
+        replayStore: new DeliveryIdCache(),
+        logger: { info: () => undefined, error: (message) => errors.push(message) },
+      })
+      const raw = body(`rejected-${status}`)
+
+      const res = await post(app, raw)
+      expect(res.status).toBe(200)
+      expect(await res.json()).toMatchObject({ status: 'rejected', subscriberStatus: status })
+      expect(errors.some((line) => line.includes('rejected delivery') && line.includes(`HTTP ${status}`))).toBe(true)
+
+      // Marked seen: Meta's redelivery is not forwarded again
+      expect(await (await post(app, raw)).json()).toMatchObject({ status: 'ignored', reason: 'duplicate' })
+      expect(fetchSpy).toHaveBeenCalledTimes(1)
+    }
+  )
+
+  it.each([408, 425, 429])('keeps answering 503 to a retryable %i so Meta retries', async (status) => {
+    const fetchSpy = vi.fn().mockResolvedValue(new Response('later', { status }))
+    const app = createApp({ fetch: fetchSpy as unknown as typeof fetch, replayStore: new DeliveryIdCache() })
+    const res = await post(app, body(`retryable-${status}`))
+    expect(res.status).toBe(503)
+  })
+
   it('does not retry a 5xx inside the request: one attempt, then 503 so Meta retries', async () => {
     const fetchSpy = vi.fn().mockResolvedValue(new Response('down', { status: 500 }))
     const app = createApp({ fetch: fetchSpy as unknown as typeof fetch, replayStore: new DeliveryIdCache() })

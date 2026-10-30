@@ -103,8 +103,8 @@ describe('one delivery per body in flight', () => {
   })
 
   it('answers 503 to both copies when the first delivery fails, and leaves the body unmarked', async () => {
-    // 400 is final for the subscriber client: one attempt, no backoff wait
-    const { fetchSpy, release } = slowSubscriber(400)
+    // Synchronous delivery makes a single attempt, so a 500 fails with no backoff wait
+    const { fetchSpy, release } = slowSubscriber(500)
     const app = gateway(fetchSpy)
     const raw = body('falla')
 

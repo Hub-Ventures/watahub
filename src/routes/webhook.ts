@@ -6,7 +6,12 @@ import { misconfiguredResponse } from '../http/env-guard.js'
 import { clientAddress, tooManyRequests } from '../http/rate-limit.js'
 import { errorName } from '../logger.js'
 import { sha256Hex, timingSafeEqual, verifyMetaSignature } from '../services/crypto.js'
-import { deliverToSubscriber, DEFAULT_DELIVERY_POLICY, SYNC_DELIVERY_POLICY } from '../services/delivery.js'
+import {
+  deliverToSubscriber,
+  DEFAULT_DELIVERY_POLICY,
+  isFinalRejection,
+  SYNC_DELIVERY_POLICY,
+} from '../services/delivery.js'
 import { hasWebhookChanges, normalizeMetaWebhook } from '../services/normalizer.js'
 import { DEFAULT_WEBHOOK_MAX_AGE_SECONDS, isStale, replayTtlSeconds } from '../services/replay.js'
 import type { SubscriberPayload } from '../types/gateway.js'
@@ -194,6 +199,21 @@ export function createWebhookRouter(deps: GatewayDeps): Hono {
         fetch: deps.fetch,
         logger: deps.logger,
       })
+
+      // A final 4xx is the subscriber refusing this event for good: Meta retrying it for
+      // 7 days cannot change that, so acknowledge it and keep the rejection in the log
+      if (isFinalRejection(result.status)) {
+        deps.logger.error(
+          `[watahub] Subscriber rejected delivery ${deliveryId} with HTTP ${result.status}; answering 200 so Meta stops retrying, the event is only in this log`
+        )
+        await deps.replayStore.remember(deliveryId, deps.now(), replayTtl)
+        const response = c.json(
+          { status: 'rejected', reason: 'subscriber_rejected', subscriberStatus: result.status, deliveryId },
+          200
+        )
+        // Settled as seen: concurrent copies answer duplicate instead of 503
+        return { response, delivered: true }
+      }
 
       if (!result.delivered) {
         deps.logger.error(
