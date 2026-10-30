@@ -1008,6 +1008,18 @@ describe('HTTP route contracts', () => {
       expect((await app.request('/v24.0/789', authed())).status).toBe(500)
     })
 
+    it('sends proxied calls to the META_API_VERSION that /v1 uses, whatever the path says', async () => {
+      process.env.META_API_VERSION = 'v25.0'
+      const spy = mockFetch(jsonResponse({ messages: [{ id: 'm' }] }), jsonResponse({ messages: [{ id: 'm2' }] }))
+      await app.request('/v24.0/123/messages', authed(postJson({ a: 1 })))
+      await app.request(
+        '/v1/messages',
+        authed(postJson({ to: '1', phoneNumberId: '123', kind: 'text', text: { body: 'x' } }))
+      )
+      expect(String(spy.mock.calls[0][0])).toBe('https://graph.facebook.com/v25.0/123/messages')
+      expect(String(spy.mock.calls[1][0])).toBe('https://graph.facebook.com/v25.0/123/messages')
+    })
+
     it("flags a Meta 5xx on a proxied send with X-Watahub-Outcome and leaves Meta's body untouched", async () => {
       const metaBody = metaError(1, 'An unknown error occurred')
       mockFetch(jsonResponse(metaBody, 500))

@@ -315,6 +315,10 @@ describe('retry delays', () => {
 })
 
 describe('buildProxyTargetUrl', () => {
+  it('uses the configured Graph version', () => {
+    expect(buildProxyTargetUrl('789', 'http://gw/v24.0/789', 'v25.0')).toBe('https://graph.facebook.com/v25.0/789')
+  })
+
   it('keeps only allowlisted query params', () => {
     expect(buildProxyTargetUrl('789', 'http://gw/v24.0/789')).toBe('https://graph.facebook.com/v24.0/789')
     expect(

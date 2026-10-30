@@ -48,6 +48,7 @@ describe('optional env vars are validated on Workers', () => {
     ['RATE_LIMIT_PER_MINUTE', 'abc', '/v1/templates/456', authed],
     ['TRUSTED_CLIENT_IP_HEADER', 'X Real IP', '/v1/templates/456', authed],
     ['META_API_VERSION', '24', '/v1/templates/456', authed],
+    ['META_API_VERSION', '24', '/v24.0/789', authed],
     ['RATE_LIMIT_PER_MINUTE', '0', '/v24.0/789', authed],
     ['TRUSTED_CLIENT_IP_HEADER', 'X Real IP', '/v24.0/789', authed],
     ['CORS_ALLOWED_ORIGINS', '*', '/health', {}],
@@ -79,7 +80,6 @@ describe('optional env vars are validated on Workers', () => {
     )
     expect(await handshake.text()).toBe('c1')
     expect((await app.request('/health', {}, bad)).status).toBe(200)
-    expect((await app.request('/v24.0/789', authed, bad)).status).toBe(200)
   })
 
   it('changes nothing when every value is valid', async () => {
