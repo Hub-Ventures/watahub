@@ -97,8 +97,10 @@ describe('one delivery per body in flight', () => {
 
     const [a, b] = await Promise.all([first, second])
     expect([a.status, b.status]).toEqual([200, 200])
-    expect(await a.json()).toMatchObject({ status: 'received' })
-    expect(await b.json()).toMatchObject({ status: 'ignored', reason: 'duplicate' })
+    // Both requests race to the gateway, so either one may be the copy that delivers
+    const outcomes = [(await a.json()) as { status: string }, (await b.json()) as { status: string }]
+    expect(outcomes.map((outcome) => outcome.status).sort()).toEqual(['ignored', 'received'])
+    expect(outcomes.find((outcome) => outcome.status === 'ignored')).toMatchObject({ reason: 'duplicate' })
     expect(fetchSpy).toHaveBeenCalledTimes(1)
   })
 
