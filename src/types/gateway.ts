@@ -264,33 +264,6 @@ export interface NormalizedOrder {
   productItems: NormalizedOrderItem[]
 }
 
-export interface PollOption {
-  id?: string
-  title?: string
-  name?: string
-}
-
-export interface InteractivePollMessage {
-  type: 'poll'
-  body?: {
-    text: string
-  }
-  action:
-    | {
-        name: string
-        options: Array<string | PollOption>
-        selectable_options_count?: number
-      }
-    | {
-        name: 'poll'
-        parameters: {
-          name: string
-          options: Array<string | PollOption>
-          selectable_options_count?: number
-        }
-      }
-}
-
 export interface NormalizedPollVote {
   pollMessageId?: string
   selectedOptionIds: string[]
