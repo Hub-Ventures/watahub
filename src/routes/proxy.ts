@@ -1,9 +1,11 @@
 import { Hono } from 'hono'
-import { DEFAULT_META_API_VERSION, META_GRAPH_BASE_URL } from '../config.js'
+import { DEFAULT_META_API_VERSION, getConfig, META_GRAPH_BASE_URL } from '../config.js'
 import type { GatewayDeps } from '../deps.js'
 import { resolveMetaAccessToken } from '../http/auth.js'
+import { misconfiguredResponse } from '../http/env-guard.js'
 import { errorResponse } from '../http/errors.js'
 import { MISSING_META_TOKEN } from '../http/meta.js'
+import { invalidEnvVars } from '../utils/env.js'
 
 // Upper bound for a single Graph call; media uploads can take a while on slow links
 const PROXY_TIMEOUT_MS = 60_000
@@ -29,15 +31,20 @@ function isMessageSend(method: string, subPath: string): boolean {
 /**
  * Graph URL for an allowlisted sub-path. Only allowlisted query params are kept:
  * Graph honors ?method=delete (verb tunneling), ?fields={...} (node expansion)
- * and ?access_token=, any of which would widen the allowlist.
+ * and ?access_token=, any of which would widen the allowlist. The Graph version is
+ * META_API_VERSION, the same one /v1 uses, whatever the /v24.0 path says.
  */
-export function buildProxyTargetUrl(subPath: string, requestUrl: string): string {
+export function buildProxyTargetUrl(
+  subPath: string,
+  requestUrl: string,
+  apiVersion: string = DEFAULT_META_API_VERSION
+): string {
   const forwardedQuery = new URLSearchParams()
   for (const [key, value] of new URL(requestUrl).searchParams) {
     if (FORWARDED_QUERY_PARAMS.has(key)) forwardedQuery.append(key, value)
   }
   const query = forwardedQuery.size > 0 ? `?${forwardedQuery.toString()}` : ''
-  return `${META_GRAPH_BASE_URL}/${DEFAULT_META_API_VERSION}/${subPath}${query}`
+  return `${META_GRAPH_BASE_URL}/${apiVersion}/${subPath}${query}`
 }
 
 /**
@@ -65,6 +72,10 @@ export function createProxyRouter(deps: GatewayDeps): Hono {
   const router = new Hono()
 
   router.all('/v24.0/*', async (c) => {
+    // Workers have no boot-time validation: a bad version answers 503 instead of reaching Graph
+    const invalidEnv = invalidEnvVars(c, ['META_API_VERSION'])
+    if (invalidEnv.length > 0) return misconfiguredResponse(c, deps.logger, invalidEnv)
+
     const subPath = c.req.path.replace(/^\/v24\.0\/?/, '')
     const accessToken = resolveMetaAccessToken(c)
     if (!accessToken) {
@@ -89,7 +100,7 @@ export function createProxyRouter(deps: GatewayDeps): Hono {
     }
 
     try {
-      const res = await deps.fetch(buildProxyTargetUrl(subPath, c.req.url), init)
+      const res = await deps.fetch(buildProxyTargetUrl(subPath, c.req.url, getConfig(c).metaApiVersion), init)
       const responseHeaders = new Headers(res.headers)
       // The runtime re-encodes the body, so upstream encoding headers would be wrong
       responseHeaders.delete('content-encoding')

@@ -400,6 +400,8 @@ Configures Meta's phone-level webhook routing to send webhooks for an individual
 ### `ALL /v24.0/*`
 Drop-in passthrough proxy that mirrors Meta's native Graph API endpoints. Enables legacy or third-party WhatsApp SDKs to point directly at Watahub without code changes.
 
+The path keeps the `/v24.0` prefix, but calls go to the Graph version in `META_API_VERSION` (default `v24.0`), the same one `/v1` uses.
+
 #### Supported Proxy Routes
 - `POST /v24.0/:phoneNumberId/messages`
 - `POST /v24.0/:phoneNumberId/media`
