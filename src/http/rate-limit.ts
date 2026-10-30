@@ -116,8 +116,6 @@ export function createRateLimitMiddleware(limiterFactory?: (limit: number) => Ra
   }
 }
 
-export const rateLimitFromEnv: MiddlewareHandler = createRateLimitMiddleware()
-
 export function resetRateLimits(): void {
   apiKeyFailures.clear()
   verifyTokenFailures.clear()
