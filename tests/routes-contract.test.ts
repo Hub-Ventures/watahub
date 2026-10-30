@@ -207,6 +207,19 @@ describe('HTTP route contracts', () => {
       expect(await json(res)).toEqual({ error: { message: 'Meta Graph API unreachable' } })
     })
 
+    it.each([
+      [' +573001234567 ', 'leading space before the +'],
+      ['+573001234567', 'plain +'],
+      ['573001234567', 'no +'],
+    ])('normalizes the recipient %j (%s) to digits only', async (to) => {
+      const spy = mockFetch(jsonResponse({ messages: [{ id: 'wamid.TO' }] }))
+      const res = await app.request('/v1/messages', authed(postJson({ ...valid, to })))
+      expect(res.status).toBe(200)
+      const sent = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string) as { to: string }
+      expect(sent.to).toBe('573001234567')
+      expect(await json(res)).toMatchObject({ recipient: '573001234567' })
+    })
+
     it('sends location message with coordinates and optional metadata', async () => {
       const spy = mockFetch(jsonResponse({ messages: [{ id: 'wamid.LOC' }] }))
       const locPayload = {
