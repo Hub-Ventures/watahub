@@ -304,6 +304,8 @@ export interface NormalizedInteractiveReply {
   name?: string
   body?: string
   responseJson?: Record<string, unknown>
+  /** nfm_reply only: Meta sent a response_json that is not a JSON object, so responseJson is missing */
+  responseJsonError?: true
 }
 
 export interface NormalizedLocation {

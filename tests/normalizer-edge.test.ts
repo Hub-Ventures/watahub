@@ -172,6 +172,18 @@ describe('normalizeMetaWebhook edge cases', () => {
       type: 'nfm_reply',
       name: 'n',
       body: 'b',
+      responseJsonError: true,
+    })
+    expect(
+      normalizeOne({
+        type: 'interactive',
+        interactive: { type: 'nfm_reply', nfm_reply: { response_json: '["not","an","object"]', body: '', name: 'n' } },
+      })?.interactiveReply
+    ).toEqual({
+      type: 'nfm_reply',
+      name: 'n',
+      body: '',
+      responseJsonError: true,
     })
     expect(
       normalizeOne({

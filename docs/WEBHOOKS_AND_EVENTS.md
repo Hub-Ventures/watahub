@@ -234,6 +234,17 @@ When a customer selects an option from a dropdown list menu:
 }
 ```
 
+**Flow answers (`nfm_reply`).** When a customer submits a WhatsApp Flow, `interactiveReply` has `"type": "nfm_reply"`, the Flow `name` and `body`, and the parsed answer in `responseJson`. If Meta's `response_json` cannot be read as a JSON object, `responseJson` is absent and `"responseJsonError": true` says so, so an unreadable answer is never mistaken for an empty one:
+
+```json
+"interactiveReply": {
+  "type": "nfm_reply",
+  "name": "flow",
+  "body": "Sent",
+  "responseJsonError": true
+}
+```
+
 ---
 
 ### 4.5 Inbound Reaction Message
