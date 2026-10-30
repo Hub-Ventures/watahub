@@ -60,6 +60,11 @@ function isRetryableStatus(status: number): boolean {
   return status === 408 || status === 425 || status === 429 || status >= 500
 }
 
+/** The subscriber answered and refused the event for good: a 4xx that retrying cannot change */
+export function isFinalRejection(status: number | undefined): boolean {
+  return status !== undefined && status >= 400 && status < 500 && !isRetryableStatus(status)
+}
+
 export async function deliverToSubscriber(
   request: DeliveryRequest,
   policy: DeliveryPolicy = DEFAULT_DELIVERY_POLICY,

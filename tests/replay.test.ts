@@ -215,8 +215,8 @@ describe('POST /webhook replay protection', () => {
   })
 
   it('lets a body whose delivery failed be replayed', async () => {
-    // 400 is final for the subscriber client, so one attempt and no backoff wait
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('bad', { status: 400 }))
+    // Synchronous delivery makes a single attempt, so a 500 fails fast with no backoff
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('down', { status: 500 }))
     const payload = payloadAt(nowSeconds())
 
     const res1 = await postSigned(payload)
