@@ -30,7 +30,6 @@ Built with ❤️ by [Hub Ventures](https://github.com/Hub-Ventures).
 - 📐 [**Architecture & Design**](docs/ARCHITECTURE.md): Deep dive into ports & adapters, dependency inversion, request lifecycles, and error engine.
 - 🏢 [**Multi-Tenancy & Extensibility**](docs/MULTI_TENANCY_AND_EXTENSIONS.md): Scaling with `PhoneDirectory`, KV adapters, and custom enterprise databases.
 - 🚢 [**Production Deployment**](docs/DEPLOYMENT.md): Production setups for Cloudflare Workers, Node.js (Docker/PM2), and Nginx reverse proxies.
-- 🛡️ [**System & Security Audit Report**](docs/AUDIT_REPORT.md): Comprehensive technical audit, cryptographic verification, and test coverage metrics.
 
 ---
 
