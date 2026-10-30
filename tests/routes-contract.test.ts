@@ -220,6 +220,56 @@ describe('HTTP route contracts', () => {
       expect(await json(res)).toMatchObject({ recipient: '573001234567' })
     })
 
+    describe('business-scoped user IDs (BSUID)', () => {
+      const sentBody = (spy: ReturnType<typeof mockFetch>) =>
+        JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string) as Record<string, unknown>
+
+      it.each([['CO.13491208655302741918'], ['US.ENT.11815799212886844830'], [' CO.13491208655302741918 ']])(
+        'sends %j in recipient, without to, and unaltered apart from surrounding spaces',
+        async (to) => {
+          const spy = mockFetch(jsonResponse({ messages: [{ id: 'wamid.BSUID' }] }))
+          const res = await app.request('/v1/messages', authed(postJson({ ...valid, to })))
+          expect(res.status).toBe(200)
+          const body = sentBody(spy)
+          expect(body.recipient).toBe(to.trim())
+          expect(body).not.toHaveProperty('to')
+          expect(await json(res)).toMatchObject({ recipient: to.trim() })
+        }
+      )
+
+      it('keeps phone numbers in to, normalized, and never sets recipient', async () => {
+        const spy = mockFetch(jsonResponse({ messages: [{ id: 'wamid.PHONE' }] }))
+        await app.request('/v1/messages', authed(postJson({ ...valid, to: ' +573001234567 ' })))
+        const body = sentBody(spy)
+        expect(body.to).toBe('573001234567')
+        expect(body).not.toHaveProperty('recipient')
+      })
+
+      it('accepts a BSUID up to 135 characters and rejects a longer recipient with 422', async () => {
+        const longest = `US.ENT.${'1'.repeat(128)}`
+        expect(longest).toHaveLength(135)
+        const spy = mockFetch(jsonResponse({ messages: [{ id: 'wamid.LONG' }] }))
+        expect((await app.request('/v1/messages', authed(postJson({ ...valid, to: longest })))).status).toBe(200)
+        expect(sentBody(spy).recipient).toBe(longest)
+
+        const res = await app.request('/v1/messages', authed(postJson({ ...valid, to: `${longest}1` })))
+        expect(res.status).toBe(422)
+      })
+
+      it('reports the recipient Meta confirmed in contacts[0].input', async () => {
+        mockFetch(
+          jsonResponse({
+            messaging_product: 'whatsapp',
+            contacts: [{ input: '+57 300 1234567', wa_id: '573001234567' }],
+            messages: [{ id: 'wamid.CONFIRMED' }],
+          })
+        )
+        const res = await app.request('/v1/messages', authed(postJson({ ...valid, to: '+573001234567' })))
+        // Whatever Meta echoes wins over the value the gateway sent
+        expect(await json(res)).toMatchObject({ messageId: 'wamid.CONFIRMED', recipient: '+57 300 1234567' })
+      })
+    })
+
     it('sends location message with coordinates and optional metadata', async () => {
       const spy = mockFetch(jsonResponse({ messages: [{ id: 'wamid.LOC' }] }))
       const locPayload = {

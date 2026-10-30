@@ -105,11 +105,14 @@ export class MetaClient implements MetaGraphClient {
 
     const firstMsg: unknown = Array.isArray(data.messages) ? data.messages[0] : undefined
     const messageId = isRecord(firstMsg) && typeof firstMsg.id === 'string' ? firstMsg.id : ''
+    // Meta echoes the recipient it used in contacts[0].input (phone number or BSUID)
+    const firstContact: unknown = Array.isArray(data.contacts) ? data.contacts[0] : undefined
+    const confirmed = isRecord(firstContact) && typeof firstContact.input === 'string' ? firstContact.input : undefined
 
     return {
       success: true,
       messageId,
-      recipient: metaBody.to,
+      recipient: confirmed ?? metaBody.to ?? metaBody.recipient ?? '',
       phoneNumberId,
     }
   }
@@ -295,10 +298,19 @@ function ensureOk(res: GraphResponse): GraphResponse {
 }
 
 /** Meta `/messages` request body. */
+/**
+ * Business-scoped user ID: ISO 3166 alpha-2 country code, a dot and up to 128
+ * alphanumerics (`US.1349…`), or the parent form `US.ENT.1181…`.
+ */
+const BSUID_PATTERN = /^[A-Z]{2}\.(?:ENT\.)?[A-Za-z0-9]{1,128}$/
+
 export interface MetaOutboundMessageBody {
   messaging_product: 'whatsapp'
   recipient_type: 'individual'
-  to: string
+  /** Phone number recipient, digits only. Never set together with `recipient` */
+  to?: string
+  /** BSUID recipient. Meta lets `to` win when both are present, so only one is ever set */
+  recipient?: string
   type: SendMessagePayload['kind']
   context?: { message_id: string }
   [field: string]: unknown
@@ -306,15 +318,17 @@ export interface MetaOutboundMessageBody {
 
 /**
  * Translates the gateway payload into Meta's `/messages` body.
- * Strips a leading `+` from the recipient. Throws on unsupported kinds.
+ * A BSUID recipient goes in `recipient` untouched; a phone number goes in `to`
+ * without its leading `+`. Throws on unsupported kinds.
  */
 export function buildMetaMessageBody(payload: SendMessagePayload): MetaOutboundMessageBody {
+  const recipient = payload.to.trim()
   // Key order matches the historical wire format: context precedes type.
   const body: MetaOutboundMessageBody = {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
     // Trim first: a leading space would otherwise keep the + in place
-    to: payload.to.trim().replace(/^\+/, ''),
+    ...(BSUID_PATTERN.test(recipient) ? { recipient } : { to: recipient.replace(/^\+/, '') }),
     ...(payload.replyToMessageId ? { context: { message_id: payload.replyToMessageId } } : {}),
     type: payload.kind,
   }
