@@ -152,7 +152,7 @@ sequenceDiagram
                     Delivery-->>Gateway: Delivery Success
                     Gateway->>Gateway: remember(deliveryId) in ReplayStore
                     Gateway-->>Meta: 200 OK {"status": "received"}
-                else Sub fails (5xx / Timeout after 3 retries)
+                else Sub fails (5xx / no answer within the single 3 s attempt)
                     Delivery-->>Gateway: Delivery Failure
                     Gateway-->>Meta: 503 Service Unavailable (Meta retries up to 7 days)
                 end

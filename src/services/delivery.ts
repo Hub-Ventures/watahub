@@ -11,6 +11,7 @@ import { exponentialDelayMs, sleep, type RetryPolicy, type Sleep } from './retry
 export type DeliveryPolicy = RetryPolicy
 
 /**
+ * Background (async) delivery, after Meta already got its answer.
  * Worst case ≈ 3 × 5s + 1s + 2s = 18s, which fits inside the 30s Cloudflare
  * Workers allows for waitUntil work after the response is sent.
  */
@@ -19,6 +20,18 @@ export const DEFAULT_DELIVERY_POLICY: DeliveryPolicy = {
   baseDelayMs: 1_000,
   maxDelayMs: 4_000,
   timeoutMs: 5_000,
+}
+
+/**
+ * Synchronous delivery runs inside Meta's own request, and Meta asks for webhook
+ * answers with a median of 250 ms and under 1% above 1 s. One short attempt and no
+ * internal retries: on failure the gateway answers 503 and Meta retries.
+ */
+export const SYNC_DELIVERY_POLICY: DeliveryPolicy = {
+  maxAttempts: 1,
+  baseDelayMs: 0,
+  maxDelayMs: 0,
+  timeoutMs: 3_000,
 }
 
 export interface DeliveryRequest {
