@@ -144,45 +144,6 @@ export const InteractiveCtaUrlSchema = z.object({
   }),
 })
 
-export const PollOptionSchema = z.union([
-  z.string().min(1, 'option text cannot be empty').max(100, 'option text cannot exceed 100 characters'),
-  z
-    .object({
-      id: z.string().max(128).optional(),
-      title: z.string().min(1).max(100).optional(),
-      name: z.string().min(1).max(100).optional(),
-    })
-    .refine((opt) => Boolean(opt.title || opt.name), {
-      message: 'option must have title or name',
-    }),
-])
-
-export const InteractivePollSchema = z.object({
-  type: z.literal('poll'),
-  body: z.object({ text: z.string().max(1024) }).optional(),
-  action: z.union([
-    z.object({
-      name: z.string().min(1, 'name is required').max(255, 'name cannot exceed 255 characters'),
-      options: z
-        .array(PollOptionSchema)
-        .min(2, 'poll requires at least 2 options')
-        .max(12, 'poll allows at most 12 options'),
-      selectable_options_count: z.number().int().min(1).max(12).optional(),
-    }),
-    z.object({
-      name: z.literal('poll'),
-      parameters: z.object({
-        name: z.string().min(1, 'name is required').max(255, 'name cannot exceed 255 characters'),
-        options: z
-          .array(PollOptionSchema)
-          .min(2, 'poll requires at least 2 options')
-          .max(12, 'poll allows at most 12 options'),
-        selectable_options_count: z.number().int().min(1).max(12).optional(),
-      }),
-    }),
-  ]),
-})
-
 export const InteractiveProductSchema = z.object({
   type: z.literal('product'),
   body: z.object({ text: z.string().max(1024) }).optional(),
@@ -355,15 +316,12 @@ export const SendMessageSchema = z
           }
         }
       } else if (value.interactive.type === 'poll') {
-        const pollResult = InteractivePollSchema.safeParse(value.interactive)
-        if (!pollResult.success) {
-          for (const issue of pollResult.error.issues) {
-            ctx.addIssue({
-              ...issue,
-              path: ['interactive', ...issue.path],
-            })
-          }
-        }
+        // Meta's Message API has no poll type: it would only reject the send later
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['interactive', 'type'],
+          message: "The WhatsApp Cloud API cannot send polls: interactive.type 'poll' is not supported",
+        })
       } else if (value.interactive.type === 'product') {
         const prodResult = InteractiveProductSchema.safeParse(value.interactive)
         if (!prodResult.success) {

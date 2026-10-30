@@ -234,16 +234,6 @@ describe('MetaClient requests and bodies', () => {
       }
       expect((await send({ to: '1', kind: 'interactive', interactive: ctaUrl })).body.interactive).toEqual(ctaUrl)
 
-      const poll = {
-        type: 'poll',
-        action: {
-          name: 'Choose your lunch preference',
-          options: ['Pizza', 'Sushi', 'Salad'],
-          selectable_options_count: 1,
-        },
-      }
-      expect((await send({ to: '1', kind: 'interactive', interactive: poll })).body.interactive).toEqual(poll)
-
       const product = {
         type: 'product',
         body: { text: 'Check out this shoe' },
