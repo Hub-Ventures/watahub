@@ -31,6 +31,8 @@ export {
   type DeliveryResult,
 } from './services/delivery.js'
 export { normalizeMetaWebhook, extractPhoneNumberId, hasWebhookChanges } from './services/normalizer.js'
+// Replay protection pieces, so wrappers with their own webhook (watahub-ee) apply the same rules
+export { DEFAULT_WEBHOOK_MAX_AGE_SECONDS, DeliveryIdCache, isStale } from './services/replay.js'
 export { MetaClient, type MetaClientConfig, type MetaGraphClient } from './services/meta-client.js'
 export * from './types/gateway.js'
 export * from './types/meta.js'
