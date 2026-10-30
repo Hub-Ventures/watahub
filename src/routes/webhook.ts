@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { getConfig } from '../config.js'
 import type { GatewayDeps } from '../deps.js'
 import { runInBackground } from '../http/background.js'
+import { misconfiguredResponse } from '../http/env-guard.js'
 import { clientAddress, tooManyRequests } from '../http/rate-limit.js'
 import { errorName } from '../logger.js'
 import { sha256Hex, timingSafeEqual, verifyMetaSignature } from '../services/crypto.js'
@@ -10,6 +11,7 @@ import { hasWebhookChanges, normalizeMetaWebhook } from '../services/normalizer.
 import { DEFAULT_WEBHOOK_MAX_AGE_SECONDS, isStale, replayTtlSeconds } from '../services/replay.js'
 import type { SubscriberPayload } from '../types/gateway.js'
 import type { MetaWebhookPayload } from '../types/meta.js'
+import { invalidEnvVars } from '../utils/env.js'
 
 export function createWebhookRouter(deps: GatewayDeps): Hono {
   const router = new Hono()
@@ -43,6 +45,11 @@ export function createWebhookRouter(deps: GatewayDeps): Hono {
   router.post('/webhook', async (c) => {
     const rawBody = await c.req.text()
     const config = getConfig(c)
+
+    // Workers have no boot-time validation: a bad value answers 503 (Meta retries)
+    // instead of silently falling back to sync delivery or the default window
+    const invalidEnv = invalidEnvVars(c, ['WEBHOOK_DELIVERY_MODE', 'META_WEBHOOK_MAX_AGE_SECONDS'])
+    if (invalidEnv.length > 0) return misconfiguredResponse(c, deps.logger, invalidEnv)
 
     // Fail closed: without META_APP_SECRET there is no way to authenticate Meta,
     // so unsigned payloads must never be accepted or forwarded.
