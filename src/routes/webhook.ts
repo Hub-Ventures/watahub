@@ -6,7 +6,7 @@ import { misconfiguredResponse } from '../http/env-guard.js'
 import { clientAddress, tooManyRequests } from '../http/rate-limit.js'
 import { errorName } from '../logger.js'
 import { sha256Hex, timingSafeEqual, verifyMetaSignature } from '../services/crypto.js'
-import { deliverToSubscriber, DEFAULT_DELIVERY_POLICY } from '../services/delivery.js'
+import { deliverToSubscriber, DEFAULT_DELIVERY_POLICY, SYNC_DELIVERY_POLICY } from '../services/delivery.js'
 import { hasWebhookChanges, normalizeMetaWebhook } from '../services/normalizer.js'
 import { DEFAULT_WEBHOOK_MAX_AGE_SECONDS, isStale, replayTtlSeconds } from '../services/replay.js'
 import type { SubscriberPayload } from '../types/gateway.js'
@@ -189,8 +189,8 @@ export function createWebhookRouter(deps: GatewayDeps): Hono {
         return { response: c.json({ status: 'received', eventsCount: events.length }, 200), delivered }
       }
 
-      // Default: Guaranteed Synchronous Delivery
-      const result = await deliverToSubscriber(deliveryRequest, DEFAULT_DELIVERY_POLICY, {
+      // Default: synchronous delivery, bounded to one short attempt (Meta is waiting)
+      const result = await deliverToSubscriber(deliveryRequest, SYNC_DELIVERY_POLICY, {
         fetch: deps.fetch,
         logger: deps.logger,
       })
