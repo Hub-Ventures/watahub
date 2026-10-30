@@ -4,6 +4,7 @@ import { logger as requestLogger } from 'hono/logger'
 import { createDefaultDeps, type GatewayDeps } from './deps.js'
 import { requireApiKey } from './http/auth.js'
 import { corsFromEnv } from './http/cors.js'
+import { requireValidEnv } from './http/env-guard.js'
 import { noStore, securityHeaders } from './http/headers.js'
 import { proxyBodyLimit, v1BodyLimit, webhookBodyLimit } from './http/limits.js'
 import { createRateLimitMiddleware } from './http/rate-limit.js'
@@ -49,15 +50,23 @@ export function createApp(overrides: Partial<GatewayDeps> = {}): Hono {
     requestLogger((...parts) => deps.logger.info(redactSecrets(parts.join(' '))))
   )
   app.use('*', securityHeaders)
+  // Workers have no boot-time validation (src/node.ts), so each surface checks the
+  // optional variables it reads and answers 503 instead of silently falling back
+  app.use('*', requireValidEnv(['CORS_ALLOWED_ORIGINS'], deps.logger))
   // Off by default; CORS_ALLOWED_ORIGINS opts specific origins in (src/http/cors.ts)
   app.use('*', corsFromEnv)
 
   const apiKeyGuard = requireApiKey(deps.logger, deps.apiKeyLimiter)
   const rateLimitGuard = createRateLimitMiddleware(deps.createRequestLimiter)
-  for (const surface of ['/v1/*', '/v24.0/*']) {
+  const surfaceEnv = {
+    '/v1/*': requireValidEnv(['RATE_LIMIT_PER_MINUTE', 'TRUSTED_CLIENT_IP_HEADER', 'META_API_VERSION'], deps.logger),
+    '/v24.0/*': requireValidEnv(['RATE_LIMIT_PER_MINUTE', 'TRUSTED_CLIENT_IP_HEADER'], deps.logger),
+  }
+  for (const surface of ['/v1/*', '/v24.0/*'] as const) {
     // Order matters: no-store wraps every answer, floods are refused before auth,
     // and every machine-to-machine surface requires the gateway API key (fail closed)
     app.use(surface, noStore)
+    app.use(surface, surfaceEnv[surface])
     app.use(surface, rateLimitGuard)
     app.use(surface, apiKeyGuard)
   }
