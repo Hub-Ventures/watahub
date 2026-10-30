@@ -63,12 +63,14 @@ export function createApp(overrides: Partial<GatewayDeps> = {}): Hono {
     '/v24.0/*': requireValidEnv(['RATE_LIMIT_PER_MINUTE', 'TRUSTED_CLIENT_IP_HEADER'], deps.logger),
   }
   for (const surface of ['/v1/*', '/v24.0/*'] as const) {
-    // Order matters: no-store wraps every answer, floods are refused before auth,
-    // and every machine-to-machine surface requires the gateway API key (fail closed)
+    // Order matters: no-store wraps every answer, every machine-to-machine surface
+    // requires the gateway API key (fail closed), and only authenticated requests
+    // count against RATE_LIMIT_PER_MINUTE, so callers without the key cannot spend
+    // a legitimate client's quota (failed keys have their own limiter in requireApiKey)
     app.use(surface, noStore)
     app.use(surface, surfaceEnv[surface])
-    app.use(surface, rateLimitGuard)
     app.use(surface, apiKeyGuard)
+    app.use(surface, rateLimitGuard)
   }
 
   app.use('/webhook', webhookBodyLimit)

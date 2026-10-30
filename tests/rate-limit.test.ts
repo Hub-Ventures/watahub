@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import app from '../src/index.js'
-import { AUTH_FAILURE_LIMIT, FixedWindowLimiter, resetRateLimits } from '../src/http/rate-limit.js'
+import { AUTH_FAILURE_LIMIT, FixedWindowLimiter, limiterKey, resetRateLimits } from '../src/http/rate-limit.js'
 
 const KEY = 'k'.repeat(48)
 
@@ -25,6 +25,34 @@ describe('FixedWindowLimiter', () => {
     // 'a' was evicted to make room for 'c'
     expect(limiter.blockedFor('a', 1)).toBe(0)
     expect(limiter.blockedFor('c', 1)).toBe(60)
+  })
+})
+
+describe('limiterKey', () => {
+  it('keeps IPv4 addresses as they are', () => {
+    expect(limiterKey('203.0.113.7')).toBe('203.0.113.7')
+    expect(limiterKey('unknown')).toBe('unknown')
+  })
+
+  it('keys IPv6 by its /64, whatever the notation', () => {
+    const key = limiterKey('2001:db8:abcd:12::1')
+    expect(key).toBe('2001:db8:abcd:12::/64')
+    expect(limiterKey('2001:db8:abcd:12:ffff:1:2:3')).toBe(key)
+    expect(limiterKey('2001:0DB8:ABCD:0012:0000:0000:0000:0001')).toBe(key)
+    expect(limiterKey('2001:db8:abcd:12::1%eth0')).toBe(key)
+    expect(limiterKey('2001:db8:abcd:13::1')).not.toBe(key)
+    expect(limiterKey('::1')).toBe('0:0:0:0::/64')
+  })
+
+  it('keys IPv4-mapped IPv6 as the IPv4 address', () => {
+    expect(limiterKey('::ffff:203.0.113.7')).toBe('203.0.113.7')
+    expect(limiterKey('::FFFF:cb00:7107')).toBe('203.0.113.7')
+  })
+
+  it('leaves values that are not valid IPv6 untouched', () => {
+    for (const value of ['1::2::3', '2001:db8::zz', '1:2:3:4:5:6:7', '::ffff:300.1.1.1']) {
+      expect(limiterKey(value)).toBe(value)
+    }
   })
 })
 
@@ -84,6 +112,14 @@ describe('Authentication brute-force brake', () => {
     }
   })
 
+  it('counts failed keys per IPv6 /64, so rotating inside the /64 buys no fresh attempts', async () => {
+    for (let i = 0; i < AUTH_FAILURE_LIMIT; i++) {
+      expect((await callApi('wrong-key', `2001:db8:abcd:12::${i + 1}`)).status).toBe(401)
+    }
+    expect((await callApi('wrong-key', '2001:db8:abcd:12:ffff::9')).status).toBe(429)
+    expect((await callApi('wrong-key', '2001:db8:abcd:13::1')).status).toBe(401)
+  })
+
   it('limits verify token guessing on GET /webhook', async () => {
     const verify = (token: string) =>
       app.request(`/webhook?hub.mode=subscribe&hub.verify_token=${token}&hub.challenge=42`, {
@@ -120,6 +156,29 @@ describe('RATE_LIMIT_PER_MINUTE', () => {
     for (let i = 0; i < 3; i++) expect((await callApi(KEY)).status).toBe(200)
     expect((await callApi(KEY)).status).toBe(429)
     expect((await callApi(KEY, '198.51.100.9')).status).toBe(200)
+  })
+
+  it('does not let requests without a valid key spend the quota', async () => {
+    process.env.RATE_LIMIT_PER_MINUTE = '3'
+    for (let i = 0; i < 100; i++) {
+      const res = await app.request('/v1/templates/123', { headers: { 'CF-Connecting-IP': '203.0.113.7' } })
+      // 401 until the failed-key brake kicks in, then 429 from that brake
+      expect([401, 429]).toContain(res.status)
+    }
+    expect((await callApi(KEY)).status).toBe(200)
+  })
+
+  it('shares the quota across one IPv6 /64 and not across different /64s', async () => {
+    process.env.RATE_LIMIT_PER_MINUTE = '1'
+    expect((await callApi(KEY, '2001:db8:abcd:12::1')).status).toBe(200)
+    expect((await callApi(KEY, '2001:db8:abcd:12:ffff::9')).status).toBe(429)
+    expect((await callApi(KEY, '2001:db8:abcd:13::1')).status).toBe(200)
+  })
+
+  it('counts IPv4 and its IPv4-mapped IPv6 form as the same client', async () => {
+    process.env.RATE_LIMIT_PER_MINUTE = '1'
+    expect((await callApi(KEY, '198.51.100.20')).status).toBe(200)
+    expect((await callApi(KEY, '::ffff:198.51.100.20')).status).toBe(429)
   })
 
   it('keys on TRUSTED_CLIENT_IP_HEADER when the operator sets one', async () => {
