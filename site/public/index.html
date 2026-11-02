@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Watahub — WhatsApp Cloud API gateway</title>
+    <meta
+      name="description"
+      content="Open-source, self-hostable WhatsApp Cloud API gateway. Paste four Meta values. Watahub keeps the business token."
+    />
+    <link rel="canonical" href="https://watahub.dev/" />
+    <meta property="og:title" content="Watahub" />
+    <meta
+      property="og:description"
+      content="Paste four Meta values. Watahub keeps the business token."
+    />
+    <meta property="og:url" content="https://watahub.dev/" />
+    <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#0b0a09" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="site-header">
+      <div class="wrap bar">
+        <a class="brand" href="#top">
+          <svg viewBox="0 0 32 32" width="22" height="22" aria-hidden="true">
+            <circle cx="15" cy="16" r="2.5" fill="currentColor" />
+            <circle cx="15" cy="16" r="7" fill="none" stroke="currentColor" stroke-width="1.5" />
+            <path
+              d="M23.6 8.2a11 11 0 0 1 0 15.6"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+          </svg>
+          <span>Watahub</span>
+        </a>
+        <nav aria-label="On this page">
+          <a href="#connect">Connect</a>
+          <a href="#steps">Steps</a>
+          <a href="#runtimes">Runtimes</a>
+        </nav>
+        <a class="nav-git" href="https://github.com/Hub-Ventures/watahub">GitHub</a>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="top" aria-labelledby="hero-title">
+        <div class="wrap hero-grid">
+          <p class="idx">Open-source WhatsApp Cloud API gateway</p>
+          <h1 id="hero-title">
+            <span class="h1-line">Paste four Meta values.</span>
+            <span class="h1-line h1-quiet">Watahub keeps the business token.</span>
+          </h1>
+          <p class="deck hero-lead">One operator. MIT. Cloudflare Workers and Node.</p>
+          <div class="ctas">
+            <a class="btn btn-primary" href="https://github.com/Hub-Ventures/watahub">Source on GitHub</a>
+            <a class="btn btn-ghost" href="https://github.com/Hub-Ventures/watahub/blob/main/docs/GETTING_STARTED.md"
+              >Getting started</a
+            >
+          </div>
+          <aside class="plate" aria-label="What connect does">
+            <p class="plate-kicker">POST /v1/onboarding/connect</p>
+            <ol>
+              <li>Exchange the Embedded Signup code</li>
+              <li>Store the business token</li>
+              <li>Subscribe the WABA to messages</li>
+              <li>Register the phone</li>
+            </ol>
+            <p class="plate-foot">The HTTP response does not include the access token.</p>
+          </aside>
+        </div>
+      </section>
+
+      <section id="connect" aria-labelledby="connect-title">
+        <div class="wrap">
+          <header class="sec-head">
+            <p class="idx">01</p>
+            <h2 id="connect-title">How you connect</h2>
+          </header>
+          <p class="deck">Four Meta values on the gateway. Once.</p>
+          <ol class="creds">
+            <li>
+              <span class="num">App ID</span>
+              <code>META_APP_ID</code>
+              <p>Meta app that owns the webhook.</p>
+            </li>
+            <li>
+              <span class="num">App Secret</span>
+              <code>META_APP_SECRET</code>
+              <p>Exchanges the code. Callers cannot send it.</p>
+            </li>
+            <li>
+              <span class="num">Configuration ID</span>
+              <code>META_CONFIGURATION_ID</code>
+              <p>Embedded Signup config_id for FB.login.</p>
+            </li>
+            <li>
+              <span class="num">API version</span>
+              <code>META_API_VERSION</code>
+              <p>Graph version. Default v24.0.</p>
+            </li>
+          </ol>
+          <div class="call">
+            <p class="call-path"><span class="verb">POST</span> /v1/onboarding/connect</p>
+            <ul class="fields">
+              <li><code>code</code> Embedded Signup</li>
+              <li><code>wabaId</code> WABA id</li>
+              <li><code>phoneNumberId</code> Phone number id</li>
+              <li><code>pin</code> 6-digit PIN</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="steps" aria-labelledby="steps-title">
+        <div class="wrap">
+          <header class="sec-head">
+            <p class="idx">02</p>
+            <h2 id="steps-title">Two steps</h2>
+          </header>
+          <ol class="step-list">
+            <li>
+              <h3>Connect the line</h3>
+              <p>Send the code, the WABA id, the phone number id, and the PIN. The gateway finishes the line.</p>
+            </li>
+            <li>
+              <h3>Send</h3>
+              <p>Name that phone number id. Watahub uses the stored token. You do not pass it.</p>
+            </li>
+          </ol>
+          <figure class="panel">
+            <figcaption>
+              <span>connect.sh</span>
+              <span>$GATEWAY is the host you deploy. This domain is the project page.</span>
+            </figcaption>
+            <div class="block">
+              <p class="block-label"><span>01</span> POST /v1/onboarding/connect</p>
+              <pre
+                tabindex="0"
+              ><code>curl -X POST "$GATEWAY/v1/onboarding/connect" \
+  -H "Authorization: Bearer $WATAHUB_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "AQD...embedded-signup-code",
+    "wabaId": "105555123456789",
+    "phoneNumberId": "100609346426000",
+    "pin": "581063"
+  }'</code></pre>
+            </div>
+            <div class="block">
+              <p class="block-label"><span>200</span> no accessToken</p>
+              <pre tabindex="0"><code>{
+  "phoneNumberId": "100609346426000",
+  "wabaId": "105555123456789",
+  "subscribed": true,
+  "registered": true
+}</code></pre>
+            </div>
+            <div class="block">
+              <p class="block-label"><span>02</span> POST /v1/messages</p>
+              <pre
+                tabindex="0"
+              ><code>curl -X POST "$GATEWAY/v1/messages" \
+  -H "Authorization: Bearer $WATAHUB_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "+15551234567",
+    "phoneNumberId": "100609346426000",
+    "kind": "text",
+    "text": { "body": "Hello from Watahub" }
+  }'</code></pre>
+            </div>
+          </figure>
+        </div>
+      </section>
+
+      <section id="never" aria-labelledby="never-title">
+        <div class="wrap">
+          <header class="sec-head">
+            <p class="idx">03</p>
+            <h2 id="never-title">What you never touch</h2>
+          </header>
+          <ul class="never">
+            <li>
+              <h3>System user token</h3>
+              <p>Connect stores a business token for that phone number id.</p>
+            </li>
+            <li>
+              <h3>Manual WABA subscribe</h3>
+              <p>Connect subscribes the WABA to messages.</p>
+            </li>
+            <li>
+              <h3>Manual phone register</h3>
+              <p>Connect registers the phone with the 6-digit PIN.</p>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="runtimes" aria-labelledby="runtimes-title">
+        <div class="wrap">
+          <header class="sec-head">
+            <p class="idx">04</p>
+            <h2 id="runtimes-title">Self-host</h2>
+          </header>
+          <ul class="runtimes">
+            <li>
+              <h3>Cloudflare Workers</h3>
+              <p>The gateway is its own Worker. This page is not that Worker.</p>
+            </li>
+            <li>
+              <h3>Node</h3>
+              <p>Same routes. <code>pnpm run dev:node</code>.</p>
+            </li>
+            <li>
+              <h3>One subscriber webhook</h3>
+              <p>Meta posts to <code>/webhook</code>. You get one signed, normalized delivery.</p>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="closer" aria-labelledby="close-title">
+        <div class="wrap">
+          <div class="close">
+            <p class="idx">After connect</p>
+            <h2 id="close-title">The access token is not in the response.</h2>
+            <pre
+              class="ticket"
+              tabindex="0"
+            ><code>{
+  "phoneNumberId": "100609346426000",
+  "wabaId": "105555123456789",
+  "subscribed": true,
+  "registered": true
+}</code></pre>
+            <p class="close-note">The next send uses the token Watahub stored.</p>
+            <a class="btn btn-ink" href="https://github.com/Hub-Ventures/watahub">Source on GitHub</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap foot">
+        <p>Watahub. Hub Ventures.</p>
+        <nav aria-label="Project">
+          <a href="https://github.com/Hub-Ventures/watahub">GitHub</a>
+          <a href="https://github.com/Hub-Ventures/watahub/blob/main/docs/API_REFERENCE.md">API reference</a>
+          <a href="https://opensource.org/licenses/MIT">MIT</a>
+          <a href="https://github.com/Hub-Ventures">Hub Ventures</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>

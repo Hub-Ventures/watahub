@@ -1,0 +1,16 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "watahub-site",
+  "account_id": "48c9d6c6006a1ab50ee2e4323b2cdba6",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "404-page"
+  },
+  "routes": [
+    {
+      "pattern": "watahub.dev",
+      "custom_domain": true
+    }
+  ]
+}
