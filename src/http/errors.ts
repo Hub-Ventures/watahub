@@ -2,6 +2,7 @@ import type { Context } from 'hono'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { errorName, type Logger } from '../logger.js'
 import { UNKNOWN_SEND_OUTCOME, WatahubApiError, classifyMetaError, transportFailure } from '../services/errors.js'
+import type { ConnectStep } from '../services/line-connect.js'
 
 export interface MetaErrorResponseOptions {
   /** Include Meta's error `type` (e.g. OAuthException) in the body. */
@@ -11,6 +12,16 @@ export interface MetaErrorResponseOptions {
    * a Meta 5xx leaves its outcome unknown, and the body says so.
    */
   messageSend?: boolean
+  /** Set on POST /v1/onboarding/connect when exchange, subscribe, or register fails. */
+  step?: ConnectStep
+}
+
+function withConnectStep<T extends Record<string, unknown>>(
+  body: T,
+  step: ConnectStep | undefined
+): T | (T & { step: ConnectStep }) {
+  if (!step) return body
+  return { step, ...body }
 }
 
 /**
@@ -29,7 +40,10 @@ export function errorResponse(
   logger.error(`[watahub] Meta Graph API call failed: ${errorName(err)}`)
   const failure = transportFailure(err)
   return c.json(
-    { error: { message: failure.message, ...(options.messageSend ? UNKNOWN_SEND_OUTCOME : {}) } },
+    withConnectStep(
+      { error: { message: failure.message, ...(options.messageSend ? UNKNOWN_SEND_OUTCOME : {}) } },
+      options.step
+    ),
     failure.status
   )
 }
@@ -40,17 +54,20 @@ export function metaErrorResponse(c: Context, err: WatahubApiError, options: Met
   const status = (err.statusCode >= 400 && err.statusCode < 600 ? err.statusCode : 502) as ContentfulStatusCode
 
   return c.json(
-    {
-      error: {
-        message: err.message,
-        code: err.metaCode,
-        subcode: err.metaSubcode,
-        ...(options.includeType ? { type: err.metaType } : {}),
-        category: classification.category,
-        retryable: classification.retryable,
-        action: classification.action,
+    withConnectStep(
+      {
+        error: {
+          message: err.message,
+          code: err.metaCode,
+          subcode: err.metaSubcode,
+          ...(options.includeType ? { type: err.metaType } : {}),
+          category: classification.category,
+          retryable: classification.retryable,
+          action: classification.action,
+        },
       },
-    },
+      options.step
+    ),
     status
   )
 }

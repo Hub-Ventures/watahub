@@ -9,7 +9,7 @@ This guide explains how Watahub is architected across its **Open-Source Core** a
 | Dimension | Open-Source Core (MIT) | Enterprise Edition (`/ee`, Private Repo) |
 | :--- | :--- | :--- |
 | **Tenancy Model** | **Single Operator** (Dedicated team or backend). | **Multi-Tenant** (Multiple clients, agencies, or phone numbers). |
-| **Meta Access Token** | Configured via `META_SYSTEM_USER_TOKEN` or dynamic caller override `X-Meta-Access-Token`. | Dynamically resolved per tenant and authenticated phone number. |
+| **Meta Access Token** | One operator. `POST /v1/onboarding/connect` stores a business token per phone number id. Outbound calls use `X-Meta-Access-Token`, then that line token, then `META_SYSTEM_USER_TOKEN`. | A different token per tenant, injected by the wrapper as `X-Meta-Access-Token`. |
 | **Subscriber Webhook** | Single target URL (`SUBSCRIBER_WEBHOOK_URL`). | Dynamically routed to each tenant's dedicated webhook URL. |
 | **Subscriber HMAC Secret** | Single global secret (`SUBSCRIBER_WEBHOOK_SECRET`). | Signed using tenant-specific signing secrets. |
 | **API Keys & Ownership** | Single operator `WATAHUB_API_KEY`. | Dedicated tenant API keys with route-level phone ownership enforcement. |
@@ -85,6 +85,17 @@ import { DistributedRateLimitStore, createApp } from 'watahub'
 
 const app = createApp({
   apiKeyLimiter: new DistributedRateLimitStore(env.RATELIMIT_KV, 10, 60),
+})
+```
+
+### 3.4 Line tokens (`DistributedLineStore`)
+Business tokens from `POST /v1/onboarding/connect` live in the `LineStore` port. The default is in-process memory, one store per `createApp()`. On Workers, pass a KV adapter so the token survives the isolate. No TTL: the token stays until that phone is connected again. The value is the token; do not log it.
+
+```ts
+import { DistributedLineStore, createApp } from 'watahub'
+
+const app = createApp({
+  lineStore: new DistributedLineStore(env.LINES_KV),
 })
 ```
 

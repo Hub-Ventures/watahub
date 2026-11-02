@@ -941,6 +941,117 @@ describe('HTTP route contracts', () => {
     })
   })
 
+  describe('POST /v1/onboarding/connect and GET /v1/onboarding/launch', () => {
+    const phoneNumberId = '880000000000001'
+    const wabaId = '880000000000002'
+    const biz = 'BIZ_TOKEN_DO_NOT_LEAK'
+    const code = 'signup-code-do-not-leak'
+    const pin = '581063'
+    const appSecret = 'APP_SECRET_DO_NOT_LEAK'
+
+    const connect = (body: Record<string, unknown>) => app.request('/v1/onboarding/connect', authed(postJson(body)))
+
+    it('exchanges, subscribes with the business token, registers, and does not return the token', async () => {
+      process.env.META_APP_ID = '111'
+      process.env.META_APP_SECRET = appSecret
+      process.env.META_SYSTEM_USER_TOKEN = 'SYS_SHOULD_NOT_BE_USED'
+      const spy = mockFetch(
+        jsonResponse({ access_token: biz }),
+        jsonResponse({ success: true }),
+        jsonResponse({ success: true })
+      )
+
+      const res = await connect({ code, wabaId, phoneNumberId, pin })
+      expect(res.status).toBe(200)
+      const body = await json(res)
+      expect(body).toEqual({ phoneNumberId, wabaId, subscribed: true, registered: true })
+      const text = JSON.stringify(body)
+      expect(text).not.toContain(biz)
+      expect(text).not.toContain(code)
+      expect(text).not.toContain(appSecret)
+      expect(text).not.toContain(pin)
+      expect(body).not.toHaveProperty('accessToken')
+      expect(body).not.toHaveProperty('access_token')
+      expect(body).not.toHaveProperty('token')
+
+      expect(spy).toHaveBeenCalledTimes(3)
+      const [exchangeUrl, exchangeInit] = spy.mock.calls[0] as [string, RequestInit]
+      expect(exchangeUrl).toBe('https://graph.facebook.com/v24.0/oauth/access_token')
+      expect(exchangeInit.method).toBe('POST')
+      expect(exchangeUrl).not.toContain(appSecret)
+      expect(String(exchangeInit.body)).toBe(`client_id=111&client_secret=${appSecret}&code=${code}`)
+      expect(new Headers(exchangeInit.headers).has('authorization')).toBe(false)
+
+      const [subscribeUrl, subscribeInit] = spy.mock.calls[1] as [string, RequestInit]
+      expect(subscribeUrl).toBe(`https://graph.facebook.com/v24.0/${wabaId}/subscribed_apps`)
+      expect(JSON.parse(String(subscribeInit.body))).toEqual({ subscribed_fields: ['messages'] })
+      expect(new Headers(subscribeInit.headers).get('authorization')).toBe(`Bearer ${biz}`)
+
+      const [registerUrl, registerInit] = spy.mock.calls[2] as [string, RequestInit]
+      expect(registerUrl).toBe(`https://graph.facebook.com/v24.0/${phoneNumberId}/register`)
+      expect(JSON.parse(String(registerInit.body))).toEqual({ messaging_product: 'whatsapp', pin })
+      expect(new Headers(registerInit.headers).get('authorization')).toBe(`Bearer ${biz}`)
+      expect(JSON.stringify(spy.mock.calls)).not.toContain('SYS_SHOULD_NOT_BE_USED')
+    })
+
+    it('reports the subscribe step and does not register or return the token when subscribe fails', async () => {
+      process.env.META_APP_ID = '111'
+      process.env.META_APP_SECRET = appSecret
+      const spy = mockFetch(jsonResponse({ access_token: biz }), jsonResponse(metaError(190, 'bad token'), 401))
+      const res = await connect({ code, wabaId: '880000000000004', phoneNumberId: '880000000000003', pin })
+      expect(res.status).toBe(401)
+      const body = await json(res)
+      expect(body.step).toBe('subscribe')
+      expect(body.error).toMatchObject({ code: 190, category: 'auth', retryable: false })
+      expect(JSON.stringify(body)).not.toContain(biz)
+      expect(JSON.stringify(body)).not.toContain(code)
+      expect(spy).toHaveBeenCalledTimes(2)
+      expect(String(spy.mock.calls[1][0])).toContain('/subscribed_apps')
+    })
+
+    it.each([
+      ['META_APP_ID', { META_APP_SECRET: appSecret }],
+      ['META_APP_SECRET', { META_APP_ID: '111' }],
+    ])('is 400 when %s is missing', async (_name, env) => {
+      delete process.env.META_APP_ID
+      delete process.env.META_APP_SECRET
+      Object.assign(process.env, env)
+      const res = await connect({ code, wabaId, phoneNumberId, pin })
+      expect(res.status).toBe(400)
+      expect(await json(res)).toEqual({ error: 'Missing META_APP_ID or META_APP_SECRET configuration' })
+    })
+
+    it('is 422 when the pin is not 6 digits', async () => {
+      const res = await connect({ code, wabaId, phoneNumberId, pin: '12345' })
+      expect(res.status).toBe(422)
+      expect(await json(res)).toEqual({ error: 'Validation failed', details: { pin: ['Must be a 6-digit PIN'] } })
+      expect(vi.mocked(globalThis.fetch)).not.toHaveBeenCalled()
+    })
+
+    it('returns launch config and never the app secret', async () => {
+      process.env.META_APP_ID = '111'
+      process.env.META_CONFIGURATION_ID = '222'
+      process.env.META_APP_SECRET = appSecret
+      process.env.META_API_VERSION = 'v25.0'
+      const res = await app.request('/v1/onboarding/launch', authed())
+      expect(res.status).toBe(200)
+      const body = await json(res)
+      expect(body).toEqual({ appId: '111', configurationId: '222', apiVersion: 'v25.0' })
+      expect(JSON.stringify(body)).not.toContain(appSecret)
+    })
+
+    it.each(['META_APP_ID', 'META_CONFIGURATION_ID'])('launch is 503 when %s is missing', async (name) => {
+      process.env.META_APP_ID = '111'
+      process.env.META_CONFIGURATION_ID = '222'
+      delete process.env[name]
+      const res = await app.request('/v1/onboarding/launch', authed())
+      expect(res.status).toBe(503)
+      expect(await json(res)).toEqual({
+        error: 'Gateway misconfigured: META_APP_ID and META_CONFIGURATION_ID are required',
+      })
+    })
+  })
+
   describe('POST /v1/onboarding/exchange', () => {
     it('validates the body', async () => {
       expect((await app.request('/v1/onboarding/exchange', authed(postJson('x')))).status).toBe(400)

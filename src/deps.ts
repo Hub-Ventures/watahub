@@ -4,6 +4,45 @@ import { consoleLogger, type Logger } from './logger.js'
 import { MetaClient, type MetaClientConfig, type MetaGraphClient } from './services/meta-client.js'
 import { webhookDeliveryIds } from './services/replay.js'
 
+/**
+ * Business token for one phone line of this operator.
+ * Stored server-side. Never copied into an API response or a log line.
+ */
+export interface StoredLine {
+  phoneNumberId: string
+  wabaId: string
+  accessToken: string
+}
+
+/**
+ * Phone-line credentials for one operator (one Meta app, N numbers).
+ * Sync for one process, async for KV. Not a tenant directory.
+ */
+export interface LineStore {
+  get(phoneNumberId: string): Promise<StoredLine | undefined> | StoredLine | undefined
+  put(line: StoredLine): Promise<void> | void
+}
+
+/**
+ * In-process line store owned by `createApp`. Isolates do not share it;
+ * `DistributedLineStore` is the KV adapter when tokens must outlive the process.
+ */
+export class MemoryLineStore implements LineStore {
+  private readonly lines = new Map<string, StoredLine>()
+
+  get(phoneNumberId: string): StoredLine | undefined {
+    return this.lines.get(phoneNumberId)
+  }
+
+  put(line: StoredLine): void {
+    this.lines.set(line.phoneNumberId, {
+      phoneNumberId: line.phoneNumberId,
+      wabaId: line.wabaId,
+      accessToken: line.accessToken,
+    })
+  }
+}
+
 export interface ReplayStore {
   has(id: string, nowMs?: number): boolean | Promise<boolean>
   /**
@@ -40,6 +79,8 @@ export interface GatewayDeps {
   verifyTokenLimiter: RateLimitStore
   /** Optional factory for per-client request rate limiters */
   createRequestLimiter?: (limit: number) => RateLimitStore
+  /** Business tokens produced when a phone line connects */
+  lineStore: LineStore
 }
 
 export function createDefaultDeps(overrides: Partial<GatewayDeps> = {}): GatewayDeps {
@@ -54,5 +95,7 @@ export function createDefaultDeps(overrides: Partial<GatewayDeps> = {}): Gateway
     apiKeyLimiter: overrides.apiKeyLimiter ?? apiKeyFailures,
     verifyTokenLimiter: overrides.verifyTokenLimiter ?? verifyTokenFailures,
     ...overrides,
+    // After the spread so a partial override cannot leave the port unset
+    lineStore: overrides.lineStore ?? new MemoryLineStore(),
   }
 }

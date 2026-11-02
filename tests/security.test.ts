@@ -127,6 +127,8 @@ describe('Gateway API key enforcement (fail closed)', () => {
     ['/v1/messages', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } }],
     ['/v1/templates/123', { method: 'GET' }],
     ['/v1/onboarding/exchange', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } }],
+    ['/v1/onboarding/connect', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } }],
+    ['/v1/onboarding/launch', { method: 'GET' }],
     ['/v1/onboarding/subscribe', { method: 'POST', body: '{}', headers: { 'Content-Type': 'application/json' } }],
     [
       '/v1/onboarding/override-callback',
@@ -219,6 +221,16 @@ describe('Input validation keeps caller input out of Graph paths', () => {
       app.request(path, { method: 'POST', headers: auth, body: JSON.stringify(body) })
 
     expect((await post('/v1/onboarding/subscribe', { wabaId: 'me' })).status).toBe(422)
+    expect(
+      (
+        await post('/v1/onboarding/connect', {
+          code: 'c',
+          wabaId: 'me',
+          phoneNumberId: '123',
+          pin: '123456',
+        })
+      ).status
+    ).toBe(422)
     expect(
       (
         await post('/v1/onboarding/override-callback', {

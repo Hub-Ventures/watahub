@@ -63,6 +63,14 @@ describe('validateEnv', () => {
     expect(errorsFor({ ...validEnv, META_API_VERSION: 'latest' })).toHaveLength(1)
   })
 
+  it('accepts an optional numeric META_CONFIGURATION_ID and rejects a non-numeric one', () => {
+    expect(validateEnv({ ...validEnv, META_CONFIGURATION_ID: '1234567890' })).toEqual({ ok: true })
+    expect(validateEnv(validEnv)).toEqual({ ok: true })
+    expect(errorsFor({ ...validEnv, META_CONFIGURATION_ID: 'cfg_123' })).toEqual([
+      'META_CONFIGURATION_ID: must be a numeric Meta Graph ID',
+    ])
+  })
+
   it('validates the optional hardening knobs', () => {
     expect(
       validateEnv({
@@ -95,5 +103,6 @@ describe('validateEnv', () => {
     // Every variable documented in .env.example must be one the gateway reads
     expect(Object.keys(example)).not.toContain('META_GRAPH_VERSION')
     expect(Object.keys(example)).toContain('META_API_VERSION')
+    expect(Object.keys(example)).toContain('META_CONFIGURATION_ID')
   })
 })

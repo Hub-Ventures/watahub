@@ -31,6 +31,7 @@ export interface MetaGraphClient {
   listTemplates(wabaId: string): Promise<MetaMessageTemplate[]>
   exchangeCodeForToken(code: string, clientId: string, clientSecret: string): Promise<{ accessToken: string }>
   subscribeAppToWaba(wabaId: string, subscribedFields?: readonly string[], overrideToken?: string): Promise<boolean>
+  registerPhone(phoneNumberId: string, pin: string, overrideToken?: string): Promise<boolean>
   overridePhoneNumberCallback(phoneNumberId: string, callbackUrl: string, verifyToken: string): Promise<boolean>
   getMediaUrl(mediaId: string): Promise<string>
   uploadMedia(
@@ -126,12 +127,13 @@ export class MetaClient implements MetaGraphClient {
   }
 
   /**
-   * Exchange Embedded Signup code for permanent System User / Page Access Token.
+   * Exchange an Embedded Signup code for the business integration system user token.
    * Unauthenticated: app credentials authenticate the call, no bearer token is sent.
+   * Configuration id is not a parameter; it is only for FB.login on the client.
    */
   async exchangeCodeForToken(code: string, clientId: string, clientSecret: string): Promise<{ accessToken: string }> {
-    // Sent as a form body, not a query string: URLs end up in proxy and access
-    // logs, and this one would carry the app secret and the signup code
+    // Meta's tech-provider guide shows GET. The form stays in the POST body:
+    // URLs end up in proxy and access logs, and this one would carry the app secret and the code.
     const body = new URLSearchParams({ client_id: clientId, client_secret: clientSecret, code })
 
     // Signup codes are single-use, so an ambiguous failure must not be replayed
@@ -159,6 +161,22 @@ export class MetaClient implements MetaGraphClient {
       `${wabaId}/subscribed_apps`,
       { subscribed_fields: subscribedFields },
       { idempotent: true },
+      overrideToken
+    )
+    ensureOk(res)
+    return true
+  }
+
+  /**
+   * Register the phone for Cloud API (two-step PIN).
+   * Not idempotent: a timeout may already have registered the number, and Meta
+   * caps attempts (133016 after 10 in 72 hours), so a 5xx is not replayed.
+   */
+  async registerPhone(phoneNumberId: string, pin: string, overrideToken?: string): Promise<boolean> {
+    const res = await this.post(
+      `${phoneNumberId}/register`,
+      { messaging_product: 'whatsapp', pin },
+      { idempotent: false },
       overrideToken
     )
     ensureOk(res)

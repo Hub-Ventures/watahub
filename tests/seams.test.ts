@@ -29,6 +29,7 @@ const fakeClient = (overrides: Partial<MetaGraphClient>): MetaGraphClient => ({
   listTemplates: () => Promise.reject(new Error('not stubbed')),
   exchangeCodeForToken: () => Promise.reject(new Error('not stubbed')),
   subscribeAppToWaba: () => Promise.reject(new Error('not stubbed')),
+  registerPhone: () => Promise.reject(new Error('not stubbed')),
   overridePhoneNumberCallback: () => Promise.reject(new Error('not stubbed')),
   getMediaUrl: () => Promise.reject(new Error('not stubbed')),
   uploadMedia: () => Promise.reject(new Error('not stubbed')),
@@ -521,5 +522,42 @@ describe('Distributed store adapters (store-adapters.ts)', () => {
     await store.hit('client-ip', 1000)
     expect(await store.blockedFor('client-ip', 1000)).toBe(0)
     await store.clear()
+  })
+
+  it('DistributedLineStore round-trips a line and treats corrupt values as a miss', async () => {
+    const { DistributedLineStore } = await import('../src/services/store-adapters.js')
+    const kv = new MockKv()
+    const sets: Array<{ key: string; value: string; options?: { ttlSeconds?: number } }> = []
+    const recording = {
+      get: (key: string) => kv.get(key),
+      set: (key: string, value: string, options?: { ttlSeconds?: number }) => {
+        sets.push({ key, value, options })
+        return kv.set(key, value)
+      },
+    }
+    const store = new DistributedLineStore(recording)
+    expect(await store.get('100')).toBeUndefined()
+    await store.put({ phoneNumberId: '100', wabaId: '200', accessToken: 'BIZ' })
+    expect(sets[0]).toEqual({
+      key: 'watahub:line:100',
+      value: JSON.stringify({ phoneNumberId: '100', wabaId: '200', accessToken: 'BIZ' }),
+      options: undefined,
+    })
+    expect(await store.get('100')).toEqual({ phoneNumberId: '100', wabaId: '200', accessToken: 'BIZ' })
+
+    kv.map.set('watahub:line:100', 'not-json')
+    expect(await store.get('100')).toBeUndefined()
+    kv.map.set('watahub:line:100', 'null')
+    expect(await store.get('100')).toBeUndefined()
+    kv.map.set('watahub:line:100', JSON.stringify({ phoneNumberId: '999', wabaId: '200', accessToken: 'BIZ' }))
+    expect(await store.get('100')).toBeUndefined()
+    kv.map.set('watahub:line:100', JSON.stringify({ phoneNumberId: '100', wabaId: '', accessToken: 'BIZ' }))
+    expect(await store.get('100')).toBeUndefined()
+    kv.map.set('watahub:line:100', JSON.stringify({ phoneNumberId: '100', wabaId: '200', accessToken: '' }))
+    expect(await store.get('100')).toBeUndefined()
+    kv.map.set('watahub:line:100', JSON.stringify({ phoneNumberId: '100', wabaId: '200', accessToken: 1 }))
+    expect(await store.get('100')).toBeUndefined()
+    kv.map.set('watahub:line:100', JSON.stringify({ phoneNumberId: '100', wabaId: 200, accessToken: 'BIZ' }))
+    expect(await store.get('100')).toBeUndefined()
   })
 })

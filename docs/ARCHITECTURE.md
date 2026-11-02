@@ -179,7 +179,7 @@ sequenceDiagram
     App->>Gateway: POST /v1/messages (Payload + WATAHUB_API_KEY)
     Note over Gateway: 1. Validate Schema (SendMessageSchema)
     Note over Gateway: 2. Resolve phoneNumberId (Body > Header > Env)
-    Note over Gateway: 3. Resolve Token (X-Meta-Access-Token > META_SYSTEM_USER_TOKEN)
+    Note over Gateway: 3. Resolve Token (X-Meta-Access-Token > line store > META_SYSTEM_USER_TOKEN)
 
     Gateway->>MetaClient: sendMessage(phoneNumberId, payload)
     MetaClient->>MetaAPI: POST /{phoneNumberId}/messages (idempotent: false)
@@ -245,6 +245,7 @@ export interface MetaGraphClient {
   listTemplates(wabaId: string): Promise<MetaMessageTemplate[]>
   exchangeCodeForToken(code: string, clientId: string, clientSecret: string): Promise<{ accessToken: string }>
   subscribeAppToWaba(wabaId: string, subscribedFields?: readonly string[]): Promise<boolean>
+  registerPhone(phoneNumberId: string, pin: string, overrideToken?: string): Promise<boolean>
   overridePhoneNumberCallback(phoneNumberId: string, callbackUrl: string, verifyToken: string): Promise<boolean>
   getMediaUrl(mediaId: string): Promise<string>
   uploadMedia(phoneNumberId: string, body: BodyInit, contentType?: string): Promise<{ id: string }>

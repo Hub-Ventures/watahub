@@ -1,4 +1,5 @@
-import type { RateLimitStore, ReplayStore } from '../deps.js'
+import type { LineStore, RateLimitStore, ReplayStore, StoredLine } from '../deps.js'
+import { isRecord } from '../utils/guards.js'
 import { DEFAULT_REPLAY_TTL_SECONDS } from './replay.js'
 
 /**
@@ -86,4 +87,45 @@ export class DistributedRateLimitStore implements RateLimitStore {
   async clear(): Promise<void> {
     // Distributed TTL-based expiry handles cleanup
   }
+}
+
+/**
+ * LineStore adapter. No TTL: a business token stays until the line is connected again.
+ * The value is the token, so callers must not log the raw KV payload.
+ */
+export class DistributedLineStore implements LineStore {
+  constructor(
+    private readonly kv: KeyValueStore,
+    private readonly prefix = 'watahub:line:'
+  ) {}
+
+  async get(phoneNumberId: string): Promise<StoredLine | undefined> {
+    const raw = await this.kv.get(`${this.prefix}${phoneNumberId}`)
+    if (!raw) return undefined
+    return parseStoredLine(raw, phoneNumberId)
+  }
+
+  async put(line: StoredLine): Promise<void> {
+    const stored: StoredLine = {
+      phoneNumberId: line.phoneNumberId,
+      wabaId: line.wabaId,
+      accessToken: line.accessToken,
+    }
+    await this.kv.set(`${this.prefix}${line.phoneNumberId}`, JSON.stringify(stored))
+  }
+}
+
+/** Untrusted KV bytes. A bad value is a miss so the caller falls through to the env token. */
+function parseStoredLine(raw: string, phoneNumberId: string): StoredLine | undefined {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return undefined
+  }
+  if (!isRecord(parsed)) return undefined
+  if (parsed.phoneNumberId !== phoneNumberId) return undefined
+  if (typeof parsed.wabaId !== 'string' || parsed.wabaId.length === 0) return undefined
+  if (typeof parsed.accessToken !== 'string' || parsed.accessToken.length === 0) return undefined
+  return { phoneNumberId, wabaId: parsed.wabaId, accessToken: parsed.accessToken }
 }

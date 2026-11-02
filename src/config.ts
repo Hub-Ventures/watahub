@@ -16,6 +16,8 @@ export const DEFAULT_META_API_VERSION = 'v24.0'
 export interface GatewayConfig {
   apiKey?: string
   metaAppId?: string
+  /** Embedded Signup configuration id. Public; never the app secret. */
+  metaConfigurationId?: string
   metaAppSecret?: string
   metaSystemUserToken?: string
   metaWebhookVerifyToken?: string
@@ -35,6 +37,7 @@ export function getConfig(c: Context): GatewayConfig {
   return {
     apiKey: getEnvVar(c, 'WATAHUB_API_KEY'),
     metaAppId: getEnvVar(c, 'META_APP_ID'),
+    metaConfigurationId: getEnvVar(c, 'META_CONFIGURATION_ID'),
     metaAppSecret: getEnvVar(c, 'META_APP_SECRET'),
     metaSystemUserToken: getEnvVar(c, 'META_SYSTEM_USER_TOKEN'),
     metaWebhookVerifyToken: getEnvVar(c, 'META_WEBHOOK_VERIFY_TOKEN'),

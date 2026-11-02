@@ -6,22 +6,36 @@ import { GraphIdSchema, PublicHttpsUrlSchema } from './common.js'
 // this gateway can only verify webhooks signed with its own META_APP_SECRET.
 const CALLER_APP_CREDENTIALS = ['appId', 'appSecret'] as const
 
+const EmbeddedSignupCodeSchema = z.string().min(1, 'Embedded signup code is required').max(2048)
+
+function rejectCallerAppCredentials(value: object, ctx: z.RefinementCtx): void {
+  for (const key of CALLER_APP_CREDENTIALS) {
+    if (key in value) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [key],
+        message: 'Not accepted: this gateway always uses its own META_APP_ID and META_APP_SECRET',
+      })
+    }
+  }
+}
+
 export const ExchangeCodeSchema = z
   .object({
-    code: z.string().min(1, 'Embedded signup code is required').max(2048),
+    code: EmbeddedSignupCodeSchema,
   })
   .passthrough()
-  .superRefine((value, ctx) => {
-    for (const key of CALLER_APP_CREDENTIALS) {
-      if (key in value) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [key],
-          message: "Not accepted: the exchange always uses this gateway's META_APP_ID and META_APP_SECRET",
-        })
-      }
-    }
+  .superRefine(rejectCallerAppCredentials)
+
+export const ConnectLineSchema = z
+  .object({
+    code: EmbeddedSignupCodeSchema,
+    wabaId: GraphIdSchema,
+    phoneNumberId: GraphIdSchema,
+    pin: z.string().regex(/^\d{6}$/, 'Must be a 6-digit PIN'),
   })
+  .passthrough()
+  .superRefine(rejectCallerAppCredentials)
 
 export const SubscribeWabaSchema = z.object({
   wabaId: GraphIdSchema,

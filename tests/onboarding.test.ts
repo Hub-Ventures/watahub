@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import app from '../src/index.js'
+import app, { createApp, MemoryLineStore, type LineStore } from '../src/index.js'
 import { resetRateLimits } from '../src/http/rate-limit.js'
+import type { Logger } from '../src/logger.js'
 
 const KEY = 'k'.repeat(48)
 const APP_SECRET = 'gateway-app-secret'
@@ -127,5 +128,284 @@ describe('POST /v1/onboarding/subscribe and override-callback surface Meta error
       body: JSON.stringify({ wabaId: '123456' }),
     })
     expect(await res.json()).toEqual({ success: true, wabaId: '123456' })
+  })
+})
+
+describe('line connect token custody', () => {
+  const originalEnv = process.env
+  const phoneNumberId = '770000000000001'
+  const wabaId = '770000000000002'
+  const biz = 'BIZ_LINE_TOKEN'
+  const code = 'line-code'
+  const pin = '581063'
+  const auth = { 'Content-Type': 'application/json', 'X-API-Key': KEY }
+
+  function memoryLogger() {
+    const lines = { info: [] as string[], error: [] as string[] }
+    const logger: Logger = {
+      info: (message) => lines.info.push(message),
+      error: (message) => lines.error.push(message),
+    }
+    return { logger, lines }
+  }
+
+  function graphOk(body: unknown, status = 200) {
+    return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+  }
+
+  beforeEach(() => {
+    process.env = {
+      ...originalEnv,
+      WATAHUB_API_KEY: KEY,
+      META_APP_ID: '111',
+      META_APP_SECRET: APP_SECRET,
+      META_CONFIGURATION_ID: '333',
+    }
+    delete process.env.META_SYSTEM_USER_TOKEN
+    resetRateLimits()
+  })
+
+  afterEach(() => {
+    process.env = originalEnv
+    vi.restoreAllMocks()
+  })
+
+  const connectBody = { code, wabaId, phoneNumberId, pin }
+
+  it('sends with the stored token, and the header overrides it', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(graphOk({ access_token: biz }))
+      .mockResolvedValueOnce(graphOk({ success: true }))
+      .mockResolvedValueOnce(graphOk({ success: true }))
+      .mockResolvedValueOnce(graphOk({ messages: [{ id: 'wamid.1' }] }))
+      .mockResolvedValueOnce(graphOk({ messages: [{ id: 'wamid.2' }] }))
+    const gateway = createApp()
+    const connect = await gateway.request('/v1/onboarding/connect', {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify(connectBody),
+    })
+    expect(connect.status).toBe(200)
+    expect(JSON.stringify(await connect.json())).not.toContain(biz)
+
+    const send = await gateway.request('/v1/messages', {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ to: '15551234567', phoneNumberId, kind: 'text', text: { body: 'hi' } }),
+    })
+    expect(send.status).toBe(200)
+    expect(new Headers((fetchSpy.mock.calls[3][1] as RequestInit).headers).get('authorization')).toBe(`Bearer ${biz}`)
+
+    process.env.META_SYSTEM_USER_TOKEN = 'SYS_LOSES'
+    const overridden = await gateway.request('/v1/messages', {
+      method: 'POST',
+      headers: { ...auth, 'X-Meta-Access-Token': 'HEADER_WINS' },
+      body: JSON.stringify({ to: '15551234567', phoneNumberId, kind: 'text', text: { body: 'hi' } }),
+    })
+    expect(overridden.status).toBe(200)
+    expect(new Headers((fetchSpy.mock.calls[4][1] as RequestInit).headers).get('authorization')).toBe(
+      'Bearer HEADER_WINS'
+    )
+  })
+
+  it('prefers the stored token over META_SYSTEM_USER_TOKEN', async () => {
+    process.env.META_SYSTEM_USER_TOKEN = 'SYS_LOSES'
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(graphOk({ access_token: biz }))
+      .mockResolvedValueOnce(graphOk({ success: true }))
+      .mockResolvedValueOnce(graphOk({ success: true }))
+      .mockResolvedValueOnce(graphOk({ messages: [{ id: 'wamid.3' }] }))
+    const gateway = createApp()
+    await gateway.request('/v1/onboarding/connect', {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify(connectBody),
+    })
+    await gateway.request('/v1/messages', {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ to: '15551234567', phoneNumberId, kind: 'text', text: { body: 'hi' } }),
+    })
+    expect(new Headers((fetchSpy.mock.calls[3][1] as RequestInit).headers).get('authorization')).toBe(`Bearer ${biz}`)
+  })
+
+  it('keeps the token when register fails and does not echo it', async () => {
+    const { logger, lines } = memoryLogger()
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(graphOk({ access_token: biz }))
+      .mockResolvedValueOnce(graphOk({ success: true }))
+      .mockResolvedValueOnce(graphOk({ error: { message: 'pin mismatch', type: 'OAuthException', code: 133005 } }, 400))
+      .mockResolvedValueOnce(graphOk({ messages: [{ id: 'wamid.4' }] }))
+    const gateway = createApp({ logger })
+    const res = await gateway.request('/v1/onboarding/connect', {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify(connectBody),
+    })
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body).toMatchObject({ step: 'register', error: { code: 133005 } })
+    expect(JSON.stringify(body)).not.toContain(biz)
+    expect(JSON.stringify(body)).not.toContain(code)
+    expect(JSON.stringify(body)).not.toContain(pin)
+    expect(lines.error.join('\n')).not.toContain(biz)
+    expect(lines.error.join('\n')).not.toContain(code)
+    expect(lines.info.join('\n')).not.toContain(code)
+
+    const send = await gateway.request('/v1/messages', {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ to: '15551234567', phoneNumberId, kind: 'text', text: { body: 'hi' } }),
+    })
+    expect(send.status).toBe(200)
+    expect(new Headers((fetchSpy.mock.calls[3][1] as RequestInit).headers).get('authorization')).toBe(`Bearer ${biz}`)
+  })
+
+  it('does not store a line when the exchange fails', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      graphOk({ error: { message: 'bad code', code: 100, type: 'OAuthException' } }, 400)
+    )
+    const gateway = createApp()
+    const res = await gateway.request('/v1/onboarding/connect', {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify(connectBody),
+    })
+    expect(res.status).toBe(400)
+    expect(await res.json()).toMatchObject({ step: 'exchange', error: { code: 100 } })
+    const send = await gateway.request('/v1/messages', {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ to: '15551234567', phoneNumberId, kind: 'text', text: { body: 'hi' } }),
+    })
+    expect(send.status).toBe(500)
+  })
+
+  it('answers 502 without the token when the line store throws after exchange', async () => {
+    const { logger, lines } = memoryLogger()
+    const lineStore: LineStore = {
+      get: () => undefined,
+      put: () => {
+        throw new Error(`kv down ${biz}`)
+      },
+    }
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(graphOk({ access_token: biz }))
+    const gateway = createApp({ logger, lineStore })
+    const res = await gateway.request('/v1/onboarding/connect', {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify(connectBody),
+    })
+    expect(res.status).toBe(502)
+    const text = await res.text()
+    expect(text).not.toContain(biz)
+    expect(text).not.toContain(code)
+    expect(text).not.toContain('kv down')
+    expect(lines.error.join('\n')).not.toContain(biz)
+    expect(lines.error.join('\n')).toContain('Error')
+  })
+
+  it('rejects caller app credentials without calling Meta', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const gateway = createApp()
+    const res = await gateway.request('/v1/onboarding/connect', {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ ...connectBody, appSecret: 'other-secret' }),
+    })
+    expect(res.status).toBe(422)
+    expect(JSON.stringify(await res.json())).not.toContain('other-secret')
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('uses the stored token for media upload and proxied sends, not for a media id lookup', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(graphOk({ access_token: biz }))
+      .mockResolvedValueOnce(graphOk({ success: true }))
+      .mockResolvedValueOnce(graphOk({ success: true }))
+      .mockResolvedValueOnce(graphOk({ id: 'MEDIA' }))
+      .mockResolvedValueOnce(graphOk({ messages: [{ id: 'wamid.p' }] }))
+      .mockResolvedValueOnce(graphOk({ url: 'https://cdn.example/a.jpg' }))
+    process.env.META_SYSTEM_USER_TOKEN = 'SYS_FOR_MEDIA_GET'
+    const gateway = createApp()
+    await gateway.request('/v1/onboarding/connect', {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify(connectBody),
+    })
+    const upload = await gateway.request(`/v1/media/${phoneNumberId}`, {
+      method: 'POST',
+      headers: { ...auth, 'Content-Type': 'multipart/form-data; boundary=xyz' },
+      body: 'bytes',
+    })
+    expect(upload.status).toBe(200)
+    expect(new Headers((fetchSpy.mock.calls[3][1] as RequestInit).headers).get('authorization')).toBe(`Bearer ${biz}`)
+
+    await gateway.request(`/v24.0/${phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: auth,
+      body: '{}',
+    })
+    expect(new Headers((fetchSpy.mock.calls[4][1] as RequestInit).headers).get('authorization')).toBe(`Bearer ${biz}`)
+
+    const media = await gateway.request(`/v24.0/${phoneNumberId}`, { headers: { 'X-API-Key': KEY } })
+    expect(media.status).toBe(200)
+    expect(new Headers((fetchSpy.mock.calls[5][1] as RequestInit).headers).get('authorization')).toBe(
+      'Bearer SYS_FOR_MEDIA_GET'
+    )
+  })
+
+  it('does not use a line token for templates or subscribe, which have no phone id', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(graphOk({ access_token: biz }))
+      .mockResolvedValueOnce(graphOk({ success: true }))
+      .mockResolvedValueOnce(graphOk({ success: true }))
+    const gateway = createApp()
+    await gateway.request('/v1/onboarding/connect', {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify(connectBody),
+    })
+    expect((await gateway.request(`/v1/templates/${wabaId}`, { headers: { 'X-API-Key': KEY } })).status).toBe(500)
+    const subscribe = await gateway.request('/v1/onboarding/subscribe', {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ wabaId }),
+    })
+    expect(subscribe.status).toBe(500)
+  })
+
+  it('falls through an empty stored token to the system token', async () => {
+    const store = new MemoryLineStore()
+    store.put({ phoneNumberId, wabaId, accessToken: '' })
+    process.env.META_SYSTEM_USER_TOKEN = 'SYS_FALLBACK'
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(graphOk({ messages: [{ id: 'wamid.e' }] }))
+    const gateway = createApp({ lineStore: store })
+    const res = await gateway.request('/v1/messages', {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ to: '15551234567', phoneNumberId, kind: 'text', text: { body: 'hi' } }),
+    })
+    expect(res.status).toBe(200)
+    expect(new Headers((fetchSpy.mock.calls[0][1] as RequestInit).headers).get('authorization')).toBe(
+      'Bearer SYS_FALLBACK'
+    )
+  })
+
+  it('launch refuses a non-numeric configuration id and does not echo it', async () => {
+    process.env.META_CONFIGURATION_ID = 'not-a-number'
+    const { logger, lines } = memoryLogger()
+    const gateway = createApp({ logger })
+    const res = await gateway.request('/v1/onboarding/launch', { headers: { 'X-API-Key': KEY } })
+    expect(res.status).toBe(503)
+    const text = await res.text()
+    expect(text).not.toContain('not-a-number')
+    expect(text).not.toContain(APP_SECRET)
+    expect(lines.error.join('\n')).not.toContain('not-a-number')
+    expect(lines.error.join('\n')).not.toContain(APP_SECRET)
   })
 })

@@ -100,9 +100,10 @@ Configure your `.env`:
 | Variable | Description | Default |
 | :--- | :--- | :--- |
 | `PORT` | Local Node.js server port | `3000` |
-| `META_APP_ID` | Meta Developer App ID | - |
-| `META_APP_SECRET` | **Required.** Meta App Secret, used to verify `X-Hub-Signature-256`. Without it `POST /webhook` answers 503 | - |
-| `META_SYSTEM_USER_TOKEN` | Meta System User permanent access token | - |
+| `META_APP_ID` | Meta Developer App ID. Optional at boot; required by connect and launch | - |
+| `META_APP_SECRET` | **Required.** Meta App Secret, used to verify `X-Hub-Signature-256` and to exchange Embedded Signup codes. Without it `POST /webhook` answers 503 | - |
+| `META_CONFIGURATION_ID` | Embedded Signup configuration id (`FB.login` `config_id`). Optional at boot; required by `GET /v1/onboarding/launch` | - |
+| `META_SYSTEM_USER_TOKEN` | Fallback Meta token when the phone has no stored business token and the request has no `X-Meta-Access-Token` | - |
 | `META_WEBHOOK_VERIFY_TOKEN` | **Required.** Token for Meta's webhook handshake (min 16 characters) | - |
 | `META_DEFAULT_PHONE_NUMBER_ID` | Default WhatsApp Business Phone Number ID | - |
 | `META_DEFAULT_WABA_ID` | Default WhatsApp Business Account ID | - |
@@ -224,23 +225,27 @@ Meta's raw webhook format nests data under `entry[].changes[].value`. Watahub fl
 Watahub is structured as an **open core** project:
 
 ### 1. Single-Operator Core (Open Source, MIT)
-The core gateway is a stateless, high-performance bridge designed for a single operator or team:
-- **Zero Tenant Leakage:** The core does not manage tenants, tenant routing, or tenant API keys.
-- **Operator Configuration:** Configured via `META_SYSTEM_USER_TOKEN` and `SUBSCRIBER_WEBHOOK_URL`.
-- **Dynamic Override:** Supports `X-Meta-Access-Token` to override the token per request (allowing custom orchestrators or wrappers to inject credentials).
-- **Library Package:** Published with standard TypeScript declarations and exports (`types` and `exports` in `package.json`). You can import `createApp`, `normalizeMetaWebhook`, `verifyMetaSignature`, `deliverToSubscriber`, and `MetaClient` directly into your application.
+One operator: one Meta app, one subscriber webhook, one `WATAHUB_API_KEY`, and N phone lines. The core does not make the developer perform Meta's onboarding by hand.
+- **No tenant model:** No per-tenant API keys, no per-tenant subscriber URL, no phone ownership checks, no `tenantId`.
+- **Static app config:** `META_APP_ID`, `META_APP_SECRET`, `META_CONFIGURATION_ID`, `META_API_VERSION`. The business token is not a pasted secret.
+- **Line connect:** `POST /v1/onboarding/connect` exchanges the Embedded Signup code, stores the business token keyed by phone number id, subscribes that WABA to this gateway's webhook, and registers the phone. The response does not include the token.
+- **Launch config:** `GET /v1/onboarding/launch` returns `{ appId, configurationId, apiVersion }` so a frontend can call `FB.login`. The app secret is never returned.
+- **Token resolution:** `X-Meta-Access-Token`, then the stored token for that phone number id, then `META_SYSTEM_USER_TOKEN`.
+- **One subscriber:** `SUBSCRIBER_WEBHOOK_URL`.
 
 ### 2. Enterprise Edition (`/ee`, Private Repository)
-For multi-tenant SaaS platforms, agencies, and hosting providers requiring complete tenant isolation:
-- **`PhoneDirectory`:** Dynamic resolution of phone credentials, access tokens, and tenant subscriber endpoints across KV, Redis, or SQL.
-- **Tenant-Scoped Authentication:** Dedicated API keys per tenant with route-level enforcement that clients only access their assigned phone numbers.
-- **Granular Webhook Routing:** Webhooks are routed directly to tenant-specific callbacks with tenant-specific HMAC signatures and `tenantId` payloads.
-- **Token Custody & Embedded Signup:** Secure credential storage for multi-account onboarding.
+Multi-tenant routing. Not in this repository.
+- **Per-tenant API keys** and phone ownership checks.
+- **Per-tenant subscriber URLs** and signing secrets (`tenantId` stays in `/ee`).
+- **Credential injection:** the wrapper resolves a tenant token and sends `X-Meta-Access-Token`. That header still wins over the MIT line store.
 
-### 3. Embedded Signup Flow (Core)
-- `POST /v1/onboarding/exchange`: Exchanges Meta Embedded Signup OAuth `code` for an access token using the gateway's app credentials.
-- `POST /v1/onboarding/subscribe`: Subscribes the WABA to WhatsApp webhook topics.
-- `POST /v1/onboarding/override-callback`: Reconfigures Meta to route webhooks for a specific phone number to an external destination outside Watahub.
+### 3. Embedded Signup
+`POST /v1/onboarding/connect` is the operator path. It does not return the business token.
+`GET /v1/onboarding/launch` is what a frontend needs for `FB.login`. `config_id` is not a parameter of the code exchange.
+These stay for existing callers:
+- `POST /v1/onboarding/exchange`: exchanges the code and **returns** the token. Prefer connect.
+- `POST /v1/onboarding/subscribe`: subscribes a WABA using the header or `META_SYSTEM_USER_TOKEN`. Connect already subscribes with the new business token.
+- `POST /v1/onboarding/override-callback`: explicit phone-level callback override. Connect does not set one; subscribing attaches Meta to the callback already configured on the app.
 
 ---
 
@@ -294,7 +299,9 @@ pnpm run deploy
 | `POST` | `/v1/media` | Uploads media file (`multipart/form-data`) streaming to Meta |
 | `POST` | `/v1/media/:phoneNumberId` | Uploads media scoped to a specific phone number |
 | `GET` | `/v1/templates/:wabaId` | Lists approved HSM templates from Meta Graph API |
-| `POST` | `/v1/onboarding/exchange` | Exchanges Meta Embedded Signup OAuth code |
+| `POST` | `/v1/onboarding/connect` | Connects one phone line (exchange, store, subscribe, register). Does not return the token |
+| `GET` | `/v1/onboarding/launch` | Public Embedded Signup parameters for `FB.login` (`appId`, `configurationId`, `apiVersion`) |
+| `POST` | `/v1/onboarding/exchange` | Low-level code exchange. Returns the token. Prefer connect |
 | `POST` | `/v1/onboarding/subscribe` | Subscribes application to WABA message webhooks |
 | `POST` | `/v1/onboarding/override-callback` | Overrides webhook URL for a specific phone number |
 | `ALL` | `/v24.0/*` | Direct Graph API passthrough proxy for allowlisted routes |

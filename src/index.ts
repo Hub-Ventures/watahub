@@ -17,11 +17,16 @@ import { createTemplatesRouter } from './routes/templates.js'
 import { createWebhookRouter } from './routes/webhook.js'
 import { redactSecrets } from './utils/redact.js'
 
-export type { GatewayDeps, RateLimitStore, ReplayStore } from './deps.js'
-export { createDefaultDeps } from './deps.js'
+export type { GatewayDeps, LineStore, RateLimitStore, ReplayStore, StoredLine } from './deps.js'
+export { createDefaultDeps, MemoryLineStore } from './deps.js'
 export { BODY_LIMITS } from './http/limits.js'
 export { requireApiKey, resolveMetaAccessToken } from './http/auth.js'
-export { DistributedRateLimitStore, DistributedReplayStore, type KeyValueStore } from './services/store-adapters.js'
+export {
+  DistributedLineStore,
+  DistributedRateLimitStore,
+  DistributedReplayStore,
+  type KeyValueStore,
+} from './services/store-adapters.js'
 export { verifyMetaSignature, signSubscriberPayload, timingSafeEqual, sha256Hex } from './services/crypto.js'
 export {
   deliverToSubscriber,

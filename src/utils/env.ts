@@ -43,6 +43,8 @@ const EnvObject = z.object({
     .regex(/^\d{1,5}$/, 'must be a port number')
     .optional(),
   META_APP_ID: numericId.optional(),
+  // Embedded Signup config_id. Used by FB.login only, not by the code exchange.
+  META_CONFIGURATION_ID: numericId.optional(),
   META_APP_SECRET: z.string().min(1, 'is required to verify Meta webhook signatures'),
   META_SYSTEM_USER_TOKEN: z.string().min(1).optional(),
   META_WEBHOOK_VERIFY_TOKEN: z

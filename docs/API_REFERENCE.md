@@ -24,9 +24,13 @@ X-API-Key: <WATAHUB_API_KEY>
 Calls omitting or providing an invalid API key receive `401 Unauthorized`. Clients exceeding 10 consecutive authentication failures within 60 seconds are throttled with `429 Too Many Requests` and a `Retry-After` header.
 
 ### 1.3 Meta Access Token Resolution Priority
-For endpoints communicating with Meta's Graph API (`/v1/messages`, `/v1/media`, `/v24.0/*`), Watahub resolves the Meta Access Token in the following order:
-1. **Explicit Header:** `X-Meta-Access-Token` provided in the HTTP request (allows callers or wrappers like Enterprise Edition to supply tenant credentials).
-2. **Environment Variable:** `META_SYSTEM_USER_TOKEN` (the operator's default token).
+For Graph calls that name a phone number id (`POST /v1/messages`, `POST /v1/media`, `POST /v24.0/:phoneNumberId/messages`, `POST /v24.0/:phoneNumberId/media`, `POST /v1/onboarding/override-callback`), Watahub resolves the token in this order:
+
+1. **Explicit header:** `X-Meta-Access-Token`.
+2. **Line store:** the business token saved by `POST /v1/onboarding/connect` for that phone number id.
+3. **Environment variable:** `META_SYSTEM_USER_TOKEN`.
+
+Calls with no phone number id (`GET /v1/media/:mediaId`, `GET /v1/media/:mediaId/content`, `GET /v24.0/:mediaId`, `GET /v1/templates`, `POST /v1/onboarding/subscribe`) use the header, then `META_SYSTEM_USER_TOKEN`.
 
 If no token is found, the endpoint returns `500 Internal Server Error` with `Missing Meta access token`.
 
@@ -257,7 +261,7 @@ Resolves a Meta WhatsApp media ID to a temporary downloadable CDN URL.
 
 #### Query Parameters
 - `redirect`: (`boolean`, default: `false`). When `true`, returns a `302 Found` redirecting directly to the CDN asset. Meta's CDN only answers requests that carry the access token, so a client that follows the redirect without it gets `401`. To download the file, use `GET /v1/media/:mediaId/content`.
-- `phone_number_id`: (`string`, optional). Used to look up the phone's access token if `META_SYSTEM_USER_TOKEN` is unset.
+- `phone_number_id`: (`string`, optional). Forwarded only by the `/v24.0` proxy. A media id is not a phone id, so this lookup does not select a stored line token.
 
 #### Response (`200 OK`)
 ```json
@@ -330,8 +334,56 @@ Lists approved HSM message templates associated with a WhatsApp Business Account
 
 ## 7. Embedded Signup & Onboarding
 
+`POST /v1/onboarding/connect` is the operator path. `POST /v1/onboarding/exchange` still returns the token for existing callers; do not use it when the gateway should keep the token.
+
+### `GET /v1/onboarding/launch`
+Authenticated with `WATAHUB_API_KEY`. Returns the public values a frontend needs for `FB.login`. `configurationId` is the Embedded Signup `config_id`. It is not sent when the code is exchanged.
+
+#### Response (`200 OK`)
+```json
+{
+  "appId": "236484624622562",
+  "configurationId": "123456789012345",
+  "apiVersion": "v24.0"
+}
+```
+
+`503` when `META_APP_ID` or `META_CONFIGURATION_ID` is missing or not numeric. The app secret is never returned.
+
+### `POST /v1/onboarding/connect`
+Finishes Embedded Signup for one phone line. The caller sends the code from `FB.login`, the WABA id, the phone number id, and the 6-digit registration PIN. The gateway exchanges the code with its own app credentials (`client_id`, `client_secret`, `code` only), stores the business token, subscribes the WABA to the webhook already configured on this Meta app (`messages`), and registers the phone for Cloud API.
+
+The business token is not in the response.
+
+#### Request Body
+```json
+{
+  "code": "AQDf58d...short-lived-oauth-code",
+  "wabaId": "105555123456789",
+  "phoneNumberId": "100609346426000",
+  "pin": "581063"
+}
+```
+
+`appId` and `appSecret` are rejected.
+
+#### Response (`200 OK`)
+```json
+{
+  "phoneNumberId": "100609346426000",
+  "wabaId": "105555123456789",
+  "subscribed": true,
+  "registered": true
+}
+```
+
+#### Errors
+- `400` if `META_APP_ID` or `META_APP_SECRET` is missing.
+- `422` if `pin` is not 6 digits, an id is not a numeric Graph id, or the body includes `appId` / `appSecret`.
+- If exchange, subscribe, or register fails, the classified Meta error is returned with `step` set to `exchange`, `subscribe`, or `register`. The token is not included. A failed subscribe or register still leaves the stored token in place.
+
 ### `POST /v1/onboarding/exchange`
-Exchanges the short-lived OAuth authorization `code` returned by Meta's Embedded Signup popup for a permanent System User / Page token.
+Low-level exchange. Prefer `POST /v1/onboarding/connect`, which stores the business token and does not return it. This endpoint still returns `accessToken` for existing callers.
 
 #### Request Body
 ```json

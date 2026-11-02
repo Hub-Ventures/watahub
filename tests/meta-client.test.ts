@@ -434,6 +434,21 @@ describe('MetaClient requests and bodies', () => {
     })
   })
 
+  describe('registerPhone', () => {
+    it('POSTs messaging_product and pin with the override token and does not retry a 503', async () => {
+      const spy = mockFetch(okJson({ success: true }), okJson(metaError(2, 'down'), 503))
+      expect(await client.registerPhone('PHONE', '123456')).toBe(true)
+      expect(spy.mock.calls[0][0]).toBe('https://graph.facebook.com/v24.0/PHONE/register')
+      expect(sentBody(spy)).toEqual({ messaging_product: 'whatsapp', pin: '123456' })
+      expect(new Headers((spy.mock.calls[0][1] as RequestInit).headers).get('authorization')).toBe('Bearer TOKEN')
+
+      await expect(client.registerPhone('PHONE', '654321', 'BIZ')).rejects.toBeInstanceOf(WatahubApiError)
+      expect(spy).toHaveBeenCalledTimes(2)
+      expect(new Headers((spy.mock.calls[1][1] as RequestInit).headers).get('authorization')).toBe('Bearer BIZ')
+      expect(sentBody(spy, 1)).toEqual({ messaging_product: 'whatsapp', pin: '654321' })
+    })
+  })
+
   describe('subscribeAppToWaba / overridePhoneNumberCallback', () => {
     it('returns true on success and throws WatahubApiError on Meta errors', async () => {
       const spy = mockFetch(okJson({ success: true }), okJson(metaError(100), 400))

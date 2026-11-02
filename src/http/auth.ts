@@ -1,6 +1,6 @@
 import type { Context, MiddlewareHandler } from 'hono'
 import { getConfig } from '../config.js'
-import type { RateLimitStore } from '../deps.js'
+import type { LineStore, RateLimitStore } from '../deps.js'
 import type { Logger } from '../logger.js'
 import { timingSafeEqual } from '../services/crypto.js'
 import { isStrongApiKey } from '../utils/env.js'
@@ -50,14 +50,26 @@ async function hasValidApiKey(c: Context, apiKey: string): Promise<boolean> {
   return matches.includes(true)
 }
 
+export interface MetaTokenSource {
+  /** When set, the line store is consulted after the header and before the env token. */
+  phoneNumberId?: string
+  lineStore?: LineStore
+}
+
 /**
  * Resolves the Meta access token for the request:
- * 1. Explicit `X-Meta-Access-Token` header always wins (allows operators or enterprise wrappers to supply tokens).
- * 2. Fallback to operator token in META_SYSTEM_USER_TOKEN env var.
+ * 1. `X-Meta-Access-Token` (operators and enterprise wrappers inject this).
+ * 2. The business token stored for `phoneNumberId`, when that line was connected.
+ * 3. `META_SYSTEM_USER_TOKEN`, the old single-token path.
  */
-export function resolveMetaAccessToken(c: Context): string | undefined {
+export async function resolveMetaAccessToken(c: Context, source: MetaTokenSource = {}): Promise<string | undefined> {
   const headerToken = c.req.header('x-meta-access-token')
   if (headerToken) return headerToken
+
+  if (source.phoneNumberId && source.lineStore) {
+    const line = await source.lineStore.get(source.phoneNumberId)
+    if (line?.accessToken) return line.accessToken
+  }
 
   return getConfig(c).metaSystemUserToken
 }

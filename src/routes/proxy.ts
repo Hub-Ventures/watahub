@@ -28,6 +28,13 @@ function isMessageSend(method: string, subPath: string): boolean {
   return method === 'POST' && /^\d+\/messages$/.test(subPath)
 }
 
+/** Phone id only on the allowlisted send and upload paths. GET /:id is a media id. */
+function proxyPhoneNumberId(method: string, subPath: string): string | undefined {
+  if (method !== 'POST') return undefined
+  const match = /^(\d+)\/(?:messages|media)$/.exec(subPath)
+  return match?.[1]
+}
+
 /**
  * Graph URL for an allowlisted sub-path. Only allowlisted query params are kept:
  * Graph honors ?method=delete (verb tunneling), ?fields={...} (node expansion)
@@ -77,7 +84,10 @@ export function createProxyRouter(deps: GatewayDeps): Hono {
     if (invalidEnv.length > 0) return misconfiguredResponse(c, deps.logger, invalidEnv)
 
     const subPath = c.req.path.replace(/^\/v24\.0\/?/, '')
-    const accessToken = resolveMetaAccessToken(c)
+    const accessToken = await resolveMetaAccessToken(c, {
+      phoneNumberId: proxyPhoneNumberId(c.req.method, subPath),
+      lineStore: deps.lineStore,
+    })
     if (!accessToken) {
       return c.json({ error: MISSING_META_TOKEN }, 500)
     }
