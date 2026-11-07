@@ -6,5 +6,12 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": {
     "enabled": true
-  }
+  },
+  "workers_dev": true,
+  "routes": [
+    {
+      "pattern": "api.watahub.dev",
+      "custom_domain": true
+    }
+  ]
 }
