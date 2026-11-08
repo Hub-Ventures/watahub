@@ -83,7 +83,7 @@ curl http://localhost:3000/health
 {
   "status": "ok",
   "service": "watahub",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "timestamp": "2026-10-25T18:00:00.000Z"
 }
 ```

@@ -2,7 +2,7 @@ import type { Context } from 'hono'
 import { getEnvVar } from './utils/env.js'
 
 export const GATEWAY_NAME = 'watahub'
-export const GATEWAY_VERSION = '0.1.0'
+export const GATEWAY_VERSION = '0.2.0'
 export const GATEWAY_USER_AGENT = `Watahub-Gateway/${GATEWAY_VERSION}`
 
 export const META_GRAPH_BASE_URL = 'https://graph.facebook.com'

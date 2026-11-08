@@ -53,7 +53,7 @@ describe('HTTP route contracts', () => {
     it('serves /health without auth', async () => {
       const res = await app.request('/health')
       expect(res.status).toBe(200)
-      expect(await json(res)).toMatchObject({ status: 'ok', service: 'watahub', version: '0.1.0' })
+      expect(await json(res)).toMatchObject({ status: 'ok', service: 'watahub', version: '0.2.0' })
     })
   })
 
@@ -1326,7 +1326,7 @@ describe('HTTP route contracts', () => {
       const [url, init] = spy.mock.calls[0] as [string, RequestInit]
       expect(url).toBe('https://subscriber.example/hook')
       const headers = init.headers as Record<string, string>
-      expect(headers['User-Agent']).toBe('Watahub-Gateway/0.1.0')
+      expect(headers['User-Agent']).toBe('Watahub-Gateway/0.2.0')
       expect(headers['x-watahub-signature']).toBe(
         await signSubscriberPayload(String(init.body), 'SUB_SECRET_32_CHARS_MINIMUM_LENGTH!')
       )

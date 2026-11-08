@@ -20,7 +20,7 @@ describe('HTTP Route Endpoints', () => {
     const body = (await res.json()) as Record<string, unknown>
     expect(body.status).toBe('ok')
     expect(body.service).toBe('watahub')
-    expect(body.version).toBe('0.1.0')
+    expect(body.version).toBe('0.2.0')
   })
 
   it('GET /webhook succeeds with correct verify token handshake', async () => {

@@ -136,7 +136,7 @@ Expected response:
 {
   "status": "ok",
   "service": "watahub",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "timestamp": 1729620000000
 }
 ```
@@ -322,7 +322,7 @@ pnpm run deploy
 
 ## 🚦 Project Status
 
-Watahub is currently in active development (**v0.1.0**).
+Watahub is currently in active development (**v0.2.0**).
 
 The core WhatsApp bridge functionality (message dispatch, streaming media uploads, HMAC verification, replay protection, rate limiting, and library exports) is production-ready and fully tested with 100% passing automated tests across Node.js and Cloudflare Workers.
 
