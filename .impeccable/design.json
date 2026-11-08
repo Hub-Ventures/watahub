@@ -1,0 +1,467 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-08T12:00:00Z",
+  "title": "Design System: watahub.dev",
+  "extensions": {
+    "inheritsFrom": {
+      "designMd": "https://github.com/Hub-Ventures/watahub-ee/blob/main/DESIGN.md",
+      "sidecar": "https://github.com/Hub-Ventures/watahub-ee/blob/main/.impeccable/design.json",
+      "mirrors": [
+        "site/public/tokens.css",
+        "site/public/components.css"
+      ],
+      "sourceCommit": "a858f6b",
+      "sync": "Byte-identical copies of watahub-ee public/tokens.css and public/components.css behind a two-line source header; excluded in .prettierignore; changed only in watahub-ee and copied again."
+    },
+    "colorMeta": {
+      "accent": {
+        "role": "primary",
+        "displayName": "Deep Teal",
+        "canonical": "#0f766e",
+        "tonalRamp": [
+          "#042f2e",
+          "#134e4a",
+          "#115e59",
+          "#0f766e",
+          "#14b8a6",
+          "#2dd4bf",
+          "#5eead4",
+          "#ccfbf1"
+        ]
+      },
+      "accent-dark": {
+        "role": "primary",
+        "displayName": "Bright Teal",
+        "canonical": "#2dd4bf",
+        "tonalRamp": [
+          "#042f2e",
+          "#134e4a",
+          "#115e59",
+          "#0f766e",
+          "#14b8a6",
+          "#2dd4bf",
+          "#5eead4",
+          "#ccfbf1"
+        ]
+      },
+      "accent-hover": {
+        "role": "primary",
+        "displayName": "Deep Teal hover"
+      },
+      "accent-hover-dark": {
+        "role": "primary",
+        "displayName": "Bright Teal hover"
+      },
+      "accent-text": {
+        "role": "primary",
+        "displayName": "On Teal"
+      },
+      "accent-text-dark": {
+        "role": "primary",
+        "displayName": "On Teal (dark)"
+      },
+      "accent-soft": {
+        "role": "primary",
+        "displayName": "Teal Wash"
+      },
+      "accent-soft-dark": {
+        "role": "primary",
+        "displayName": "Teal Wash (dark)"
+      },
+      "accent-ink": {
+        "role": "primary",
+        "displayName": "Teal Ink"
+      },
+      "accent-ink-dark": {
+        "role": "primary",
+        "displayName": "Teal Ink (dark)"
+      },
+      "bg": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "tonalRamp": [
+          "#09090b",
+          "#18181b",
+          "#27272a",
+          "#3f3f46",
+          "#52525b",
+          "#a1a1aa",
+          "#e4e4e7",
+          "#fafafa"
+        ]
+      },
+      "bg-dark": {
+        "role": "neutral",
+        "displayName": "Night",
+        "tonalRamp": [
+          "#09090b",
+          "#18181b",
+          "#27272a",
+          "#3f3f46",
+          "#52525b",
+          "#a1a1aa",
+          "#e4e4e7",
+          "#fafafa"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Surface"
+      },
+      "surface-dark": {
+        "role": "neutral",
+        "displayName": "Surface (dark)"
+      },
+      "surface-2": {
+        "role": "neutral",
+        "displayName": "Surface 2"
+      },
+      "surface-2-dark": {
+        "role": "neutral",
+        "displayName": "Surface 2 (dark)"
+      },
+      "surface-3": {
+        "role": "neutral",
+        "displayName": "Surface 3"
+      },
+      "surface-3-dark": {
+        "role": "neutral",
+        "displayName": "Surface 3 (dark)"
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Border"
+      },
+      "border-dark": {
+        "role": "neutral",
+        "displayName": "Border (dark)"
+      },
+      "border-strong": {
+        "role": "neutral",
+        "displayName": "Border Strong"
+      },
+      "border-strong-dark": {
+        "role": "neutral",
+        "displayName": "Border Strong (dark)"
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Ink"
+      },
+      "text-dark": {
+        "role": "neutral",
+        "displayName": "Ink (dark)"
+      },
+      "text-2": {
+        "role": "neutral",
+        "displayName": "Ink 2"
+      },
+      "text-2-dark": {
+        "role": "neutral",
+        "displayName": "Ink 2 (dark)"
+      },
+      "text-3": {
+        "role": "neutral",
+        "displayName": "Ink 3"
+      },
+      "text-3-dark": {
+        "role": "neutral",
+        "displayName": "Ink 3 (dark)"
+      },
+      "ok": {
+        "role": "semantic",
+        "displayName": "Success Green",
+        "tonalRamp": [
+          "#052e16",
+          "#14532d",
+          "#166534",
+          "#15803d",
+          "#22c55e",
+          "#4ade80",
+          "#86efac",
+          "#dcfce7"
+        ]
+      },
+      "ok-dark": {
+        "role": "semantic",
+        "displayName": "Success Green (dark)",
+        "tonalRamp": [
+          "#052e16",
+          "#14532d",
+          "#166534",
+          "#15803d",
+          "#22c55e",
+          "#4ade80",
+          "#86efac",
+          "#dcfce7"
+        ]
+      },
+      "ok-soft": {
+        "role": "semantic",
+        "displayName": "Success Wash"
+      },
+      "ok-soft-dark": {
+        "role": "semantic",
+        "displayName": "Success Wash (dark)"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The hero h1 only, in text: the tagline as one statement, wrapping to two lines at 1440px."
+      },
+      "headline-close": {
+        "displayName": "Headline close",
+        "purpose": "The closing band's h2."
+      },
+      "headline-miss": {
+        "displayName": "Headline miss",
+        "purpose": "The 404 h1."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section h2s."
+      },
+      "lede": {
+        "displayName": "Lede",
+        "purpose": "Hero deck (max 48ch), closing paragraph, 404 text."
+      },
+      "deck": {
+        "displayName": "Deck",
+        "purpose": "Paragraph under a section h2 (max 62ch)."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "h3 inside rows lists and the block title of each hero step."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Page default, one step above the panel's 14px."
+      },
+      "body-md": {
+        "displayName": "Body md",
+        "purpose": "Bubbles, row descriptions, checklist, features and prose inside frames."
+      },
+      "body-sm": {
+        "displayName": "Body sm",
+        "purpose": "Frame heads, record notes, value descriptions, nav links, footer."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Badges, value labels, record heads, language options."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Bubble time meta only."
+      },
+      "code": {
+        "displayName": "Code",
+        "purpose": "Every code well."
+      },
+      "code-ticket": {
+        "displayName": "Code ticket",
+        "purpose": "The closing connect-response ticket."
+      },
+      "numeral": {
+        "displayName": "Numeral",
+        "purpose": "The hero step numbers, tabular."
+      },
+      "step": {
+        "displayName": "Step",
+        "purpose": "Hero step text, in text-2."
+      }
+    },
+    "shadows": [
+      {
+        "name": "thumb",
+        "value": "0 1px 2px rgba(0,0,0,.08)",
+        "purpose": "Inherited segmented thumb; only the current language option."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state",
+        "value": "0.12s",
+        "purpose": "Background, color and border-color transitions on nav links, connectors, bubbles and code wells."
+      },
+      {
+        "name": "ease",
+        "value": "cubic-bezier(.16,1,.3,1)",
+        "purpose": "Inherited --ease; the connector draw-in."
+      },
+      {
+        "name": "draw",
+        "value": "scaleX(0) to none, 0.56s var(--ease), delays 0.25s and 0.45s",
+        "purpose": "The one authored moment: hero connectors draw from message to record on load."
+      },
+      {
+        "name": "drop",
+        "value": "scaleY(0) to none, same timing",
+        "purpose": "The phone version of draw on vertical connectors."
+      },
+      {
+        "name": "smooth-scroll",
+        "value": "scroll-behavior: smooth under prefers-reduced-motion: no-preference",
+        "purpose": "Anchor jumps from the top bar."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "animation-duration:1ms!important (inherited components.css)",
+        "purpose": "Cuts the draw-in under prefers-reduced-motion: reduce."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "hero-stack",
+        "value": "1080px"
+      },
+      {
+        "name": "single-column",
+        "value": "860px"
+      },
+      {
+        "name": "phone",
+        "value": "767px"
+      },
+      {
+        "name": "narrow-phone",
+        "value": "560px"
+      }
+    ],
+    "favicon": {
+      "file": "site/public/favicon.svg",
+      "ground": "#18181b",
+      "dotAndRing": "#2dd4bf",
+      "arc": "#fafafa",
+      "note": "Literal panel values; an SVG file cannot read the tokens."
+    }
+  },
+  "components": [
+    {
+      "name": "Message/record pair",
+      "kind": "custom",
+      "refersTo": "pair-frame",
+      "description": "The signature form: chat well on bg, record on surface, a connector that lights teal on hover or focus.",
+      "html": "<figure class=\"ds-pair\"><div class=\"ds-pair-msg\"><p class=\"ds-bubble\">Do you ship to Medellín today?<span class=\"ds-meta\">10:42</span></p><span class=\"ds-link\"></span></div><div class=\"ds-pair-rec\" tabindex=\"0\"><p class=\"ds-rec-head\"><span class=\"ds-mono\"><b>POST</b> https://your.app/hooks</span><span class=\"ds-badge-ok\"><svg viewBox=\"0 0 24 24\" width=\"12\" height=\"12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.25\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"/></svg>signed</span></p><pre class=\"ds-code\">{ \"type\": \"message\", \"phoneNumberId\": \"100609346426000\" }</pre></div></figure>",
+      "css": ".ds-pair{display:grid;grid-template-columns:minmax(0,4fr) minmax(0,7fr);margin:0;border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow:hidden;font:400 14px/1.5 var(--font);color:var(--text)} .ds-pair-msg{display:flex;align-items:center;min-width:0;padding:16px 0 16px 16px;border-right:1px solid var(--border);background:var(--bg)} .ds-bubble{margin:0;max-width:85%;padding:8px 12px;border:1px solid var(--border);border-radius:14px;background:var(--surface);font-size:14px;line-height:1.45;transition:border-color .12s} .ds-meta{display:block;margin-top:2px;font-size:11px;opacity:.75;text-align:right} .ds-link{position:relative;flex:1 1 24px;min-width:24px;height:1px;margin-left:10px;background:var(--border-strong);transition:background .12s} .ds-link::after{content:'';position:absolute;right:-3px;top:-3px;width:7px;height:7px;border-radius:50%;background:var(--border-strong);transition:background .12s} .ds-pair-rec{min-width:0;padding:16px;outline:none} .ds-rec-head{display:flex;align-items:center;gap:8px;margin:0;color:var(--text-2);font-size:12px} .ds-rec-head b{color:var(--text);font-weight:600} .ds-mono{font-family:var(--mono)} .ds-badge-ok{display:inline-flex;align-items:center;gap:5px;margin-left:auto;padding:2px 8px;border-radius:999px;background:var(--ok-soft);color:var(--ok);font-size:12px;font-weight:500} .ds-code{margin:8px 0 0;padding:10px 12px;border:1px solid transparent;border-radius:8px;background:var(--surface-2);font:400 12px/1.55 var(--mono);font-variant-ligatures:none;overflow-x:auto;transition:border-color .12s} .ds-pair:hover .ds-link,.ds-pair:hover .ds-link::after,.ds-pair:focus-within .ds-link,.ds-pair:focus-within .ds-link::after{background:var(--accent)} .ds-pair:hover .ds-code,.ds-pair:focus-within .ds-code,.ds-pair:hover .ds-bubble,.ds-pair:focus-within .ds-bubble{border-color:var(--accent)}"
+    },
+    {
+      "name": "Hero steps",
+      "kind": "custom",
+      "refersTo": "steps",
+      "description": "The owner's three numbered steps under the lede: neutral 22px circles, no teal; titles return as section h2s.",
+      "html": "<ol class=\"ds-steps\" role=\"list\"><li><span class=\"ds-step-n\" aria-hidden=\"true\">1</span><p><b>Connect your line</b> Embedded Signup connects the number. The business token stays in the gateway.</p></li><li><span class=\"ds-step-n\" aria-hidden=\"true\">2</span><p><b>Deploy your agents on your line</b> Your agent gets every message as a signed webhook and replies with <code>POST /v1/messages</code>.</p></li><li><span class=\"ds-step-n\" aria-hidden=\"true\">3</span><p><b>That's it.</b> Failed deliveries are retried, and on the hosted account a person can reply from the Inbox.</p></li></ol>",
+      "css": ".ds-steps{display:grid;gap:12px;max-width:52ch;margin:0;padding:0;list-style:none;font-family:var(--font)} .ds-steps li{display:flex;align-items:flex-start;gap:12px} .ds-step-n{display:grid;place-items:center;flex:none;width:22px;height:22px;margin-top:1px;border-radius:50%;background:var(--surface-3);color:var(--text);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums} .ds-steps p{margin:0;color:var(--text-2);font-size:14px;line-height:1.5} .ds-steps b{display:block;color:var(--text);font-size:15px;font-weight:600} .ds-steps code{font-family:var(--mono);font-size:.92em}"
+    },
+    {
+      "name": "Code well",
+      "kind": "custom",
+      "refersTo": "code-well",
+      "description": "Mono 12px on surface-2, borderless at rest, teal border only when its pair is lit; no teal wash inside.",
+      "html": "<pre class=\"ds-code-well\" tabindex=\"0\"><code><span class=\"ds-k\">Authorization:</span> Bearer $WATAHUB_API_KEY\n{ \"to\": \"+573001234567\",\n  <strong>\"phoneNumberId\": \"100609346426000\"</strong> }</code></pre>",
+      "css": ".ds-code-well{margin:0;padding:10px 12px;border:1px solid transparent;border-radius:8px;background:var(--surface-2);color:var(--text);font:400 12px/1.55 var(--mono);font-variant-ligatures:none;tab-size:2;overflow-x:auto;transition:border-color .12s} .ds-code-well .ds-k{color:var(--text-3)} .ds-code-well strong{font-weight:500} .ds-code-well:hover,.ds-code-well:focus-visible{border-color:var(--accent);outline:none}"
+    },
+    {
+      "name": "Large Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary-lg",
+      "description": "The one page action per page (Source on GitHub, Go to the home page).",
+      "html": "<a class=\"ds-btn-lg ds-btn-primary\" href=\"#\">Source on GitHub</a>",
+      "css": ".ds-btn-lg{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 18px;border:1px solid var(--border-strong);border-radius:6px;font:500 14px/1.2 var(--font);text-decoration:none;transition:background .12s,border-color .12s,color .12s} .ds-btn-primary{background:var(--accent);border-color:var(--accent);color:var(--accent-text)} .ds-btn-primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)} .ds-btn-lg:focus-visible{outline:2px solid var(--accent);outline-offset:2px}"
+    },
+    {
+      "name": "Large Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary-lg",
+      "description": "Secondary page actions (Getting started, Create an account).",
+      "html": "<a class=\"ds-btn-lg2\" href=\"#\">Create an account</a>",
+      "css": ".ds-btn-lg2{display:inline-flex;align-items:center;min-height:44px;padding:10px 18px;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);font:500 14px/1.2 var(--font);text-decoration:none;transition:background .12s} .ds-btn-lg2:hover{background:var(--surface-2)} .ds-btn-lg2:focus-visible{outline:2px solid var(--accent);outline-offset:2px}"
+    },
+    {
+      "name": "Top bar with section links and language control",
+      "kind": "nav",
+      "refersTo": "top-bar",
+      "description": "Sticky 56px translucent bar; on phones the links move to a scrolling second row.",
+      "html": "<header class=\"ds-top\"><span class=\"ds-brand\">Watahub</span><nav class=\"ds-nav\"><a href=\"#\">Connect</a><a href=\"#\">Send</a><a href=\"#\">Events</a></nav><nav class=\"ds-langs\"><a href=\"#\" aria-current=\"page\">EN</a><a href=\"#\">ES</a><a href=\"#\">PT</a></nav></header>",
+      "css": ".ds-top{display:flex;align-items:center;gap:8px 24px;min-height:56px;padding:0 16px;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--surface) 86%,transparent);backdrop-filter:blur(12px);font-family:var(--font)} .ds-brand{font-weight:600;font-size:16px;color:var(--text)} .ds-nav{display:flex;gap:2px;margin-right:auto} .ds-nav a{display:inline-flex;align-items:center;min-height:34px;padding:6px 10px;border-radius:6px;color:var(--text-2);font-size:13px;font-weight:500;text-decoration:none;transition:background .12s,color .12s} .ds-nav a:hover{background:var(--surface-2);color:var(--text)} .ds-langs{display:inline-flex;padding:2px;border:1px solid var(--border);border-radius:6px;background:var(--surface-2)} .ds-langs a{display:inline-flex;align-items:center;min-height:26px;padding:3px 8px;border-radius:4px;color:var(--text-2);font-size:12px;font-weight:500;text-decoration:none} .ds-langs a:hover{color:var(--text)} .ds-langs a[aria-current=page]{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.08)} .ds-top a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}"
+    },
+    {
+      "name": "Values strip",
+      "kind": "card",
+      "refersTo": "values-strip",
+      "description": "Four Meta values in one bordered strip divided by 1px borders, never four cards.",
+      "html": "<dl class=\"ds-values\"><div><dt>App ID</dt><dd><code>META_APP_ID</code>Your Meta app.</dd></div><div><dt>App secret</dt><dd><code>META_APP_SECRET</code>Verifies Meta's webhooks.</dd></div><div><dt>Configuration</dt><dd><code>META_CONFIGURATION_ID</code>Embedded Signup.</dd></div><div><dt>API version</dt><dd><code>META_API_VERSION</code>Graph version.</dd></div></dl>",
+      "css": ".ds-values{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin:0;border:1px solid var(--border);border-radius:12px;background:var(--surface);font-family:var(--font)} .ds-values>div{min-width:0;padding:16px} .ds-values>div+div{border-left:1px solid var(--border)} .ds-values dt{color:var(--text-3);font-size:12px;font-weight:500} .ds-values dd{margin:6px 0 0;color:var(--text-2);font-size:13px} .ds-values code{display:block;margin-bottom:6px;color:var(--text);font:500 13px var(--mono);overflow-wrap:anywhere}"
+    },
+    {
+      "name": "Rows list",
+      "kind": "card",
+      "refersTo": "rows-list",
+      "description": "Divided rows on one surface cell with trailing badges; drops its frame when placed on a pair's message side.",
+      "html": "<ul class=\"ds-rows\"><li><div><h3>System user token</h3><p>Connect stores a business token for each phone number id.</p></div><span class=\"ds-badge\"><svg viewBox=\"0 0 24 24\" width=\"12\" height=\"12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.25\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"/></svg>connect</span></li><li><div><h3>Subscribing the WABA</h3><p>Connect subscribes the WABA to messages.</p></div><span class=\"ds-badge\"><svg viewBox=\"0 0 24 24\" width=\"12\" height=\"12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.25\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"/></svg>connect</span></li></ul>",
+      "css": ".ds-rows{margin:0;padding:0;list-style:none;border:1px solid var(--border);border-radius:12px;background:var(--surface);font-family:var(--font)} .ds-rows li{display:flex;align-items:center;gap:16px;padding:16px 20px} .ds-rows li+li{border-top:1px solid var(--border)} .ds-rows h3{margin:0;font-size:15px;font-weight:600;letter-spacing:-.01em;color:var(--text)} .ds-rows p{margin:2px 0 0;color:var(--text-2);font-size:14px} .ds-badge{display:inline-flex;align-items:center;gap:5px;flex:none;margin-left:auto;padding:2px 8px;border-radius:999px;background:var(--ok-soft);color:var(--ok);font-size:12px;font-weight:500}"
+    },
+    {
+      "name": "Hosted action with Secret box",
+      "kind": "custom",
+      "refersTo": "hosted-act",
+      "description": "The hosted account's action panel: inherited Secret box with a sample key labelled Example data, a once-only note, a large button.",
+      "html": "<div class=\"ds-hosted\"><div class=\"ds-secret\"><code>wata_9c41e7d2…b20d</code><span class=\"ds-ex\">Example data</span></div><p class=\"ds-note\">Each key is shown only once.</p><p>New accounts start with a courtesy credit.</p><a class=\"ds-hbtn\" href=\"#\">Create an account</a></div>",
+      "css": ".ds-hosted{display:grid;gap:12px;padding:20px;border:1px solid var(--border);border-radius:12px;background:var(--surface);font-family:var(--font)} .ds-hosted p{margin:0;color:var(--text-2);font-size:14px} .ds-hosted .ds-note{margin-top:-4px;color:var(--text-3);font-size:13px} .ds-secret{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--accent);border-radius:8px;background:var(--accent-soft)} .ds-secret code{flex:1;min-width:0;font:400 .92em var(--mono);overflow-wrap:anywhere;user-select:all;color:var(--text)} .ds-ex{display:inline-flex;padding:2px 8px;border-radius:999px;background:var(--surface-2);color:var(--text-2);font-size:12px;font-weight:500;white-space:nowrap} .ds-hbtn{justify-self:start;display:inline-flex;align-items:center;min-height:44px;padding:10px 18px;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);color:var(--text);font:500 14px/1.2 var(--font);text-decoration:none;transition:background .12s} .ds-hbtn:hover{background:var(--surface-2)} .ds-hbtn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Console, read aloud",
+    "overview": "watahub.dev is the account panel's world turned into a long reading page. It invents no new identity. The authority for colors, radii, the type stack, the shared primitives (buttons, badges, the secret box, the segmented control, rows, the checklist mark, icons, focus) and the named rules One Teal, Word-and-Icon, Machine Mono, Sentence Case and Overlays-Only is watahub-ee/DESIGN.md (https://github.com/Hub-Ventures/watahub-ee/blob/main/DESIGN.md) with its sidecar watahub-ee/.impeccable/design.json (https://github.com/Hub-Ventures/watahub-ee/blob/main/.impeccable/design.json). This file records only what the public site adds or adapts, measured from site/public/site.css and the six pages.\n\nThe site's own idea is that every WhatsApp moment sits beside its machine twin. On the left is what a person sees (a chat well, a checklist, a list). On the right is what the machine gets or sends (the signed delivery, the POST /v1/messages with no Meta token, the connect response). A thin connector joins the two. Display type is larger than the panel's because the page has to persuade, but the density, borders, flatness and the single teal stay at product level. The page is static: no scripts, no inline styles, every asset from 'self'.",
+    "keyCharacteristics": [
+      "Inherits tokens.css and components.css verbatim from watahub-ee; site.css is the only stylesheet authored here.",
+      "A display ramp the panel lacks (h1 up to 56px) over a 15px body, in a 1200px column.",
+      "The hero h1 is the tagline alone, followed by the lede and three numbered steps in neutral circles.",
+      "Message/record pairs as the recurring form: chat well on bg, record on surface, connector between.",
+      "One authored motion: the hero connectors draw in once on load, cut by reduced motion.",
+      "Every demo frame and sample value is labelled \"Example data\" in the page's language.",
+      "Three languages with identical markup; light and dark follow the OS through the inherited light-dark() tokens."
+    ],
+    "rules": [
+      {
+        "name": "The Lit Pair Rule",
+        "body": "Teal appears on a connector or a code-well border only while its pair is hovered or focused. At rest connectors are border-strong and code wells are borderless surface-2.",
+        "section": "colors"
+      },
+      {
+        "name": "The Display Exception Rule",
+        "body": "Display sizes and the -0.02em tracking exist only on the h1 and the two oversized headings above; everything else stays on the inherited panel scale. Sentence Case still holds: no uppercase, no tracked labels.",
+        "section": "typography"
+      },
+      {
+        "name": "The Same Markup Rule",
+        "body": "A structural change lands in all three languages in the same change; the pages differ only in text and language metadata.",
+        "section": "layout"
+      },
+      {
+        "name": "The Static Page Rule",
+        "body": "If it needs a script, an inline style or a third-party origin, it does not ship on watahub.dev.",
+        "section": "layout"
+      }
+    ],
+    "dos": [
+      "Do take every color, radius and type token from the mirrored tokens.css, and change them in watahub-ee, never here.",
+      "Do put each human moment beside its machine record, joined by a connector, on bg and surface respectively.",
+      "Do label every demo frame and every sample secret with an \"Example data\" badge in the page's language.",
+      "Do keep code wells surface-2 on every viewport and set every ID, path, method, header and key in mono.",
+      "Do reuse the hero step titles verbatim as the h2s of their sections, in every language.",
+      "Do keep the hero tight enough that the next section's heading shows at 1440×800.",
+      "Do land structural changes in /, /es/ and /pt/ together.",
+      "Do keep the one connector draw as the page's only animation, and leave reduced motion to the inherited rule."
+    ],
+    "donts": [
+      "Don't edit site/public/tokens.css or site/public/components.css; copy them again from watahub-ee.",
+      "Don't add scripts, inline styles, CDN fonts or third-party images; the CSP forbids them.",
+      "Don't split the values or kinds into separate cards, or nest a framed list inside a pair's frame.",
+      "Don't put a teal wash or a teal border at rest inside a code well.",
+      "Don't use display sizes or -0.02em tracking below the h1 and the two oversized headings.",
+      "Don't show a sample key, ID or conversation without its \"Example data\" badge.",
+      "Don't number a list unless its order carries meaning, and don't color step numbers teal."
+    ]
+  }
+}

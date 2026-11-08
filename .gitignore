@@ -29,3 +29,11 @@ coverage/
 
 # Claude Code local state and worktrees (copies of the repo)
 .claude/
+
+# Impeccable working files (decision rounds, hook cache, full-size review captures)
+.impeccable/mocks/
+.impeccable/questions/
+.impeccable/hook.cache.json
+.impeccable/config.local.json
+.impeccable/decision-payload.json
+.impeccable/review/*.png

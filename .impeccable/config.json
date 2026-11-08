@@ -1,0 +1,44 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "site/public/index.html"
+        ],
+        "createdAt": "2026-11-08T16:51:34.260Z",
+        "reason": "finish reviewer confirmed (2026-11-08): thread/pair cells fill their frame by design with their own padding, the connector meets its column edge on purpose, badge is the mirrored panel component, unread-dot holds only sr-only text, sections have padding-block"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "site/public/es/index.html"
+        ],
+        "createdAt": "2026-11-08T16:51:34.284Z",
+        "reason": "finish reviewer confirmed (2026-11-08): thread/pair cells fill their frame by design with their own padding, the connector meets its column edge on purpose, badge is the mirrored panel component, unread-dot holds only sr-only text, sections have padding-block"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "site/public/pt/index.html"
+        ],
+        "createdAt": "2026-11-08T16:51:34.307Z",
+        "reason": "finish reviewer confirmed (2026-11-08): thread/pair cells fill their frame by design with their own padding, the connector meets its column edge on purpose, badge is the mirrored panel component, unread-dot holds only sr-only text, sections have padding-block"
+      },
+      {
+        "rule": "tight-leading",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/assigned.html"
+        ],
+        "createdAt": "2026-11-08T16:54:44.820Z",
+        "reason": "agent decided: throwaway decision sketch; the flagged line-height is the 48px display h1 (1.08), not body text, and the file never ships"
+      }
+    ]
+  }
+}
