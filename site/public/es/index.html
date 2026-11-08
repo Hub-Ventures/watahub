@@ -1,0 +1,666 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#09090b" media="(prefers-color-scheme: dark)" />
+    <title>Watahub · El hub de tus agentes para WhatsApp</title>
+    <meta
+      name="description"
+      content="El hub de tus agentes para WhatsApp: conecta tu línea y despliega tus agentes en ella. Gateway open source para la API de WhatsApp Cloud, MIT; el token del negocio se queda en el gateway."
+    />
+    <link rel="canonical" href="https://watahub.dev/es/" />
+    <link rel="alternate" hreflang="en" href="https://watahub.dev/" />
+    <link rel="alternate" hreflang="es" href="https://watahub.dev/es/" />
+    <link rel="alternate" hreflang="pt" href="https://watahub.dev/pt/" />
+    <link rel="alternate" hreflang="x-default" href="https://watahub.dev/" />
+    <meta property="og:title" content="Watahub" />
+    <meta property="og:description" content="El hub de tus agentes para WhatsApp" />
+    <meta property="og:url" content="https://watahub.dev/es/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="es_LA" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/fonts/jetbrains-mono-400.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/tokens.css" />
+    <link rel="stylesheet" href="/components.css" />
+    <link rel="stylesheet" href="/site.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Ir al contenido</a>
+
+    <header class="top">
+      <div class="wrap top-bar">
+        <a class="brand" href="/es/" aria-label="Watahub, inicio">
+          <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+            <rect class="logo-ground" width="32" height="32" rx="8" />
+            <circle class="logo-dot" cx="15" cy="16" r="2.5" />
+            <circle class="logo-ring" cx="15" cy="16" r="6.75" />
+            <path class="logo-arc" d="M23.2 8.1a10.6 10.6 0 0 1 0 15.8" />
+          </svg>
+          <span>Watahub</span>
+        </a>
+        <nav class="top-nav" aria-label="En esta página">
+          <a href="#connect">Conectar</a>
+          <a href="#send">Agentes</a>
+          <a href="#events">Eventos</a>
+          <a href="#self-host">Autoalojar</a>
+          <a href="#hosted">Alojado</a>
+        </nav>
+        <nav class="langs" aria-label="Idioma">
+          <a href="/" hreflang="en" lang="en" aria-label="English">EN</a>
+          <a href="/es/" hreflang="es" lang="es" aria-label="Español" aria-current="page">ES</a>
+          <a href="/pt/" hreflang="pt" lang="pt" aria-label="Português">PT</a>
+        </nav>
+        <a class="btn btn-sm top-git" href="https://github.com/Hub-Ventures/watahub">GitHub</a>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="wrap hero-grid">
+          <div class="hero-copy">
+            <h1 id="hero-title">El hub de tus agentes para WhatsApp</h1>
+            <p class="lede">
+              Gateway open source para la API de WhatsApp Cloud, hecho para agentes que trabajan para tu negocio:
+              soporte, ventas, reservas. MIT, en Cloudflare Workers o Node.
+            </p>
+            <ol class="steps" role="list">
+              <li>
+                <span class="step-n" aria-hidden="true">1</span>
+                <p>
+                  <b>Conecta tu línea</b> Embedded Signup conecta el número. El token del negocio se queda en el
+                  gateway.
+                </p>
+              </li>
+              <li>
+                <span class="step-n" aria-hidden="true">2</span>
+                <p>
+                  <b>Despliega tus agentes en tu línea</b> Tu agente recibe cada mensaje como un webhook firmado y
+                  responde con <code>POST /v1/messages</code>.
+                </p>
+              </li>
+              <li>
+                <span class="step-n" aria-hidden="true">3</span>
+                <p>
+                  <b>¡Listo!</b> Las entregas fallidas se reintentan, y en la cuenta alojada una persona puede responder
+                  desde el Inbox.
+                </p>
+              </li>
+            </ol>
+            <div class="actions">
+              <a class="btn btn-primary btn-lg" href="https://github.com/Hub-Ventures/watahub">Código en GitHub</a>
+              <a class="btn btn-lg" href="https://github.com/Hub-Ventures/watahub/blob/main/docs/GETTING_STARTED.md"
+                >Guía de inicio</a
+              >
+            </div>
+            <p class="aside-link">
+              ¿No quieres tener tu propia app de Meta? <a href="https://app.watahub.dev/">Crea una cuenta alojada</a>
+            </p>
+          </div>
+
+          <figure class="thread" aria-labelledby="hero-thread">
+            <figcaption class="thread-head" id="hero-thread">
+              <span class="avatar" aria-hidden="true">JD</span>
+              <span class="who"><b>Jane Doe</b><span class="mono">100609346426000</span></span>
+              <span class="badge">Datos de ejemplo</span>
+            </figcaption>
+            <div class="pair">
+              <div class="pair-msg">
+                <p class="bubble bubble-in">¿Hacen envíos a Medellín hoy?<span class="bubble-meta">10:42</span></p>
+                <span class="pair-link" aria-hidden="true"></span>
+              </div>
+              <div class="pair-rec">
+                <p class="rec-head">
+                  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="6" cy="6" r="3" />
+                    <circle cx="18" cy="18" r="3" />
+                    <path d="M6 9v3a6 6 0 0 0 6 6h3" />
+                  </svg>
+                  <span class="mono"><b>POST</b> https://your.app/hooks</span>
+                  <span class="badge badge-ok"
+                    ><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg
+                    >firmado</span
+                  >
+                </p>
+                <pre
+                  class="code"
+                  tabindex="0"
+                  aria-label="Entrega que recibe tu webhook"
+                ><code><span class="k">x-watahub-signature:</span> sha256=9f2c…e41a
+{ "type": "message",
+  "phoneNumberId": "100609346426000",
+  "message": {
+    "from": "573001234567",
+    "kind": "text",
+    "text": "¿Hacen envíos a Medellín hoy?"
+  } }</code></pre>
+              </div>
+            </div>
+            <div class="pair">
+              <div class="pair-msg">
+                <p class="bubble bubble-out">
+                  Sí, si pides antes de las 6 pm.<span class="bubble-meta">agente · 10:43 · leído</span>
+                </p>
+                <span class="pair-link" aria-hidden="true"></span>
+              </div>
+              <div class="pair-rec">
+                <p class="rec-head">
+                  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m22 2-7 20-4-9-9-4zM22 2 11 13" />
+                  </svg>
+                  <span class="mono"><b>POST</b> /v1/messages</span>
+                  <span class="badge badge-ok"
+                    ><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg
+                    >200</span
+                  >
+                </p>
+                <pre
+                  class="code"
+                  tabindex="0"
+                  aria-label="Petición que envía tu código"
+                ><code><span class="k">Authorization:</span> Bearer $WATAHUB_API_KEY
+{ "to": "+573001234567",
+  <strong>"phoneNumberId": "100609346426000"</strong>,
+  "kind": "text",
+  "text": {
+    "body": "Sí, si pides antes de las 6 pm."
+  } }</code></pre>
+                <p class="rec-note">
+                  <span class="badge badge-accent"
+                    ><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>Sin
+                    token de Meta</span
+                  >
+                  Watahub envía con el token que guardó al conectar la línea.
+                </p>
+              </div>
+            </div>
+          </figure>
+        </div>
+      </section>
+
+      <section class="section" id="connect" aria-labelledby="connect-title">
+        <div class="wrap">
+          <header class="section-head">
+            <h2 id="connect-title">Conecta tu línea</h2>
+            <p>Cuatro valores de Meta en el gateway. Una sola vez.</p>
+          </header>
+          <dl class="values">
+            <div class="value">
+              <dt>App ID</dt>
+              <dd><code>META_APP_ID</code>La app de Meta dueña del webhook.</dd>
+            </div>
+            <div class="value">
+              <dt>App Secret</dt>
+              <dd><code>META_APP_SECRET</code>Canjea el código de Embedded Signup. Quien llama no puede enviarlo.</dd>
+            </div>
+            <div class="value">
+              <dt>Configuration ID</dt>
+              <dd>
+                <code>META_CONFIGURATION_ID</code>El <code>config_id</code> de Embedded Signup para
+                <code>FB.login</code>.
+              </dd>
+            </div>
+            <div class="value">
+              <dt>API version</dt>
+              <dd><code>META_API_VERSION</code>La versión de Graph. Por defecto <code>v24.0</code>.</dd>
+            </div>
+          </dl>
+
+          <div class="pair pair-wide">
+            <div class="pair-msg">
+              <div class="human">
+                <p class="human-lede">
+                  Envía el código, el id de la WABA, el id del número y el PIN. El gateway termina la línea.
+                </p>
+                <h3 class="human-title">Qué hace connect</h3>
+                <ol class="checklist">
+                  <li>Canjea el código de Embedded Signup.</li>
+                  <li>Guarda el token del negocio para ese id de número.</li>
+                  <li>Suscribe la WABA a los mensajes.</li>
+                  <li>Registra el número con el PIN de 6 dígitos.</li>
+                </ol>
+                <dl class="fields">
+                  <div>
+                    <dt><code>code</code></dt>
+                    <dd>De Embedded Signup</dd>
+                  </div>
+                  <div>
+                    <dt><code>wabaId</code></dt>
+                    <dd>Id de la WABA</dd>
+                  </div>
+                  <div>
+                    <dt><code>phoneNumberId</code></dt>
+                    <dd>Id del número</dd>
+                  </div>
+                  <div>
+                    <dt><code>pin</code></dt>
+                    <dd>PIN de 6 dígitos</dd>
+                  </div>
+                </dl>
+              </div>
+              <span class="pair-link" aria-hidden="true"></span>
+            </div>
+            <div class="pair-rec">
+              <p class="rec-head">
+                <span class="mono"><b>POST</b> /v1/onboarding/connect</span>
+              </p>
+              <pre
+                class="code"
+                tabindex="0"
+                aria-label="Petición de connect"
+              ><code>curl -X POST "$GATEWAY/v1/onboarding/connect" \
+  -H "Authorization: Bearer $WATAHUB_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "AQD...embedded-signup-code",
+    "wabaId": "105555123456789",
+    "phoneNumberId": "100609346426000",
+    "pin": "581063"
+  }'</code></pre>
+              <p class="rec-head">
+                <span class="mono">Respuesta</span>
+                <span class="badge badge-ok"
+                  ><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>200</span
+                >
+              </p>
+              <pre class="code" tabindex="0" aria-label="Respuesta de connect"><code>{
+  "phoneNumberId": "100609346426000",
+  "wabaId": "105555123456789",
+  "subscribed": true,
+  "registered": true
+}</code></pre>
+              <p class="rec-note">
+                <span class="badge badge-accent"
+                  ><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>Sin
+                  <code>accessToken</code></span
+                >
+                La respuesta no incluye el token del negocio.
+              </p>
+              <p class="rec-foot">
+                <code>$GATEWAY</code> es el host donde despliegas Watahub. watahub.dev es solo la página del proyecto.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="send" aria-labelledby="send-title">
+        <div class="wrap">
+          <header class="section-head">
+            <h2 id="send-title">Despliega tus agentes en tu línea</h2>
+            <p>
+              Tu agente recibe cada mensaje entrante como un webhook firmado y responde con
+              <code>POST /v1/messages</code>. Nombra el id del número; Watahub usa el token que guardó. Tú no lo pasas.
+            </p>
+          </header>
+          <figure class="thread" aria-labelledby="send-thread">
+            <figcaption class="thread-head" id="send-thread">
+              <span class="avatar" aria-hidden="true">+1</span>
+              <span class="who"><b>+1 555 123 4567</b><span class="mono">100609346426000</span></span>
+              <span class="badge">Datos de ejemplo</span>
+            </figcaption>
+            <div class="pair">
+              <div class="pair-msg">
+                <p class="bubble bubble-out">Hola desde Watahub<span class="bubble-meta">10:44</span></p>
+                <span class="pair-link" aria-hidden="true"></span>
+              </div>
+              <div class="pair-rec">
+                <p class="rec-head">
+                  <span class="mono"><b>POST</b> /v1/messages</span>
+                  <span class="badge badge-ok"
+                    ><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg
+                    >200</span
+                  >
+                </p>
+                <pre
+                  class="code"
+                  tabindex="0"
+                  aria-label="Petición de envío"
+                ><code>curl -X POST "$GATEWAY/v1/messages" \
+  -H "Authorization: Bearer $WATAHUB_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "+15551234567",
+    "phoneNumberId": "100609346426000",
+    "kind": "text",
+    "text": { "body": "Hola desde Watahub" }
+  }'</code></pre>
+              </div>
+            </div>
+            <div class="pair">
+              <div class="pair-msg">
+                <p class="receipt">
+                  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
+                  Entregado. El acuse de Meta llega a tu webhook como evento de estado.
+                </p>
+                <span class="pair-link" aria-hidden="true"></span>
+              </div>
+              <div class="pair-rec">
+                <p class="rec-head">
+                  <span class="mono"><b>POST</b> https://your.app/hooks</span>
+                  <span class="badge">status</span>
+                </p>
+                <pre class="code" tabindex="0" aria-label="Evento de estado"><code>{ "type": "status",
+  "phoneNumberId": "100609346426000",
+  "status": {
+    "recipient": "15551234567",
+    "status": "delivered",
+    "category": "service" } }</code></pre>
+              </div>
+            </div>
+          </figure>
+          <p class="section-note">
+            Un solo endpoint para texto, plantillas, media y mensajes interactivos. La media sube a Meta en streaming,
+            hasta 100 MB.
+          </p>
+        </div>
+      </section>
+
+      <section class="section" id="never" aria-labelledby="never-title">
+        <div class="wrap split">
+          <header class="section-head">
+            <h2 id="never-title">Lo que nunca tocas</h2>
+            <p>Connect hace cada una de estas cosas cuando termina la línea.</p>
+          </header>
+          <ul class="rows-list">
+            <li>
+              <div>
+                <h3>Token de usuario del sistema</h3>
+                <p>Connect guarda un token del negocio para cada id de número.</p>
+              </div>
+              <span class="badge badge-ok"
+                ><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>Lo hace
+                connect</span
+              >
+            </li>
+            <li>
+              <div>
+                <h3>Suscribir la WABA</h3>
+                <p>Connect suscribe la WABA a los mensajes.</p>
+              </div>
+              <span class="badge badge-ok"
+                ><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>Lo hace
+                connect</span
+              >
+            </li>
+            <li>
+              <div>
+                <h3>Registrar el número</h3>
+                <p>Connect lo registra con el PIN de 6 dígitos.</p>
+              </div>
+              <span class="badge badge-ok"
+                ><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>Lo hace
+                connect</span
+              >
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="section" id="events" aria-labelledby="events-title">
+        <div class="wrap">
+          <header class="section-head">
+            <h2 id="events-title">Los eventos llegan planos y firmados</h2>
+            <p>
+              Meta publica en <code>/webhook</code>. Watahub verifica <code>X-Hub-Signature-256</code>, aplana el sobre
+              de Meta y reenvía una entrega firmada a tu endpoint.
+            </p>
+          </header>
+          <figure class="thread" aria-labelledby="events-thread">
+            <figcaption class="thread-head" id="events-thread">
+              <span class="avatar" aria-hidden="true">JD</span>
+              <span class="who"><b>Jane Doe</b><span class="mono">100609346426000</span></span>
+              <span class="badge">Datos de ejemplo</span>
+            </figcaption>
+            <div class="pair">
+              <div class="pair-msg pair-msg-stack">
+                <div class="bubble bubble-out bubble-buttons">
+                  <p>Tu pedido está listo. ¿Lo enviamos hoy?<span class="bubble-meta">11:02</span></p>
+                  <span class="quick-reply" aria-hidden="true">Confirmar pedido</span>
+                </div>
+                <div class="pair-msg-row">
+                  <p class="bubble bubble-in">
+                    Confirmar pedido<span class="bubble-meta">respuesta de botón · 11:03</span>
+                  </p>
+                  <span class="pair-link" aria-hidden="true"></span>
+                </div>
+              </div>
+              <div class="pair-rec">
+                <p class="rec-head">
+                  <span class="mono"><b>POST</b> https://your.app/hooks</span>
+                  <span class="badge badge-ok"
+                    ><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg
+                    >firmado</span
+                  >
+                </p>
+                <pre
+                  class="code"
+                  tabindex="0"
+                  aria-label="Evento de respuesta interactiva"
+                ><code><span class="k">x-watahub-signature:</span> sha256=4b1d…07c9
+<span class="k">x-watahub-delivery-id:</span> 6f0e…a2d1
+{ "type": "message",
+  "phoneNumberId": "100609346426000",
+  "message": {
+    "from": "573001234567",
+    "kind": "interactive",
+    "interactiveReply": {
+      "id": "btn_confirm_order",
+      "title": "Confirmar pedido",
+      "type": "button"
+    } } }</code></pre>
+              </div>
+            </div>
+          </figure>
+          <ul class="kinds">
+            <li>
+              <h3>Mensajes</h3>
+              <p class="mono">text, image, audio, video, document, location, contacts, reaction, interactive</p>
+            </li>
+            <li>
+              <h3>Ecos</h3>
+              <p>Respuestas enviadas desde la app WhatsApp Business.</p>
+            </li>
+            <li>
+              <h3>Estados</h3>
+              <p class="mono">sent, delivered, read, failed</p>
+            </li>
+          </ul>
+          <p class="section-note">
+            Verifica la firma con tu secreto y deduplica por <code>x-watahub-delivery-id</code>.
+          </p>
+        </div>
+      </section>
+
+      <section class="section" id="self-host" aria-labelledby="self-host-title">
+        <div class="wrap">
+          <header class="section-head">
+            <h2 id="self-host-title">Córrelo tú mismo</h2>
+            <p>
+              MIT. Un operador: una app de Meta, un webhook suscriptor, una clave API y las líneas que conectes. Pagas
+              las tarifas de Meta directo, sin recargo.
+            </p>
+          </header>
+          <div class="pair pair-wide">
+            <div class="pair-msg">
+              <ul class="rows-list">
+                <li>
+                  <div>
+                    <h3>Cloudflare Workers</h3>
+                    <p>El gateway es su propio Worker. Esta página no es ese Worker.</p>
+                  </div>
+                </li>
+                <li>
+                  <div>
+                    <h3>Node</h3>
+                    <p>Las mismas rutas. <code>pnpm run dev:node</code>.</p>
+                  </div>
+                </li>
+
+                <li>
+                  <div>
+                    <h3>Un webhook suscriptor</h3>
+                    <p>Meta publica en <code>/webhook</code>; tú recibes una entrega firmada y normalizada.</p>
+                  </div>
+                </li>
+              </ul>
+              <span class="pair-link" aria-hidden="true"></span>
+            </div>
+            <div class="pair-rec">
+              <p class="rec-head"><span class="mono">Terminal</span></p>
+              <pre
+                class="code"
+                tabindex="0"
+                aria-label="Correr el gateway en local"
+              ><code><span class="k">$</span> git clone https://github.com/Hub-Ventures/watahub.git
+<span class="k">$</span> cd watahub &amp;&amp; pnpm install
+<span class="k">$</span> pnpm run dev:node
+<span class="k">$</span> curl http://localhost:3000/health
+{ "status": "ok", "service": "watahub", "version": "0.2.0" }</code></pre>
+              <div class="actions">
+                <a class="btn" href="https://github.com/Hub-Ventures/watahub">Código en GitHub</a>
+                <a class="btn btn-ghost" href="https://github.com/Hub-Ventures/watahub/blob/main/docs/DEPLOYMENT.md"
+                  >Guía de despliegue</a
+                >
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="hosted" aria-labelledby="hosted-title">
+        <div class="wrap">
+          <header class="section-head">
+            <h2 id="hosted-title">O sáltate la app de Meta</h2>
+            <p>
+              Crea una cuenta en app.watahub.dev y conecta tus números con Embedded Signup. El token de Meta queda
+              sellado en el gateway; tú tienes una clave API de Watahub que puedes revocar.
+            </p>
+          </header>
+          <div class="pair pair-wide">
+            <div class="pair-msg">
+              <figure class="mini" aria-labelledby="mini-inbox">
+                <figcaption class="mini-head" id="mini-inbox">
+                  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+                    <path
+                      d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"
+                    />
+                  </svg>
+                  Inbox
+                  <span class="badge">Datos de ejemplo</span>
+                </figcaption>
+                <ul class="convos">
+                  <li class="is-unread">
+                    <span class="avatar" aria-hidden="true">JD</span>
+                    <span class="convo-text"><b>Jane Doe</b><span>¿Hacen envíos a Medellín hoy?</span></span>
+                    <span class="unread-dot"><span class="sr-only">Sin leer</span></span>
+                  </li>
+                  <li>
+                    <span class="avatar" aria-hidden="true">CR</span>
+                    <span class="convo-text"><b>Carlos Ruiz</b><span>Gracias, ya llegó.</span></span>
+                  </li>
+                </ul>
+              </figure>
+              <span class="pair-link" aria-hidden="true"></span>
+            </div>
+            <div class="pair-rec">
+              <figure class="mini" aria-labelledby="mini-logs">
+                <figcaption class="mini-head" id="mini-logs">
+                  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01" />
+                  </svg>
+                  Logs
+                  <span class="badge">Datos de ejemplo</span>
+                </figcaption>
+                <ul class="log-rows">
+                  <li>
+                    <span class="mono">10:42:07</span><span class="badge">Meta</span
+                    ><span class="mono grow">POST /webhook</span
+                    ><span class="badge badge-ok"
+                      ><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg
+                      >200</span
+                    >
+                  </li>
+                  <li>
+                    <span class="mono">10:42:07</span><span class="badge">Entrega</span
+                    ><span class="mono grow">POST your.app/hooks</span
+                    ><span class="badge badge-ok"
+                      ><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg
+                      >200</span
+                    >
+                  </li>
+                  <li>
+                    <span class="mono">10:43:12</span><span class="badge">API</span
+                    ><span class="mono grow">POST /v1/messages</span
+                    ><span class="badge badge-ok"
+                      ><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg
+                      >200</span
+                    >
+                  </li>
+                </ul>
+              </figure>
+            </div>
+          </div>
+          <div class="hosted-foot">
+            <ul class="features">
+              <li>Inbox: lee, responde y asigna conversaciones.</li>
+              <li>Webhooks por número, firmados con tu secreto.</li>
+              <li>Logs de llamadas al API, a Meta y de entregas, guardados 7 días.</li>
+              <li>Claves API que se muestran una vez y se pueden revocar.</li>
+              <li>Se instala en escritorio y teléfono, con avisos push de mensajes nuevos.</li>
+            </ul>
+            <div class="hosted-act">
+              <div class="secret"><code>wata_9c41e7d2…b20d</code><span class="badge">Datos de ejemplo</span></div>
+              <p class="secret-note">Cada clave se muestra una sola vez.</p>
+              <p>Las cuentas nuevas empiezan con un crédito de cortesía.</p>
+              <a class="btn btn-lg" href="https://app.watahub.dev/">Crear una cuenta</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section closer" aria-labelledby="close-title">
+        <div class="wrap closer-grid">
+          <div>
+            <h2 id="close-title">La respuesta de connect no trae el token.</h2>
+            <p>El siguiente envío usa el token que Watahub guardó.</p>
+            <div class="actions">
+              <a class="btn btn-primary btn-lg" href="https://github.com/Hub-Ventures/watahub">Código en GitHub</a>
+              <a class="btn btn-lg" href="https://github.com/Hub-Ventures/watahub/blob/main/docs/API_REFERENCE.md"
+                >Referencia del API</a
+              >
+            </div>
+          </div>
+          <pre class="code code-ticket" tabindex="0" aria-label="Respuesta de connect"><code>{
+  "phoneNumberId": "100609346426000",
+  "wabaId": "105555123456789",
+  "subscribed": true,
+  "registered": true
+}</code></pre>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <div class="wrap foot-bar">
+        <p>Watahub, de Hub Ventures. Licencia MIT.</p>
+        <nav aria-label="Proyecto">
+          <a href="https://github.com/Hub-Ventures/watahub">GitHub</a>
+          <a href="https://github.com/Hub-Ventures/watahub/blob/main/docs/GETTING_STARTED.md">Guía de inicio</a>
+          <a href="https://github.com/Hub-Ventures/watahub/blob/main/docs/API_REFERENCE.md">Referencia del API</a>
+          <a href="https://github.com/Hub-Ventures/watahub/blob/main/docs/WEBHOOKS_AND_EVENTS.md">Webhooks y eventos</a>
+          <a href="https://opensource.org/licenses/MIT">MIT</a>
+          <a href="https://github.com/Hub-Ventures">Hub Ventures</a>
+        </nav>
+        <nav class="langs" aria-label="Idioma">
+          <a href="/" hreflang="en" lang="en">English</a>
+          <a href="/es/" hreflang="es" lang="es" aria-current="page">Español</a>
+          <a href="/pt/" hreflang="pt" lang="pt">Português</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>
