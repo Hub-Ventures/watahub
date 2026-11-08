@@ -298,7 +298,7 @@ pnpm run deploy
 | `GET` | `/v1/media/:mediaId` | Resolves media ID to temporary CDN download URL |
 | `POST` | `/v1/media` | Uploads media file (`multipart/form-data`) streaming to Meta |
 | `POST` | `/v1/media/:phoneNumberId` | Uploads media scoped to a specific phone number |
-| `GET` | `/v1/templates/:wabaId` | Lists approved HSM templates from Meta Graph API |
+| `GET` | `/v1/templates/:wabaId` | Lists a WABA's message templates from Meta Graph API, one page per call (`?after=`) |
 | `POST` | `/v1/onboarding/connect` | Connects one phone line (exchange, store, subscribe, register). Does not return the token |
 | `GET` | `/v1/onboarding/launch` | Public Embedded Signup parameters for `FB.login` (`appId`, `configurationId`, `apiVersion`) |
 | `POST` | `/v1/onboarding/exchange` | Low-level code exchange. Returns the token. Prefer connect |

@@ -242,7 +242,7 @@ Encapsulates communication with Meta's Graph API:
 ```ts
 export interface MetaGraphClient {
   sendMessage(phoneNumberId: string, payload: SendMessagePayload): Promise<SendMessageResponse>
-  listTemplates(wabaId: string): Promise<MetaMessageTemplate[]>
+  listTemplates(wabaId: string, after?: string): Promise<MetaTemplatePage>
   exchangeCodeForToken(code: string, clientId: string, clientSecret: string): Promise<{ accessToken: string }>
   subscribeAppToWaba(wabaId: string, subscribedFields?: readonly string[]): Promise<boolean>
   registerPhone(phoneNumberId: string, pin: string, overrideToken?: string): Promise<boolean>

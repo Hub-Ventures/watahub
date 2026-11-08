@@ -90,7 +90,7 @@ describe('createApp dependency injection', () => {
       exchangeCodeForToken: () => Promise.resolve({ accessToken: 'LONG' }),
       subscribeAppToWaba: () => Promise.resolve(true),
       overridePhoneNumberCallback: () => Promise.resolve(false),
-      listTemplates: () => Promise.resolve([{ name: 'hello' }]),
+      listTemplates: () => Promise.resolve({ data: [{ name: 'hello' }], paging: {} }),
       getMediaUrl: () => Promise.resolve('https://cdn.example/file.jpg'),
       uploadMedia: () => Promise.resolve({ id: 'MEDIA_SEAM_1' }),
     })
@@ -106,7 +106,7 @@ describe('createApp dependency injection', () => {
     )
     expect(await override.json()).toEqual({ success: false, phoneNumberId: '123' })
     const templates = await app.request('/v1/templates/456', { headers: auth })
-    expect(await templates.json()).toEqual({ data: [{ name: 'hello' }] })
+    expect(await templates.json()).toEqual({ data: [{ name: 'hello' }], paging: {} })
     const media = await app.request('/v1/media/123456', { headers: auth })
     expect(await media.json()).toEqual({ mediaId: '123456', url: 'https://cdn.example/file.jpg' })
     const upload = await app.request('/v1/media/123456', {
@@ -259,13 +259,13 @@ describe('MetaClient collaborators', () => {
   it('treats a non-JSON success body as empty', async () => {
     const transport = vi.fn<typeof fetch>().mockResolvedValue(new Response('not json', { status: 200 }))
     const client = new MetaClient({ accessToken: 'T', fetch: transport })
-    expect(await client.listTemplates('456')).toEqual([])
+    expect(await client.listTemplates('456')).toEqual({ data: [], paging: {} })
   })
 
   it('drops non-object template entries returned by Graph', async () => {
     const transport = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ data: [{ name: 'a' }, 'b', null, [1]] }))
     const client = new MetaClient({ accessToken: 'T', fetch: transport })
-    expect(await client.listTemplates('456')).toEqual([{ name: 'a' }])
+    expect((await client.listTemplates('456')).data).toEqual([{ name: 'a' }])
   })
 })
 
@@ -409,7 +409,7 @@ describe('Pluggable state stores in createApp', () => {
     process.env.RATE_LIMIT_PER_MINUTE = '60'
     const app = createApp({
       createRequestLimiter: vi.fn().mockReturnValue(customLimiter),
-      createMetaClient: () => fakeClient({ listTemplates: () => Promise.resolve([]) }),
+      createMetaClient: () => fakeClient({ listTemplates: () => Promise.resolve({ data: [], paging: {} }) }),
     })
 
     const res = await app.request('/v1/templates/123', { headers: auth })

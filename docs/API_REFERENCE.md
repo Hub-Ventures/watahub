@@ -310,10 +310,11 @@ Content-Type: multipart/form-data; boundary=----WebKitFormBoundary...
 ## 6. Templates Management
 
 ### `GET /v1/templates` or `GET /v1/templates/:wabaId`
-Lists approved HSM message templates associated with a WhatsApp Business Account.
+Lists the message templates of a WhatsApp Business Account, one page per call, in Meta's page size.
 
 #### Query / Path Parameters
 - `wabaId`: Numeric Meta WABA ID (optional if `META_DEFAULT_WABA_ID` is set).
+- `after`: Optional. The `paging.after` of the previous response, to get the next page. A value that is not a Meta paging cursor (base64, up to 1024 characters) is rejected with `422`.
 
 #### Response (`200 OK`)
 ```json
@@ -326,9 +327,12 @@ Lists approved HSM message templates associated with a WhatsApp Business Account
       "language": "en_US",
       "components": [ ... ]
     }
-  ]
+  ],
+  "paging": { "after": "QVFIUmx..." }
 }
 ```
+
+Each template is returned as Meta sends it. `paging.after` is present only while Meta has another page; on the last page `paging` is `{}`. Meta's `paging.next` and `paging.previous` URLs are never returned.
 
 ---
 

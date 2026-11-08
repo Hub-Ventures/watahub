@@ -913,9 +913,12 @@ describe('HTTP route contracts', () => {
         jsonResponse({ data: [{ name: 'b' }] }),
         jsonResponse({ data: [{ name: 'c' }] })
       )
-      expect(await json(await app.request('/v1/templates/1', authed()))).toEqual({ data: [{ name: 'a' }] })
-      expect(await json(await app.request('/v1/templates?wabaId=2', authed()))).toEqual({ data: [{ name: 'b' }] })
-      expect(await json(await app.request('/v1/templates', authed()))).toEqual({ data: [{ name: 'c' }] })
+      expect(await json(await app.request('/v1/templates/1', authed()))).toEqual({ data: [{ name: 'a' }], paging: {} })
+      expect(await json(await app.request('/v1/templates?wabaId=2', authed()))).toEqual({
+        data: [{ name: 'b' }],
+        paging: {},
+      })
+      expect(await json(await app.request('/v1/templates', authed()))).toEqual({ data: [{ name: 'c' }], paging: {} })
       expect(spy.mock.calls.map((call) => call[0])).toEqual([
         'https://graph.facebook.com/v24.0/1/message_templates',
         'https://graph.facebook.com/v24.0/2/message_templates',
@@ -938,6 +941,34 @@ describe('HTTP route contracts', () => {
       const body = await json(res)
       expect(body.error).not.toHaveProperty('type')
       expect(body.error).toMatchObject({ code: 190, category: 'auth', retryable: false })
+    })
+
+    it('pages with the after cursor and never returns Meta paging URLs', async () => {
+      const next = 'https://graph.facebook.com/v24.0/1/message_templates?after=QVFIa'
+      const spy = mockFetch(
+        jsonResponse({ data: [{ name: 'a' }], paging: { cursors: { before: 'QVFIz', after: 'QVFIa' }, next } }),
+        jsonResponse({
+          data: [{ name: 'b' }],
+          paging: { cursors: { before: 'QVFIy', after: 'QVFIb' }, previous: next },
+        })
+      )
+      const first = await json(await app.request('/v1/templates/1', authed()))
+      expect(first).toStrictEqual({ data: [{ name: 'a' }], paging: { after: 'QVFIa' } })
+      const last = await json(await app.request('/v1/templates?wabaId=1&after=QVFIa', authed()))
+      expect(last).toStrictEqual({ data: [{ name: 'b' }], paging: {} })
+      expect(spy.mock.calls.map((call) => call[0])).toEqual([
+        'https://graph.facebook.com/v24.0/1/message_templates',
+        'https://graph.facebook.com/v24.0/1/message_templates?after=QVFIa',
+      ])
+    })
+
+    it('rejects a cursor that does not look like one Meta issued, before calling Meta', async () => {
+      for (const after of ['', 'a&limit=1000', 'x'.repeat(1025)]) {
+        const res = await app.request(`/v1/templates/1?after=${encodeURIComponent(after)}`, authed())
+        expect(res.status).toBe(422)
+        expect((await json(res)).details).toHaveProperty('after')
+      }
+      expect(globalThis.fetch).not.toHaveBeenCalled()
     })
   })
 
