@@ -17,7 +17,7 @@ TypeScript library. MIT licensed, by [Hub Ventures](https://github.com/Hub-Ventu
 ```mermaid
 flowchart LR
   backend["Your backend"] -->|"/v1 and /v24.0, WATAHUB_API_KEY"| gateway["Watahub"]
-  gateway -->|"Graph API, META_API_VERSION"| graph["Meta Graph API"]
+  gateway -->|"Graph API, META_API_VERSION"| metaGraph["Meta Graph API"]
   meta["Meta webhooks"] -->|"POST /webhook, X-Hub-Signature-256"| gateway
   gateway -->|"normalized events, x-watahub-signature"| subscriber["SUBSCRIBER_WEBHOOK_URL"]
 ```

@@ -29,7 +29,7 @@ flowchart LR
     services["Services: MetaClient, normalizer, delivery, replay, line connect, crypto, errors"]
     deps["GatewayDeps: createMetaClient, fetch, now, logger, replayStore, apiKeyLimiter, verifyTokenLimiter, createRequestLimiter, lineStore"]
   end
-  graph["Meta Graph API"]
+  metaGraph["Meta Graph API"]
   subscriber["SUBSCRIBER_WEBHOOK_URL"]
 
   backend --> mw
@@ -37,7 +37,7 @@ flowchart LR
   mw --> routes
   routes --> services
   routes --> deps
-  services -->|"fetch"| graph
+  services -->|"fetch"| metaGraph
   services -->|"signed POST"| subscriber
 ```
 
@@ -130,17 +130,17 @@ sequenceDiagram
   actor App as Your backend
   participant GW as POST /v1/messages
   participant MC as MetaClient
-  actor Graph as Meta Graph API
+  actor GraphAPI as Meta Graph API
 
   App->>GW: Body + WATAHUB_API_KEY
   GW->>GW: Validate (SendMessageSchema), resolve phoneNumberId and token
   GW->>MC: sendMessage(phoneNumberId, payload)
-  MC->>Graph: POST /{phoneNumberId}/messages
+  MC->>GraphAPI: POST /{phoneNumberId}/messages
   alt 2xx
-    Graph-->>MC: messages[0].id, contacts[0].input
+    GraphAPI-->>MC: messages[0].id, contacts[0].input
     GW-->>App: 200 { success, messageId, recipient, phoneNumberId }
   else Rate limit
-    MC->>Graph: Retry after Retry-After or backoff
+    MC->>GraphAPI: Retry after Retry-After or backoff
   else Timeout or 5xx
     GW-->>App: 504 / 502 / 5xx, category unknown_outcome
   else Other Meta error

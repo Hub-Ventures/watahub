@@ -155,7 +155,7 @@ behavior changes only through what `createApp` accepts.
 flowchart LR
   tenant["Tenant API key"] --> guard["EE tenant guard"]
   guard --> core["createApp(coreOverrides)"]
-  core --> graph["Meta Graph API"]
+  core --> metaGraph["Meta Graph API"]
   meta["Meta webhooks"] --> eehook["EE /webhook"]
   eehook --> outbox["Durable outbox"]
   outbox --> receivers["Tenant endpoints"]
