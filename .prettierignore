@@ -5,3 +5,8 @@ node_modules/
 .dev.vars*
 pnpm-lock.yaml
 *.md
+# Verbatim mirrors of watahub-ee public/tokens.css and public/components.css; keep them byte-identical.
+site/public/tokens.css
+site/public/components.css
+# Impeccable design records, written by its CLI and agents.
+.impeccable/

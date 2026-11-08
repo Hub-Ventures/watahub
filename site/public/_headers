@@ -14,7 +14,31 @@
 /404.html
   Cache-Control: public, max-age=0, must-revalidate
 
-/styles.css
+/es/
+  Cache-Control: public, max-age=0, must-revalidate
+
+/es/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/es/404.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/pt/
+  Cache-Control: public, max-age=0, must-revalidate
+
+/pt/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/pt/404.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/tokens.css
+  Cache-Control: public, max-age=3600
+
+/components.css
+  Cache-Control: public, max-age=3600
+
+/site.css
   Cache-Control: public, max-age=3600
 
 /fonts/*
