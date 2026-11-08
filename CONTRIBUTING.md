@@ -8,12 +8,14 @@ stay **secure by default** and **boring to change**. This guide covers both.
 
 ```bash
 pnpm install
-cp .env.example .env   # fill in every value; the gateway refuses to boot with placeholders
-pnpm dev               # Node, http://localhost:3000
-pnpm dev:worker        # Cloudflare Workers via wrangler
+cp .env.example .env                              # fill in the required values; placeholders are refused at boot
+pnpm exec tsx watch --env-file=.env src/node.ts   # Node, http://localhost:3000
+pnpm dev:worker                                   # Cloudflare Workers via wrangler; local secrets in .dev.vars
 ```
 
-Node 20+ and pnpm are required. Watahub has no database.
+The gateway reads `process.env` and never loads `.env` itself: `--env-file` (Node 20.6+) does. `pnpm dev` runs the
+same entry without it, so it only works with the variables already exported. Node 20+ and pnpm (`corepack enable`)
+are required. Watahub has no database.
 
 ## Before you open a pull request
 
@@ -23,16 +25,18 @@ pnpm check
 
 `check` runs, in order: `typecheck` (sources and tests), `lint` (typescript-eslint,
 type-checked), `format:check` (Prettier) and `test:coverage` (Vitest with a coverage
-floor of 95% statements/lines/functions and 90% branches). CI and reviewers expect
-it green. `pnpm lint:fix` and `pnpm format` fix most style issues.
+floor of 95% statements/lines/functions and 90% branches). Reviewers expect it green;
+`.github/workflows/ci.yml` runs the same command on Node 20 and 22 when GitHub Actions
+is enabled for the repository. `pnpm lint:fix` and `pnpm format` fix most style issues.
 
 ## How the code is organized
 
 ```
 src/
-  index.ts        createApp(deps): composes middleware and routers, nothing else
+  index.ts        createApp(deps): composes middleware and routers; the library exports
   node.ts         Node entry: validates env at boot, then serves
-  deps.ts         GatewayDeps: Meta client factory, fetch, clock, logger
+  deps.ts         GatewayDeps: Meta client factory, fetch, clock, logger, stores
+                  (replay, rate limit, line tokens)
   config.ts       constants and the typed per-request config (getConfig)
   logger.ts       Logger port + console default
   clock.ts        Clock port + system default
@@ -42,7 +46,8 @@ src/
   routes/         one router factory per surface: createXRouter(deps)
   schemas/        zod request schemas (no logic)
   services/       domain logic with no Hono imports: Meta client, retries,
-                  errors, crypto, normalizer, subscriber delivery
+                  errors, crypto, normalizer, subscriber delivery, replay
+                  protection, line connect, key-value store adapters
   types/          Meta wire types and Watahub's public contracts
   utils/          env validation, log redaction, type guards
 tests/            Vitest suites; tests/helpers for shared fakes
@@ -69,6 +74,11 @@ deliberate security decision:
 - Failed API key and verify token attempts are throttled per client without ever locking out the correct key; CORS is off unless `CORS_ALLOWED_ORIGINS` lists exact origins; authenticated responses are `no-store`.
 
 If a refactor and a control disagree, the control wins.
+
+**The public API is a contract.** Watahub Enterprise Edition installs the published
+package and builds on `createApp`, the `GatewayDeps` ports and the exports in
+`src/index.ts`; it never patches the core. A change to any of them says so in the
+pull request.
 
 **Dependencies are injected.** Anything that talks to the outside world or to
 time is a parameter: `createApp({ createMetaClient, fetch, now, logger })`,
