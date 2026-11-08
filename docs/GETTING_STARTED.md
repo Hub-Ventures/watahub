@@ -1,168 +1,130 @@
-# 🚀 Getting Started with Watahub
+# Getting started
 
-This guide walks you through setting up Watahub from scratch: configuring your Meta Developer account, launching the gateway locally, sending your first message, and receiving verified webhook events.
-
----
+From an empty checkout to a sent message and a received webhook. Takes a Meta app, a WhatsApp Business Account (WABA)
+with a phone number, and a public HTTPS URL for the webhook.
 
 ## 1. Prerequisites
 
-Before starting, ensure you have:
+- Node.js 20 or later (`node -v`).
+- pnpm. Run `corepack enable` once; it uses the pnpm version pinned in `package.json` (`packageManager`).
+- A [Meta for Developers](https://developers.facebook.com/) account and a WABA with at least one phone number.
+- A tunnel for local webhooks, such as `cloudflared` or `ngrok`.
 
-- **Node.js:** Version 20 or higher (`node -v`).
-- **pnpm:** Version 9 or higher (`pnpm -v`).
-- **Meta for Developers Account:** [developers.facebook.com](https://developers.facebook.com/).
-- **WhatsApp Business Account (WABA):** Configured with at least one active phone number.
+## 2. Meta app
 
----
+1. In Meta for Developers, create an app with the WhatsApp product and link it to your business portfolio.
+2. In the WhatsApp API setup page, note the **phone number ID** and the **WhatsApp Business Account ID**. Both are
+   numeric; the gateway rejects anything else.
+3. In **App settings > Basic**, copy the **App secret**. The gateway uses it to verify `X-Hub-Signature-256` on every
+   webhook.
+4. Choose how the gateway gets a Meta token:
+   - **System user token.** Create a permanent system user token in Meta Business Manager with
+     `whatsapp_business_messaging` and `whatsapp_business_management` and set it as `META_SYSTEM_USER_TOKEN`. Meta's
+     temporary test token works for a first try but expires.
+   - **Embedded Signup.** Leave `META_SYSTEM_USER_TOKEN` empty and connect each line with
+     `POST /v1/onboarding/connect` (step 8). This also needs `META_APP_ID` and an Embedded Signup configuration
+     (`META_CONFIGURATION_ID`).
 
-## 2. Meta Developer Account Setup
+## 3. Install and configure
 
-To connect Watahub to WhatsApp Cloud API, you need credentials from Meta's Developer Portal:
-
-### Step 1: Create a Meta App
-1. Log in to [Meta for Developers](https://developers.facebook.com/).
-2. Click **My Apps > Create App**.
-3. Select **Other** as the use case, then choose **Business** as the app type.
-4. Name your app (e.g. `My WhatsApp Gateway`) and link it to your Meta Business Account.
-
-### Step 2: Add WhatsApp Product
-1. On the App Dashboard, find **WhatsApp** and click **Set up**.
-2. Navigate to **WhatsApp > API Setup**.
-3. Note your **Phone Number ID** and **WhatsApp Business Account ID** (WABA ID).
-4. Meta provides a temporary access token for testing. For production, generate a permanent **System User Access Token** in Meta Business Manager with permissions:
-   - `whatsapp_business_messaging`
-   - `whatsapp_business_management`
-
-### Step 3: Retrieve Your App Secret
-1. Go to **App Settings > Basic**.
-2. Click **Show** next to **App Secret**. This secret is required for validating incoming webhook signatures (`X-Hub-Signature-256`).
-
----
-
-## 3. Local Installation & Configuration
-
-### Step 1: Clone the Repository
 ```bash
 git clone https://github.com/Hub-Ventures/watahub.git
 cd watahub
 pnpm install
-```
-
-### Step 2: Configure Environment Variables
-Create your local `.env` file from the provided template:
-
-```bash
 cp .env.example .env
 ```
 
-Generate two strong cryptographic keys (at least 32 characters each):
-```bash
-# Gateway master API key
-openssl rand -hex 32
+Generate the gateway API key and the subscriber signing secret:
 
-# Subscriber webhook signing secret
-openssl rand -hex 32
+```bash
+openssl rand -hex 32   # WATAHUB_API_KEY
+openssl rand -hex 32   # SUBSCRIBER_WEBHOOK_SECRET
 ```
 
-Edit `.env` and fill in your values:
+Edit `.env`. The values below are examples.
 
 ```ini
-# Gateway Server
 PORT=3000
 
-# Meta Developer Credentials
 META_APP_ID=123456789012345
-META_APP_SECRET=your_meta_app_secret_here
-META_SYSTEM_USER_TOKEN=your_permanent_system_user_token_here
+META_APP_SECRET=<app secret>
+META_SYSTEM_USER_TOKEN=<system user token>
 META_API_VERSION=v24.0
 
-# Optional Defaults
+# Used when a call names no phone number or WABA
 META_DEFAULT_PHONE_NUMBER_ID=100609346426000
 META_DEFAULT_WABA_ID=105555123456789
 
-# Webhook Handshake Token (choose a custom string, min 16 characters)
-META_WEBHOOK_VERIFY_TOKEN=my_secure_webhook_verify_token_123
+# 16+ characters; you type the same value into Meta's webhook settings
+META_WEBHOOK_VERIFY_TOKEN=<verify token>
 
-# Watahub Master API Key (min 32 characters)
-WATAHUB_API_KEY=your_generated_32char_api_key_here
+# 32+ characters
+WATAHUB_API_KEY=<openssl rand -hex 32>
 
-# Subscriber Destination (where Watahub forwards verified, normalized webhooks)
+# Where verified, normalized events are forwarded; http is allowed only for localhost and 127.0.0.1
 SUBSCRIBER_WEBHOOK_URL=http://localhost:4000/webhook
-SUBSCRIBER_WEBHOOK_SECRET=your_generated_32char_subscriber_secret_here
+SUBSCRIBER_WEBHOOK_SECRET=<openssl rand -hex 32>
 ```
 
----
+The full list, with defaults and rules, is in the [README](../README.md#configuration).
 
-## 4. Starting Watahub Locally
-
-Start the development server with hot reloading:
+## 4. Run
 
 ```bash
-pnpm run dev:node
+pnpm exec tsx watch --env-file=.env src/node.ts
 ```
 
-Verify that the gateway is running:
+This runs `src/node.ts` and reloads on change. The gateway reads `process.env` and does not load `.env` by itself;
+`--env-file` (Node 20.6 or later) does. `pnpm dev` runs the same file without it, so it only works when the variables
+are already exported in your shell.
+
+At boot, `src/node.ts` checks the configuration and exits with the name of every variable that is missing, too short,
+malformed or still the `.env.example` placeholder. It never prints the values.
+
 ```bash
 curl http://localhost:3000/health
 ```
 
-Expected response:
 ```json
 {
   "status": "ok",
   "service": "watahub",
   "version": "0.2.0",
-  "timestamp": "2026-10-25T18:00:00.000Z"
+  "timestamp": "2026-11-08T15:30:00.000Z"
 }
 ```
 
----
+## 5. Expose the webhook
 
-## 5. Connecting Meta Webhooks to Localhost
+Meta only calls public HTTPS URLs. Start a tunnel to port 3000:
 
-Meta requires a publicly accessible HTTPS endpoint to send webhook notifications. Use a tunnel like `cloudflared` or `ngrok` during development.
-
-### Option A: Using Cloudflare Tunnel (`cloudflared`)
 ```bash
-pnpm dlx cloudflared tunnel --url http://localhost:3000
+cloudflared tunnel --url http://localhost:3000   # https://<random>.trycloudflare.com
+ngrok http 3000                                  # https://<random>.ngrok-free.app
 ```
-This generates a URL like `https://random-subdomain.trycloudflare.com`.
 
-### Option B: Using ngrok
-```bash
-npx ngrok http 3000
-```
-This generates a URL like `https://random-subdomain.ngrok-free.app`.
+In the Meta app's WhatsApp configuration:
 
-### Configure Webhook in Meta Dashboard:
-1. In Meta Developer App, go to **WhatsApp > Configuration**.
-2. Click **Edit** under **Webhook**.
-3. **Callback URL:** `https://<your-tunnel-url>/webhook`
-4. **Verify Token:** The exact value of your `META_WEBHOOK_VERIFY_TOKEN`.
-5. Click **Verify and Save**. Meta will execute a `GET /webhook` handshake. Watahub verifies the token in constant time and responds with the challenge.
-6. Under **Webhook Fields**, click **Manage** and subscribe to `messages`.
+1. Set **Callback URL** to `https://<tunnel host>/webhook`.
+2. Set **Verify token** to the value of `META_WEBHOOK_VERIFY_TOKEN`.
+3. Choose **Verify and save**. Meta calls `GET /webhook`; the gateway compares the token in constant time and answers
+   the challenge. After 10 wrong tokens in a minute from one client it answers `429`.
+4. Subscribe to the `messages` webhook field.
 
----
-
-## 6. Sending Your First WhatsApp Message
-
-Once running, send an outbound message through Watahub's unified `/v1/messages` endpoint:
+## 6. Send a message
 
 ```bash
 curl -X POST http://localhost:3000/v1/messages \
-  -H "Authorization: Bearer <WATAHUB_API_KEY>" \
+  -H "Authorization: Bearer $WATAHUB_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "to": "+15551234567",
     "phoneNumberId": "100609346426000",
     "kind": "text",
-    "text": {
-      "body": "Hello from my self-hosted Watahub gateway! 🌊"
-    }
+    "text": { "body": "Hello from my Watahub gateway" }
   }'
 ```
 
-Response:
 ```json
 {
   "success": true,
@@ -172,54 +134,69 @@ Response:
 }
 ```
 
----
+Outside the 24-hour customer service window, Meta only accepts template messages. The other kinds are in the
+[API reference](API_REFERENCE.md#4-outbound-messages).
 
-## 7. Receiving Verified & Normalized Webhooks
+## 7. Receive a message
 
-When a WhatsApp user sends a message to your number:
+When someone writes to your number:
 
-1. Meta sends a signed HTTP POST to `https://<your-tunnel-url>/webhook`.
-2. Watahub verifies the `X-Hub-Signature-256` header using your `META_APP_SECRET`.
-3. Watahub checks replay protection and deduplicates the delivery.
-4. Watahub returns `200 OK` to Meta immediately so Meta stops retrying.
-5. In the background, Watahub normalizes the payload into clean events and posts it to your `SUBSCRIBER_WEBHOOK_URL`, signed with `X-Watahub-Signature`.
+1. Meta posts the event to `https://<tunnel host>/webhook` with `X-Hub-Signature-256`.
+2. The gateway verifies the signature with `META_APP_SECRET` and drops stale or already-delivered bodies.
+3. It normalizes the event and posts `{ timestamp, events, raw }` to `SUBSCRIBER_WEBHOOK_URL`, signed with
+   `x-watahub-signature`.
+4. By default (`WEBHOOK_DELIVERY_MODE=sync`) it answers Meta only after your backend answers: `200` when your backend
+   accepts it, `503` when it fails or takes longer than 3 seconds, so Meta delivers it again.
 
-### Example Payload Received by Your Backend:
+Your backend receives:
 
 ```json
 {
-  "timestamp": 1729620000000,
+  "timestamp": 1762615800000,
   "events": [
     {
       "id": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg...",
-      "timestamp": 1729620000000,
+      "timestamp": 1762615800000,
       "phoneNumberId": "100609346426000",
       "displayPhoneNumber": "15550293848",
       "type": "message",
       "message": {
+        "id": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg...",
         "from": "15551234567",
         "senderName": "Jane Doe",
+        "timestamp": 1762615800000,
         "kind": "text",
-        "text": "Hello Watahub!"
+        "text": "Hello"
       }
     }
   ],
-  "raw": { ... }
+  "raw": { "object": "whatsapp_business_account", "entry": [] }
 }
 ```
 
----
+Verify the signature before you trust the body, and deduplicate on `x-watahub-delivery-id`. Both are covered in
+[Webhooks and events](WEBHOOKS_AND_EVENTS.md).
 
-## 8. Verifying Code Health
+## 8. Connect a line with Embedded Signup (optional)
 
-Watahub comes with an automated testing and formatting pipeline. Run the full verification suite before committing:
+Instead of a system user token, a line can be connected through Meta's Embedded Signup. The gateway then stores that
+line's business token and never returns it.
+
+1. Your backend calls `GET /v1/onboarding/launch` (it needs the API key) and hands `appId` and `configurationId` to
+   the frontend for `FB.login`.
+2. When the signup finishes, send the code, the WABA ID, the phone number ID and a 6-digit PIN for two-step
+   verification to `POST /v1/onboarding/connect`.
+3. The gateway exchanges the code with its own app credentials, stores the token for that phone number ID, subscribes
+   the WABA to this app's webhook (`messages`) and registers the number.
+
+The default line store is in memory. Tokens are lost on restart, and on Workers they live only in one isolate. Pass a
+shared store before you rely on it: see [Extensions](MULTI_TENANCY_AND_EXTENSIONS.md#line-tokens).
+
+## 9. Check the code
 
 ```bash
 pnpm check
 ```
 
-This runs:
-1. `tsc --noEmit` (TypeScript typecheck)
-2. `eslint .` (Code quality & style rules)
-3. `prettier --check .` (Code formatting)
-4. `vitest run --coverage` (Unit & contract tests with >=95% statement and >=90% branch coverage floors)
+It runs, in order: `tsc` over sources and tests, ESLint, Prettier, and Vitest with coverage. Coverage must stay at or
+above 95% of statements, lines and functions and 90% of branches.

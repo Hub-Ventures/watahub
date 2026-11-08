@@ -1,48 +1,71 @@
-# 📡 Watahub API Reference
+# API reference
 
-Complete technical specification for all endpoints exposed by the Watahub Gateway.
+Every route the gateway serves in `watahub` 0.2.0, with its request, response and errors. Source of truth:
+`src/routes/`, `src/schemas/` and `tests/routes-contract.test.ts`.
 
----
+## 1. Conventions
 
-## 1. Global Conventions
+### 1.1 Base URL
 
-### 1.1 Base URLs
-- **Local:** `http://localhost:3000`
-- **Cloudflare Workers / Production:** `https://your-watahub-domain.com`
+`http://localhost:3000` on Node by default, or wherever you deploy the Worker.
 
 ### 1.2 Authentication
-All machine-to-machine endpoints (`/v1/*` and `/v24.0/*`) require gateway authentication. Supply your `WATAHUB_API_KEY` using either:
+
+`/v1/*` and `/v24.0/*` require the gateway key in either header. Both are compared in constant time.
 
 ```http
 Authorization: Bearer <WATAHUB_API_KEY>
-```
-or
-```http
 X-API-Key: <WATAHUB_API_KEY>
 ```
 
-Calls omitting or providing an invalid API key receive `401 Unauthorized`. Clients exceeding 10 consecutive authentication failures within 60 seconds are throttled with `429 Too Many Requests` and a `Retry-After` header.
+- No key, or a wrong one: `401`.
+- From the 11th failed attempt in the same minute, one client gets `429 Too Many Requests` with `Retry-After`. Only
+  failed attempts count, so a correct key is never refused.
+- `WATAHUB_API_KEY` unset, shorter than 32 characters or still the placeholder: every call answers `503`.
 
-### 1.3 Meta Access Token Resolution Priority
-For Graph calls that name a phone number id (`POST /v1/messages`, `POST /v1/media`, `POST /v24.0/:phoneNumberId/messages`, `POST /v24.0/:phoneNumberId/media`, `POST /v1/onboarding/override-callback`), Watahub resolves the token in this order:
+`/health` and `/webhook` take no API key.
 
-1. **Explicit header:** `X-Meta-Access-Token`.
-2. **Line store:** the business token saved by `POST /v1/onboarding/connect` for that phone number id.
-3. **Environment variable:** `META_SYSTEM_USER_TOKEN`.
+### 1.3 Meta access token
 
-Calls with no phone number id (`GET /v1/media/:mediaId`, `GET /v1/media/:mediaId/content`, `GET /v24.0/:mediaId`, `GET /v1/templates`, `POST /v1/onboarding/subscribe`) use the header, then `META_SYSTEM_USER_TOKEN`.
+Calls that name a phone number ID resolve the Meta token in this order. They are `POST /v1/messages`,
+`POST /v1/media`, `POST /v1/media/:phoneNumberId`, `POST /v1/onboarding/override-callback`,
+`POST /v24.0/:phoneNumberId/messages` and `POST /v24.0/:phoneNumberId/media`.
 
-If no token is found, the endpoint returns `500 Internal Server Error` with `Missing Meta access token`.
+1. The `X-Meta-Access-Token` header.
+2. The business token that `POST /v1/onboarding/connect` stored for that phone number ID.
+3. `META_SYSTEM_USER_TOKEN`.
 
-### 1.4 Standard Error Response Envelope
-When an error occurs, Watahub returns a structured JSON body:
+Calls without a phone number ID skip step 2: `GET /v1/media/:mediaId`, `GET /v1/media/:mediaId/content`,
+`GET /v24.0/:mediaId`, `GET /v1/templates` and `POST /v1/onboarding/subscribe`.
+
+With no token, the call answers `500` with
+`{ "error": "Missing Meta access token. Set META_SYSTEM_USER_TOKEN or pass X-Meta-Access-Token header." }`.
+
+### 1.4 Error shapes
+
+| When | Status | Body |
+| :--- | :--- | :--- |
+| Malformed JSON | `400` | `{ "error": "Malformed JSON payload" }` |
+| Missing phone number ID or WABA ID | `400` | `{ "error": "Missing phoneNumberId. ..." }` |
+| Field validation | `422` | `{ "error": "Validation failed", "details": { "<field>": ["<message>"] } }` |
+| Wrong API key | `401` | `{ "error": "Unauthorized: Invalid Watahub API key" }` |
+| Proxy path not allowed | `403` | `{ "error": "Endpoint not allowed through the Watahub proxy" }` |
+| Unknown route | `404` | `{ "error": "Endpoint not found", "path": "/..." }` |
+| Body too large | `413` | `{ "error": "Payload too large" }` |
+| Too many failed attempts or requests | `429` | `{ "error": "Too many requests" }`, with `Retry-After` |
+| Missing or invalid configuration | `503` | `{ "error": "Gateway misconfigured: ..." }`; never a value |
+| Meta answered with an error | Meta's `4xx`/`5xx` | The Meta error envelope below |
+| Meta unreachable / timed out | `502` / `504` | `{ "error": { "message": "Meta Graph API unreachable" } }` or `"... request timed out"` |
+| Anything else | `500` | `{ "error": { "message": "Internal Server Error" } }` |
+
+The Meta error envelope keeps Meta's code and status and adds a classification. `type` is included only on
+`POST /v1/messages`.
 
 ```json
 {
   "error": {
-    "message": "Meta Graph API Error (130429): Rate limit exceeded",
+    "message": "Meta Graph API Error (130429): Rate limit hit",
     "code": 130429,
-    "subcode": 7,
     "type": "OAuthException",
     "category": "rate_limit",
     "retryable": true,
@@ -51,7 +74,20 @@ When an error occurs, Watahub returns a structured JSON body:
 }
 ```
 
-**Uncertain send outcome.** A message send is not idempotent. When `POST /v1/messages` times out (`504`), loses its connection to Meta (`502`) or gets a `5xx` from Meta, the message may or may not have been delivered. The status code is kept and the body says so:
+| `category` | Meta codes | `retryable` |
+| :--- | :--- | :--- |
+| `auth` | `190`, or `100` with subcode `33` | No |
+| `billing` | `131042` | No |
+| `rate_limit` | HTTP `429`, `4`, `80007`, `130429` | Yes |
+| `meta_server` | `1`, `2`, `131000`, `131016`, `133004` | Yes |
+| `unknown` | Anything else | No |
+| `unknown_outcome` | A message send that may have gone out | No |
+
+Meta's `fbtrace_id` and upstream transport messages are never returned.
+
+**Uncertain send outcome.** A send is not idempotent. When `POST /v1/messages` times out (`504`), loses its connection
+to Meta (`502`) or gets a `5xx` from Meta, the message may or may not have been delivered. The status is kept and the
+body says so:
 
 ```json
 {
@@ -64,185 +100,180 @@ When an error occurs, Watahub returns a structured JSON body:
 }
 ```
 
-Confirm the outcome with the message status webhook before sending again, or the recipient may get the message twice.
+Confirm with the status webhook before you send again, or the recipient may get the message twice.
 
----
+### 1.5 Body limits
 
-## 2. Health & System
+Bodies are capped while they stream: 1 MB for JSON on `/v1` and the proxy, 3 MB for `POST /webhook`, and 100 MB for
+media uploads (`POST /v1/media*` and `POST /v24.0/:phoneNumberId/media`).
+
+## 2. Health
 
 ### `GET /health`
-Returns service status, version, and server timestamp. Unauthenticated.
 
-#### Request
-```bash
-curl http://localhost:3000/health
-```
+No authentication.
 
-#### Response (`200 OK`)
 ```json
 {
   "status": "ok",
   "service": "watahub",
   "version": "0.2.0",
-  "timestamp": "2026-10-25T18:00:00.000Z"
+  "timestamp": "2026-11-08T15:30:00.000Z"
 }
 ```
-
----
 
 ## 3. Webhooks
 
 ### `GET /webhook`
-Handles Meta's initial challenge verification handshake when configuring your webhook in the Meta Developer Portal.
 
-#### Query Parameters
-| Parameter | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| `hub.mode` | `string` | Yes | Must be `"subscribe"` |
-| `hub.verify_token` | `string` | Yes | Must match `META_WEBHOOK_VERIFY_TOKEN` |
-| `hub.challenge` | `string` | Yes | Random challenge string sent by Meta |
+Meta's subscription handshake.
 
-#### Response
-- **`200 OK`:** Returns `hub.challenge` as plain text.
-- **`403 Forbidden`:** If `hub.verify_token` does not match.
+| Query parameter | Value |
+| :--- | :--- |
+| `hub.mode` | `subscribe` |
+| `hub.verify_token` | Must equal `META_WEBHOOK_VERIFY_TOKEN` |
+| `hub.challenge` | Echoed back |
 
----
+- `200` with `hub.challenge` as plain text.
+- `403` when the mode or token is wrong. From the 11th wrong attempt in a minute, one client gets `429`.
 
 ### `POST /webhook`
-Receives raw incoming webhook events from Meta Cloud API. Validates HMAC signature, checks replay protection, acknowledges Meta immediately, and forwards events asynchronously to `SUBSCRIBER_WEBHOOK_URL`.
 
-#### Required Headers
-| Header | Description |
-| :--- | :--- |
-| `Content-Type` | `application/json` |
-| `X-Hub-Signature-256` | Meta's HMAC-SHA256 signature (`sha256=<hex_digest>`) |
+Receives Meta's deliveries. Requires `X-Hub-Signature-256: sha256=<64 hex>` over the raw body, keyed with
+`META_APP_SECRET`. The delivery flow is described in [Webhooks and events](WEBHOOKS_AND_EVENTS.md).
 
-#### Request Body
-Raw JSON payload from Meta (`whatsapp_business_account` object).
+| Status | Body | Meaning |
+| :--- | :--- | :--- |
+| `200` | `{ "status": "received", "eventsCount": n }` | Forwarded (`sync`), queued in the background (`async`), or a delivery without changes |
+| `200` | `{ "status": "ignored", "reason": "stale" \| "duplicate", "eventsCount": 0 }` | Too old, already delivered, or a copy of a delivery in progress |
+| `200` | `{ "status": "rejected", "reason": "subscriber_rejected", "subscriberStatus": 4xx, "deliveryId": "..." }` | `sync`: your backend refused it for good; not forwarded again |
+| `400` | `{ "error": "Invalid JSON payload" }` | Signed, but not JSON |
+| `401` | `{ "error": "Invalid HMAC signature" }` | Missing or wrong signature |
+| `503` | `{ "error": "Subscriber delivery failed", "deliveryId": "...", ... }` | `sync`: your backend failed or timed out; Meta retries |
+| `503` | `{ "error": "Gateway misconfigured: ..." }` | `META_APP_SECRET`, `SUBSCRIBER_WEBHOOK_URL` or `SUBSCRIBER_WEBHOOK_SECRET` missing, or an invalid `WEBHOOK_DELIVERY_MODE` / `META_WEBHOOK_MAX_AGE_SECONDS` |
 
-#### Response
-- **`200 OK`:** Acknowledges receipt to Meta (`{"status": "received", "eventsCount": 1}`).
-- **`401 Unauthorized`:** Invalid or missing `X-Hub-Signature-256`.
-- **`503 Service Unavailable`:** Gateway misconfigured (`META_APP_SECRET` or `SUBSCRIBER_WEBHOOK_SECRET` missing).
-
----
-
-## 4. Outbound Messages
+## 4. Outbound messages
 
 ### `POST /v1/messages`
-Unified endpoint to dispatch messages to WhatsApp users.
 
-#### Headers
 ```http
 Authorization: Bearer <WATAHUB_API_KEY>
 Content-Type: application/json
-X-Phone-Number-Id: <optional-phone-number-id>
-X-Meta-Access-Token: <optional-override-token>
+X-Phone-Number-Id: <optional sender phone number ID>
+X-Meta-Access-Token: <optional Meta token>
 ```
 
-#### Request Schema (`SendMessagePayload`)
 | Field | Type | Required | Description |
 | :--- | :--- | :--- | :--- |
-| `to` | `string` | Yes | Recipient: a phone number in E.164 format (e.g. `"+15551234567"`), or a business-scoped user ID (BSUID, e.g. `"US.13491208655302741918"` or `"US.ENT.11815799212886844830"`) for users who hide their number. A BSUID is sent to Meta as `recipient` and passed through unchanged. Authentication templates need a phone number: Meta rejects them for a BSUID with error 131062 |
-| `phoneNumberId` | `string` | Optional | Sender phone ID (if omitted, uses header or `META_DEFAULT_PHONE_NUMBER_ID`) |
-| `tenantId` | `string` | Optional | Tenant identifier for multi-tenant tracing |
-| `kind` | `string` | Yes | One of: `text`, `template`, `image`, `audio`, `video`, `document`, `sticker`, `location`, `contacts`, `reaction`, `interactive` |
+| `to` | string | Yes | A phone number (`"+15551234567"`; the `+` is removed) or a business-scoped user ID (BSUID, `"US.13491208655302741918"` or `"US.ENT.11815799212886844830"`), up to 135 characters. A BSUID is sent to Meta as `recipient`, unchanged. Authentication templates need a phone number: Meta rejects them for a BSUID with error 131062 |
+| `phoneNumberId` | string | No | Sender. Falls back to `X-Phone-Number-Id`, then `META_DEFAULT_PHONE_NUMBER_ID`. Numeric |
+| `kind` | string | Yes | `text`, `template`, `image`, `audio`, `video`, `document`, `sticker`, `location`, `contacts`, `reaction` or `interactive` |
+| `text` | object | For `text` | `{ "body": string }`, 1 to 4096 characters |
+| `template` | object | For `template` | `{ "name", "language": { "code" }, "components"? }`; components go to Meta as sent |
+| `media` | object | For media kinds | `{ "id" \| "link", "caption"?, "filename"?, "voice"? }`. No caption or filename on `audio` and `sticker`, no filename on `video`, `voice` only on `audio` |
+| `location` | object | For `location` | `{ "latitude", "longitude", "name"?, "address"? }` |
+| `contacts` | array | For `contacts` | 1 to 10 contact cards in Meta's shape (`name.formatted_name` required) |
+| `reaction` | object | For `reaction` | `{ "messageId", "emoji" }`; an empty `emoji` removes the reaction |
+| `interactive` | object | For `interactive` | Meta's `interactive` object. `flow`, `cta_url`, `location_request_message`, `product`, `product_list` and `order_details` are validated; `button` and `list` pass through. `poll` is rejected: the Cloud API cannot send polls |
+| `replyToMessageId` | string | No | Sent as `context.message_id` |
 
----
+Unknown fields are dropped.
 
-### Message Kind Examples
+#### Examples
 
-#### 1. Text Message
+Text:
+
 ```json
-{
-  "to": "+15551234567",
-  "phoneNumberId": "100609346426000",
-  "kind": "text",
-  "text": {
-    "body": "Hello from Watahub!"
-  }
-}
+{ "to": "+15551234567", "phoneNumberId": "100609346426000", "kind": "text", "text": { "body": "Hello" } }
 ```
 
-#### 2. Template Message (HSM)
+Template:
+
 ```json
 {
   "to": "+15551234567",
-  "phoneNumberId": "100609346426000",
   "kind": "template",
   "template": {
     "name": "order_update",
     "language": { "code": "en_US" },
-    "components": [
-      {
-        "type": "body",
-        "parameters": [
-          { "type": "text", "text": "ORD-12345" }
-        ]
-      }
-    ]
+    "components": [{ "type": "body", "parameters": [{ "type": "text", "text": "ORD-12345" }] }]
   }
 }
 ```
 
-#### 3. Media Message (Link or ID)
+Media, by link or by an uploaded media ID. The same shape works for `audio`, `video`, `document` and `sticker`
+within the rules above.
+
 ```json
-{
-  "to": "+15551234567",
-  "kind": "image",
-  "media": {
-    "link": "https://example.com/images/receipt.jpg",
-    "caption": "Your payment receipt"
-  }
-}
+{ "to": "+15551234567", "kind": "image", "media": { "link": "https://example.com/receipt.jpg", "caption": "Receipt" } }
 ```
-*For audio, video, document, or sticker, replace `"kind": "image"` with the respective kind.*
 
-#### 4. Location Message
+Voice note (`audio/ogg; codecs=opus`):
+
+```json
+{ "to": "+15551234567", "kind": "audio", "media": { "id": "987654321098765", "voice": true } }
+```
+
+Location:
+
 ```json
 {
   "to": "+15551234567",
   "kind": "location",
-  "location": {
-    "latitude": 37.7749,
-    "longitude": -122.4194,
-    "name": "San Francisco Office",
-    "address": "123 Market St, San Francisco, CA"
-  }
+  "location": { "latitude": 4.6097, "longitude": -74.0817, "name": "Office", "address": "Cra 7 # 32-16, Bogotá" }
 }
 ```
 
-#### 5. Reaction Message
+Reaction:
+
 ```json
-{
-  "to": "+15551234567",
-  "kind": "reaction",
-  "reaction": {
-    "messageId": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg...",
-    "emoji": "👍"
-  }
-}
+{ "to": "+15551234567", "kind": "reaction", "reaction": { "messageId": "wamid.HBgL...", "emoji": "👍" } }
 ```
 
-#### 6. Interactive Button Reply
+Reply buttons:
+
 ```json
 {
   "to": "+15551234567",
   "kind": "interactive",
   "interactive": {
     "type": "button",
-    "body": { "text": "Would you like to confirm your appointment?" },
+    "body": { "text": "Confirm your appointment?" },
     "action": {
       "buttons": [
-        { "type": "reply", "reply": { "id": "btn_yes", "title": "Confirm" } },
-        { "type": "reply", "reply": { "id": "btn_no", "title": "Reschedule" } }
+        { "type": "reply", "reply": { "id": "confirm", "title": "Confirm" } },
+        { "type": "reply", "reply": { "id": "reschedule", "title": "Reschedule" } }
       ]
     }
   }
 }
 ```
 
-#### Successful Response (`200 OK`)
+Flow (`flow_message_version` defaults to `"3"` when omitted):
+
+```json
+{
+  "to": "+15551234567",
+  "kind": "interactive",
+  "interactive": {
+    "type": "flow",
+    "body": { "text": "Book a visit" },
+    "action": {
+      "name": "flow",
+      "parameters": {
+        "flow_token": "booking-42",
+        "flow_id": "1234567890",
+        "flow_cta": "Book",
+        "flow_action": "navigate",
+        "flow_action_payload": { "screen": "START" }
+      }
+    }
+  }
+}
+```
+
+#### Response (`200`)
+
 ```json
 {
   "success": true,
@@ -252,229 +283,201 @@ X-Meta-Access-Token: <optional-override-token>
 }
 ```
 
----
+`recipient` is the value Meta confirms in `contacts[0].input`, or the one the gateway sent.
 
-## 5. Media Management
+## 5. Media
+
+### `POST /v1/media` and `POST /v1/media/:phoneNumberId`
+
+Streams a `multipart/form-data` body to Meta's `/{phoneNumberId}/media` as it is, up to 100 MB. The phone number ID
+comes from the path, then `X-Phone-Number-Id`, then `?phone_number_id=`, then `META_DEFAULT_PHONE_NUMBER_ID`.
+
+The form is Meta's: `file` (the bytes), `type` (MIME type) and `messaging_product=whatsapp`.
+
+```bash
+curl -X POST http://localhost:3000/v1/media/100609346426000 \
+  -H "Authorization: Bearer $WATAHUB_API_KEY" \
+  -F messaging_product=whatsapp -F type=application/pdf -F file=@invoice.pdf
+```
+
+```json
+{ "id": "987654321098765" }
+```
+
+`400` when the content type is not `multipart/form-data` or no phone number ID is found.
 
 ### `GET /v1/media/:mediaId`
-Resolves a Meta WhatsApp media ID to a temporary downloadable CDN URL.
 
-#### Query Parameters
-- `redirect`: (`boolean`, default: `false`). When `true`, returns a `302 Found` redirecting directly to the CDN asset. Meta's CDN only answers requests that carry the access token, so a client that follows the redirect without it gets `401`. To download the file, use `GET /v1/media/:mediaId/content`.
-- `phone_number_id`: (`string`, optional). Forwarded only by the `/v24.0` proxy. A media id is not a phone id, so this lookup does not select a stored line token.
+Resolves a media ID to Meta's temporary CDN URL.
 
-#### Response (`200 OK`)
 ```json
 {
-  "mediaId": "123456789012345",
+  "mediaId": "987654321098765",
   "url": "https://lookaside.fbsbx.com/whatsapp_business/attachments/?mid=..."
 }
 ```
 
----
+`?redirect=true` answers `302` to that URL instead. Meta's CDN only serves requests that carry the access token, so a
+client that follows the redirect without it gets `401`; use the next route to download.
 
 ### `GET /v1/media/:mediaId/content`
-Downloads the media file through the gateway. Watahub resolves the CDN URL, fetches it from Meta with the access token, and streams the bytes back with Meta's `Content-Type` (and `Content-Disposition`, if Meta sends one). The caller never needs the Meta token.
 
-#### Responses
-- `200 OK`: the file bytes.
-- `422`: `mediaId` is not a numeric Graph ID.
-- `502`: Meta's CDN answered with an error, or returned a non-`https` URL.
-- Errors from the media lookup use the standard error envelope.
+Downloads the file through the gateway: it resolves the URL, fetches it with the Meta token and streams the bytes back
+with Meta's `Content-Type` and `Content-Disposition`. The caller never holds the Meta token.
 
----
+- `200`: the bytes.
+- `422`: `mediaId` is not numeric.
+- `502`: Meta's CDN answered with an error, or Meta returned a URL that is not `https`.
 
-### `POST /v1/media` and `POST /v1/media/:phoneNumberId`
-Uploads a media file to Meta's WhatsApp Cloud API using chunked streaming transfer encoding. Supports files up to 100 MB.
+## 6. Templates
 
-#### Headers
-```http
-Authorization: Bearer <WATAHUB_API_KEY>
-Content-Type: multipart/form-data; boundary=----WebKitFormBoundary...
-```
+### `GET /v1/templates` and `GET /v1/templates/:wabaId`
 
-#### Multipart Form Fields
-- `file`: The binary media asset.
-- `type`: MIME type (e.g. `application/pdf`, `image/png`, `video/mp4`).
-- `messaging_product`: `"whatsapp"`.
+One page of a WABA's message templates, in Meta's page size.
 
-#### Response (`200 OK`)
-```json
-{
-  "id": "987654321098765"
-}
-```
+| Parameter | Where | Description |
+| :--- | :--- | :--- |
+| `wabaId` | Path or query | Numeric. Falls back to `META_DEFAULT_WABA_ID` |
+| `after` | Query | The previous response's `paging.after`. A value that is not a paging cursor (base64, up to 1024 characters) answers `422` |
 
----
-
-## 6. Templates Management
-
-### `GET /v1/templates` or `GET /v1/templates/:wabaId`
-Lists the message templates of a WhatsApp Business Account, one page per call, in Meta's page size.
-
-#### Query / Path Parameters
-- `wabaId`: Numeric Meta WABA ID (optional if `META_DEFAULT_WABA_ID` is set).
-- `after`: Optional. The `paging.after` of the previous response, to get the next page. A value that is not a Meta paging cursor (base64, up to 1024 characters) is rejected with `422`.
-
-#### Response (`200 OK`)
 ```json
 {
   "data": [
     {
+      "id": "1234567890",
       "name": "welcome_message",
       "status": "APPROVED",
       "category": "MARKETING",
       "language": "en_US",
-      "components": [ ... ]
+      "components": []
     }
   ],
   "paging": { "after": "QVFIUmx..." }
 }
 ```
 
-Each template is returned as Meta sends it. `paging.after` is present only while Meta has another page; on the last page `paging` is `{}`. Meta's `paging.next` and `paging.previous` URLs are never returned.
+Each template is returned as Meta sends it. `paging.after` is present only while Meta has another page; on the last
+page `paging` is `{}`. Meta's `paging.next` and `paging.previous` URLs are never returned. Added in 0.2.0; 0.1.0
+returned only the first page.
 
----
+## 7. Embedded Signup and onboarding
 
-## 7. Embedded Signup & Onboarding
-
-`POST /v1/onboarding/connect` is the operator path. `POST /v1/onboarding/exchange` still returns the token for existing callers; do not use it when the gateway should keep the token.
+`POST /v1/onboarding/connect` is the path to use: the gateway keeps the token. `exchange`, `subscribe` and
+`override-callback` stay for existing callers.
 
 ### `GET /v1/onboarding/launch`
-Authenticated with `WATAHUB_API_KEY`. Returns the public values a frontend needs for `FB.login`. `configurationId` is the Embedded Signup `config_id`. It is not sent when the code is exchanged.
 
-#### Response (`200 OK`)
+The public values a frontend needs for `FB.login`. The app secret is never returned.
+
 ```json
-{
-  "appId": "236484624622562",
-  "configurationId": "123456789012345",
-  "apiVersion": "v24.0"
-}
+{ "appId": "236484624622562", "configurationId": "123456789012345", "apiVersion": "v24.0" }
 ```
 
-`503` when `META_APP_ID` or `META_CONFIGURATION_ID` is missing or not numeric. The app secret is never returned.
+`503` when `META_APP_ID` or `META_CONFIGURATION_ID` is missing or not numeric.
 
 ### `POST /v1/onboarding/connect`
-Finishes Embedded Signup for one phone line. The caller sends the code from `FB.login`, the WABA id, the phone number id, and the 6-digit registration PIN. The gateway exchanges the code with its own app credentials (`client_id`, `client_secret`, `code` only), stores the business token, subscribes the WABA to the webhook already configured on this Meta app (`messages`), and registers the phone for Cloud API.
 
-The business token is not in the response.
+Finishes Embedded Signup for one phone line. The gateway:
 
-#### Request Body
+1. Exchanges the code with its own app credentials. Only `client_id`, `client_secret` and `code` go to Meta, in the
+   POST body, never the URL.
+2. Stores the business token for the phone number ID.
+3. Subscribes the WABA to this Meta app's webhook (`messages`). It does not set a callback override.
+4. Registers the number for Cloud API with the PIN.
+
 ```json
 {
-  "code": "AQDf58d...short-lived-oauth-code",
+  "code": "AQDf58d...",
   "wabaId": "105555123456789",
   "phoneNumberId": "100609346426000",
   "pin": "581063"
 }
 ```
 
-`appId` and `appSecret` are rejected.
-
-#### Response (`200 OK`)
 ```json
-{
-  "phoneNumberId": "100609346426000",
-  "wabaId": "105555123456789",
-  "subscribed": true,
-  "registered": true
-}
+{ "phoneNumberId": "100609346426000", "wabaId": "105555123456789", "subscribed": true, "registered": true }
 ```
 
-#### Errors
-- `400` if `META_APP_ID` or `META_APP_SECRET` is missing.
-- `422` if `pin` is not 6 digits, an id is not a numeric Graph id, or the body includes `appId` / `appSecret`.
-- If exchange, subscribe, or register fails, the classified Meta error is returned with `step` set to `exchange`, `subscribe`, or `register`. The token is not included. A failed subscribe or register still leaves the stored token in place.
+- `400` when `META_APP_ID` or `META_APP_SECRET` is missing (`exchange` too).
+- `422` when `pin` is not 6 digits, an ID is not numeric, or the body carries `appId` or `appSecret`.
+- If a Graph step fails, the classified Meta error comes back with `"step": "exchange" | "subscribe" | "register"`.
+  The token is never in it. After a failed subscribe or register, the stored token stays in place.
 
 ### `POST /v1/onboarding/exchange`
-Low-level exchange. Prefer `POST /v1/onboarding/connect`, which stores the business token and does not return it. This endpoint still returns `accessToken` for existing callers.
 
-#### Request Body
+Exchanges the code and **returns** the token. Prefer `connect`.
+
 ```json
-{
-  "code": "AQDf58d...short-lived-oauth-code"
-}
+{ "code": "AQDf58d..." }
 ```
 
-#### Response (`200 OK`)
 ```json
-{
-  "accessToken": "EAAG...permanent-system-user-token"
-}
+{ "accessToken": "EAAG..." }
 ```
 
----
+`appId` and `appSecret` in the body are rejected with `422`: the gateway always uses its own.
 
 ### `POST /v1/onboarding/subscribe`
-Subscribes the gateway application to a WhatsApp Business Account to receive message and status webhooks.
 
-#### Request Body
+Subscribes this app to a WABA's webhooks with the header token or `META_SYSTEM_USER_TOKEN`. `connect` already does
+this with the line's own token.
+
 ```json
-{
-  "wabaId": "105555123456789",
-  "subscribedFields": ["messages"]
-}
+{ "wabaId": "105555123456789", "subscribedFields": ["messages"] }
 ```
 
-#### Response (`200 OK`)
 ```json
-{
-  "success": true,
-  "wabaId": "105555123456789"
-}
+{ "success": true, "wabaId": "105555123456789" }
 ```
 
----
+`subscribedFields` is optional (default `["messages"]`, 1 to 20 entries).
 
 ### `POST /v1/onboarding/override-callback`
-Configures Meta's phone-level webhook routing to send webhooks for an individual phone number directly to an external URL.
 
-#### Request Body
+Points one phone number's webhooks at another URL (Meta's phone-level `override_callback_uri`).
+
 ```json
 {
   "phoneNumberId": "100609346426000",
-  "callbackUrl": "https://external-service.example.com/webhook",
-  "verifyToken": "my_external_verify_token"
+  "callbackUrl": "https://hooks.example.com/whatsapp",
+  "verifyToken": "<token the other endpoint expects>"
 }
 ```
 
-> [!SECURITY]
-> `callbackUrl` must resolve to a public HTTPS domain. Localhost, loopback (127.0.0.1), RFC 1918 private subnets, and cloud metadata endpoints (`169.254.169.254`) are strictly rejected.
-
-#### Response (`200 OK`)
 ```json
-{
-  "success": true,
-  "phoneNumberId": "100609346426000"
-}
+{ "success": true, "phoneNumberId": "100609346426000" }
 ```
 
----
+> [!IMPORTANT]
+> `callbackUrl` must be `https` on a public host, without credentials. The gateway rejects `localhost`, single-label
+> names, `.local`/`.internal`/`.localhost`/`.home.arpa`, and private, loopback, link-local, CGNAT and reserved IP
+> ranges. It checks the host as written and does not resolve DNS.
 
-## 8. Direct Meta Cloud API Proxy
+## 8. Graph proxy
 
-### `ALL /v24.0/*`
-Drop-in passthrough proxy that mirrors Meta's native Graph API endpoints. Enables legacy or third-party WhatsApp SDKs to point directly at Watahub without code changes.
+### `/v24.0/*`
 
-The path keeps the `/v24.0` prefix, but calls go to the Graph version in `META_API_VERSION` (default `v24.0`), the same one `/v1` uses.
+Three Graph routes, passed through with the Meta token resolved as in [1.3](#13-meta-access-token). A Graph client
+can use them by changing its base URL to the gateway and sending the gateway key in `X-API-Key`. A Meta token the
+client sends as `Authorization: Bearer` is not forwarded to Graph; pass it as `X-Meta-Access-Token` instead.
 
-#### Supported Proxy Routes
-- `POST /v24.0/:phoneNumberId/messages`
-- `POST /v24.0/:phoneNumberId/media`
-- `GET /v24.0/:mediaId` (forwards `?phone_number_id=`)
+| Method | Path | Query forwarded |
+| :--- | :--- | :--- |
+| `POST` | `/v24.0/:phoneNumberId/messages` | None |
+| `POST` | `/v24.0/:phoneNumberId/media` | None |
+| `GET` | `/v24.0/:mediaId` | `phone_number_id` |
 
-Meta's responses are passed through as they are. For `POST /v24.0/:phoneNumberId/messages`, a timeout or connection failure answers Watahub's error body with `"category": "unknown_outcome"`, and a `5xx` from Meta keeps Meta's body and adds the header `X-Watahub-Outcome: unknown`. In both cases the message may have been delivered: confirm with the status webhook before retrying.
+- Any other method or path answers `403`. Other query parameters are dropped, because Graph would honor
+  `method=`, `fields=` and `access_token=` and widen what the token can do.
+- Calls go to `META_API_VERSION` (default `v24.0`), whatever the path prefix says.
+- Meta's status and body come back unchanged, without its CORS headers and cookies.
+- On `POST .../messages`, a timeout or lost connection answers the gateway's error body with
+  `"category": "unknown_outcome"`. A Meta `5xx` keeps Meta's body and adds `X-Watahub-Outcome: unknown`. In both
+  cases the message may have gone out.
 
-#### Example Proxy Call
 ```bash
 curl -X POST http://localhost:3000/v24.0/100609346426000/messages \
-  -H "Authorization: Bearer <WATAHUB_API_KEY>" \
+  -H "X-API-Key: $WATAHUB_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{
-    "messaging_product": "whatsapp",
-    "recipient_type": "individual",
-    "to": "+15551234567",
-    "type": "text",
-    "text": { "body": "Direct proxy message" }
-  }'
+  -d '{ "messaging_product": "whatsapp", "to": "15551234567", "type": "text", "text": { "body": "Hello" } }'
 ```

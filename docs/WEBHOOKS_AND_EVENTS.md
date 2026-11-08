@@ -1,100 +1,132 @@
-# 🔔 Webhooks & Event Normalization Guide
+# Webhooks and events
 
-This guide covers how Watahub receives, verifies, normalizes, and delivers WhatsApp events to your application backend.
+How the gateway receives Meta's webhooks, what it forwards to your backend, how to verify it, and the shape of every
+normalized event. Source of truth: `src/routes/webhook.ts`, `src/services/delivery.ts`, `src/services/replay.ts`,
+`src/services/normalizer.ts` and `src/types/gateway.ts`.
 
----
+## 1. Delivery lifecycle
 
-## 1. Webhook Delivery Lifecycle
+For each `POST /webhook` from Meta:
 
-Meta Cloud API sends webhooks with deeply nested, polymorphic payloads. Watahub acts as an ingestion firewall and normalizer:
-
-1. **Meta Delivery:** Meta sends an HTTP POST to Watahub's `/webhook`.
-2. **Signature Verification:** Watahub verifies Meta's `X-Hub-Signature-256` HMAC over the raw byte stream using `META_APP_SECRET`.
-3. **Replay & Stale Check:** Deliveries older than `META_WEBHOOK_MAX_AGE_SECONDS` or matching a previously delivered `deliveryId` are acknowledged with `200 OK` but dropped.
-4. **Heartbeat Handling:** Empty payloads without changes (e.g. Meta heartbeats) are acknowledged immediately.
-5. **Fail-Closed Configuration:** If `SUBSCRIBER_WEBHOOK_URL` or `SUBSCRIBER_WEBHOOK_SECRET` are missing, Watahub returns `503 Service Unavailable` so Meta retries when the configuration is supplied.
-6. **Delivery Execution (`WEBHOOK_DELIVERY_MODE`):**
-   - **Guaranteed Delivery (`sync`, Default):** Watahub delivers to your subscriber before acknowledging Meta, with a single attempt of up to 3 seconds and no retries of its own, because Meta is waiting on that request. If your backend is unreachable, slower than 3 seconds, or returns 5xx, 408, 425 or 429, Watahub responds `503 Service Unavailable` to Meta without marking the delivery as seen. If your backend answers any other 4xx, it has refused that event for good: Watahub logs the rejection with the delivery ID, marks the delivery as seen and answers `200` so Meta stops retrying, and from then on the event exists only in the gateway log. Meta automatically retries with exponential backoff for up to 7 days, preventing any event loss.
-   - **Asynchronous Delivery (`async`):** For ultra-low latency requirements, Watahub acknowledges Meta immediately with `200 OK` and forwards to your backend in the background using `runInBackground`.
-7. **Subscriber Idempotency & Signing:** Every forward carries `X-Watahub-Signature: sha256=...` and a stable `X-Watahub-Delivery-Id` (also mirrored in `Idempotency-Key`).
-   - **Deduplicate on your side.** Watahub drops duplicates only within one process (Node) or one Worker isolate. Copies of a body that arrive while it is still being delivered are delivered once there, and the extra copies answer `200` (`ignored`/`duplicate`), or `503` if that delivery failed. Another process or isolate can still deliver the same body, so your subscriber must deduplicate on `X-Watahub-Delivery-Id`.
-8. **Graceful Shutdown (Node.js):** When receiving `SIGTERM` or `SIGINT`, the gateway closes incoming connections and awaits active background deliveries (`drainBackgroundTasks`) before terminating.
+1. **Configuration.** An invalid `WEBHOOK_DELIVERY_MODE` or `META_WEBHOOK_MAX_AGE_SECONDS`, or a missing
+   `META_APP_SECRET`, answers `503` so Meta retries later.
+2. **Signature.** `X-Hub-Signature-256` must be `sha256=` plus 64 hex characters, matching the HMAC-SHA256 of the raw
+   body keyed with `META_APP_SECRET`. Otherwise `401`.
+3. **Delivery ID.** The SHA-256 of the raw body. A Meta redelivery of the same body has the same ID.
+4. **Age.** If the newest message, echo or status in the body is older than `META_WEBHOOK_MAX_AGE_SECONDS` (default 7
+   days, Meta's retry horizon), the gateway answers `200` (`ignored`, `stale`) and forwards nothing. Updates without
+   event timestamps, such as template status changes, are never treated as stale.
+5. **Duplicates.** If this process already delivered the ID, it answers `200` (`ignored`, `duplicate`). A copy that
+   arrives while the same body is still being delivered is not delivered again. In `sync` mode it waits for that
+   delivery and answers `duplicate`, or `503` if the delivery failed; in `async` mode it answers `duplicate` at once.
+6. **Empty deliveries.** A body with no changes is acknowledged with `200` and not forwarded.
+7. **Subscriber.** Without `SUBSCRIBER_WEBHOOK_URL` or `SUBSCRIBER_WEBHOOK_SECRET` the gateway answers `503`, so Meta
+   keeps the event until both are set.
+8. **Forward.** It normalizes the body and posts `{ timestamp, events, raw }` to your URL.
 
 ```mermaid
 flowchart TD
-    Meta[Meta Webhook] -->|1. POST /webhook| Gateway[🌊 Watahub]
-    Gateway -->|2. Verify HMAC & Replays| Check{"Valid?"}
-    Check -->|Invalid| Reject["401 / 400"]
-    Check -->|Stale / Duplicate| AckDrop["200 OK (Ignored)"]
-    Check -->|Fresh| Deliver{"WEBHOOK_DELIVERY_MODE"}
-    
-    Deliver -->|sync (default)| SyncSub[Forward to Subscriber]
-    SyncSub -->|Success 200| Ack200["200 OK to Meta + Remember Replay"]
-    SyncSub -->|No answer in 3 s / 5xx / 408 / 425 / 429| Retry503["503 Service Unavailable (Meta Retries)"]
-    SyncSub -->|Other 4xx| AckLog["200 OK to Meta + Remember Replay (rejection only in the log)"]
-    
-    Deliver -->|async| AsyncAck["200 OK to Meta"]
-    Deliver -->|async| BgTask[runInBackground & drain on SIGTERM]
-
----
-
-## 2. Verifying the Subscriber Signature
-
-When Watahub forwards a payload to your `SUBSCRIBER_WEBHOOK_URL`, it signs the exact JSON body with HMAC-SHA256 using your `SUBSCRIBER_WEBHOOK_SECRET`.
-
-Header sent:
-```http
-X-Watahub-Signature: sha256=<hex_encoded_hmac>
-X-Watahub-Delivery-Id: <stable_delivery_hash>
-Idempotency-Key: <stable_delivery_hash>
+  meta["Meta POST /webhook"] --> sig{"Signature valid?"}
+  sig -->|No| r401["401"]
+  sig -->|Yes| seen{"Stale or already delivered?"}
+  seen -->|Yes| ignored["200 ignored"]
+  seen -->|No| sub{"Subscriber URL and secret set?"}
+  sub -->|No| r503a["503, Meta retries"]
+  sub -->|Yes| mode{"WEBHOOK_DELIVERY_MODE"}
+  mode -->|sync| post["One POST, 3 s timeout"]
+  post -->|2xx| ok["200 received, ID remembered"]
+  post -->|"final 4xx"| rejected["200 rejected, ID remembered, logged"]
+  post -->|"timeout, 3xx, 408, 425, 429, 5xx"| r503b["503, Meta retries"]
+  mode -->|async| bg["200 received at once; up to 3 POSTs in the background"]
 ```
 
+### Delivery modes
+
+**`sync` (default).** The gateway posts to your backend inside Meta's request: one attempt, a 3 second timeout, no
+retries of its own.
+
+- `2xx`: the gateway answers Meta `200` and remembers the delivery ID.
+- Timeout, network error, redirect, `408`, `425`, `429` or `5xx`: it answers `503` and does not remember the ID, so
+  Meta delivers the same body again. Meta retries failed deliveries for up to 7 days.
+- Any other `4xx`: your backend refused the event for good. The gateway logs the rejection with the delivery ID,
+  remembers the ID and answers `200`, so Meta stops. From then on the event exists only in the gateway log.
+
+**`async`.** The gateway answers Meta `200` at once and delivers in the background (Workers `waitUntil`; on Node the
+process tracks the task and waits up to 15 seconds for it on `SIGTERM` or `SIGINT`).
+
+- Up to 3 attempts, 5 seconds each, waiting 1 and then 2 seconds between them. A final `4xx` stops after the first.
+- Meta already has its `200`, so it never retries. A delivery that fails is lost, except for the gateway log.
+
+Use `sync` unless your backend cannot answer within 3 seconds.
+
+### Deduplicate on your side
+
+The gateway remembers delivered IDs only inside one Node process or one Worker isolate. Another process or isolate can
+deliver the same body again. Your backend must deduplicate on `x-watahub-delivery-id`, and treat the event as received
+even when it already committed it but the gateway never saw the answer.
+
+## 2. What your backend receives
+
+```http
+POST <SUBSCRIBER_WEBHOOK_URL>
+Content-Type: application/json
+User-Agent: Watahub-Gateway/0.2.0
+x-watahub-signature: sha256=<lowercase hex>
+x-watahub-delivery-id: <sha256 of Meta's body>
+Idempotency-Key: <same as x-watahub-delivery-id>
+```
+
+Header names are case-insensitive; the block shows the casing the gateway sends. Redirects are not followed.
+
+```ts
+interface SubscriberPayload {
+  timestamp: number // When the gateway processed the delivery, epoch milliseconds
+  events: WatahubNormalizedEvent[]
+  raw: unknown // Meta's original body, for fields the gateway does not normalize
+}
+```
+
+Only `messages` and `smb_message_echoes` changes become events. Any other field you subscribe to (template status,
+account updates and so on) still arrives, with `events: []` and the original in `raw`.
+
+## 3. Verifying the signature
+
+`x-watahub-signature` is `sha256=` followed by the lowercase hex HMAC-SHA256 of the exact body, keyed with
+`SUBSCRIBER_WEBHOOK_SECRET` as text. No timestamp is signed, so the signature alone does not stop a replay: deduplicate
+on the delivery ID.
+
 > [!IMPORTANT]
-> You **must** compute the HMAC over the raw request body string before parsing it into a JSON object. Whitespace or key re-ordering changes the digest.
+> Compute the HMAC over the raw body, before any JSON parsing. Re-serialized JSON changes the bytes and the digest.
 
-### Implementation Examples
+TypeScript (Node):
 
-#### Node.js / TypeScript (Express / Fastify / Node http)
 ```ts
 import crypto from 'node:crypto'
 
 export function verifyWatahubSignature(rawBody: string, signatureHeader: string, secret: string): boolean {
   if (!signatureHeader || !signatureHeader.startsWith('sha256=')) return false
-  const providedSignature = signatureHeader.slice('sha256='.length).trim()
-
-  const computedSignature = crypto
-    .createHmac('sha256', secret)
-    .update(rawBody)
-    .digest('hex')
-
-  const expectedBuffer = Buffer.from(computedSignature, 'hex')
-  const providedBuffer = Buffer.from(providedSignature, 'hex')
-
-  if (expectedBuffer.length !== providedBuffer.length) return false
-  return crypto.timingSafeEqual(expectedBuffer, providedBuffer)
+  const provided = Buffer.from(signatureHeader.slice('sha256='.length).trim(), 'hex')
+  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest()
+  return provided.length === expected.length && crypto.timingSafeEqual(provided, expected)
 }
 ```
 
-#### Python (FastAPI / Flask)
+Python:
+
 ```python
-import hmac
 import hashlib
+import hmac
 
 def verify_watahub_signature(raw_body: bytes, signature_header: str, secret: str) -> bool:
     if not signature_header or not signature_header.startswith("sha256="):
         return False
-    provided_signature = signature_header.split("sha256=")[1].strip()
-    
-    computed_signature = hmac.new(
-        secret.encode("utf-8"),
-        raw_body,
-        hashlib.sha256
-    ).hexdigest()
-    
-    return hmac.compare_digest(computed_signature, provided_signature)
+    provided = signature_header[len("sha256="):].strip()
+    expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, provided)
 ```
 
-#### Go
+Go:
+
 ```go
 package main
 
@@ -109,43 +141,72 @@ func VerifyWatahubSignature(rawBody []byte, signatureHeader, secret string) bool
 	if !strings.HasPrefix(signatureHeader, "sha256=") {
 		return false
 	}
-	providedHex := strings.TrimPrefix(signatureHeader, "sha256=")
-	providedBytes, err := hex.DecodeString(providedHex)
+	provided, err := hex.DecodeString(strings.TrimPrefix(signatureHeader, "sha256="))
 	if err != nil {
 		return false
 	}
-
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(rawBody)
-	expectedBytes := mac.Sum(nil)
-
-	return hmac.Equal(expectedBytes, providedBytes)
+	return hmac.Equal(mac.Sum(nil), provided)
 }
 ```
 
----
+The library exports the signer the gateway uses, `signSubscriberPayload(body, secret)`, if you would rather compare
+against it in a TypeScript backend.
 
-## 3. Subscriber Payload Envelope
+## 4. Normalized events
 
-Every payload forwarded to your subscriber matches the `SubscriberPayload` TypeScript interface:
+Every event has the same envelope:
 
-```ts
-export interface SubscriberPayload {
-  timestamp: number             // Milliseconds epoch when Watahub processed the delivery
-  events: WatahubNormalizedEvent[]
-  raw: unknown                  // Full original Meta webhook payload for escape-hatch needs
-}
-```
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `id` | string | Message ID (`wamid...`); for statuses, `<message id>_<status>` |
+| `timestamp` | number | Meta's event time, epoch milliseconds |
+| `phoneNumberId` | string | Your phone number ID that received or sent it |
+| `displayPhoneNumber` | string | That number as Meta displays it |
+| `type` | string | `message`, `echo` or `status` |
+| `message` | object | For `message` and `echo` |
+| `status` | object | For `status` |
 
----
+Within one change, inbound messages and echoes come before status updates.
 
-## 4. Normalized Event Catalog
+### 4.1 Message fields
 
-### 4.1 Inbound Text Message
+| Field | Present when |
+| :--- | :--- |
+| `id`, `timestamp`, `kind` | Always. `kind` is Meta's message `type` |
+| `from` | The sender's phone number, when Meta shares it. Never a BSUID |
+| `fromUserId`, `fromParentUserId` | The sender's business-scoped user ID, and the parent BSUID for businesses enrolled in them |
+| `username`, `senderName` | The sender's WhatsApp username and profile name, when Meta sends them |
+| `replyToMessageId` | The message replies to another (`context.id`) |
+| `referral` | The conversation started from a click-to-WhatsApp ad: `sourceType`, `sourceId`, `sourceUrl`, `headline`, `body`, `mediaType`, `imageUrl`, `videoUrl`, `thumbnailUrl`, `ctwaClid` |
+
+Content by `kind`:
+
+| `kind` | Fields |
+| :--- | :--- |
+| `text` | `text` |
+| `image`, `video` | `mediaId`, `mediaMime`, `caption` |
+| `audio` | `mediaId`, `mediaMime`, `isVoice` |
+| `document` | `mediaId`, `mediaMime`, `filename`, `caption` |
+| `sticker` | `mediaId`, `mediaMime` (default `image/webp`), `animated` |
+| `interactive` | `interactiveReply` for a reply button (`type: "button"`), a list row (`type: "list"`) or a Flow answer (`type: "nfm_reply"`); `pollVote` for a poll update |
+| `button` | A template quick-reply: `text`, `button: { payload, text }`, and the same in `interactiveReply` (`type: "button"`) |
+| `reaction` | `reaction: { targetMessageId, emoji }`; an empty `emoji` means the reaction was removed |
+| `location` | `location: { latitude, longitude, name?, address?, url? }` |
+| `contacts` | `contacts`: contact cards in the request shape |
+| `order` | `order: { catalogId, text?, productItems: [{ productRetailerId, quantity, itemPrice, currency }] }` |
+| `poll`, `poll_update` | `pollVote: { pollMessageId, selectedOptionIds, timestamp? }` |
+| Anything else | The common fields only; the full message is in `raw` |
+
+Download a `mediaId` with `GET /v1/media/:mediaId/content`.
+
+### 4.2 Text
+
 ```json
 {
   "id": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg...",
-  "timestamp": 1729620000000,
+  "timestamp": 1762615800000,
   "phoneNumberId": "100609346426000",
   "displayPhoneNumber": "15550293848",
   "type": "message",
@@ -153,14 +214,17 @@ export interface SubscriberPayload {
     "id": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg...",
     "from": "573001234567",
     "senderName": "Jane Doe",
-    "timestamp": 1729620000000,
+    "timestamp": 1762615800000,
     "kind": "text",
-    "text": "Hello, I need assistance with my account."
+    "text": "I need help with my account."
   }
 }
 ```
 
-**Users with a WhatsApp username (BSUID).** Since April 2026, Meta identifies every user with a business-scoped user ID (BSUID, e.g. `CO.13491208655302741918`) and may omit their phone number when they have a username and do not share it ([Meta's guide](https://developers.facebook.com/documentation/business-messaging/whatsapp/business-scoped-user-ids/)). Watahub keeps `from` for the phone number only, so `from` can be absent; key your users on `fromUserId` instead:
+**Users with a WhatsApp username.** Meta identifies every user with a business-scoped user ID (BSUID, for example
+`CO.13491208655302741918`). A user who has a username and does not share their number arrives without `from`
+([Meta's guide](https://developers.facebook.com/documentation/business-messaging/whatsapp/business-scoped-user-ids/)).
+Key your users on `fromUserId`:
 
 ```json
 "message": {
@@ -168,135 +232,79 @@ export interface SubscriberPayload {
   "fromUserId": "CO.13491208655302741918",
   "username": "jane.doe",
   "senderName": "Jane Doe",
-  "timestamp": 1729620000000,
+  "timestamp": 1762615800000,
   "kind": "text",
-  "text": "Hello, I need assistance with my account."
+  "text": "I need help with my account."
 }
 ```
 
-- `from`: the sender's phone number, when Meta shares it. Never a BSUID.
-- `fromUserId`: the sender's BSUID. `fromParentUserId`: their parent BSUID, only for businesses enrolled in parent BSUIDs.
-- `username`: the sender's WhatsApp username, when they have one.
-- Echoes (`type: "echo"`) carry the customer in `recipient` (phone, when shared), `recipientUserId` and `recipientParentUserId`. Statuses carry `recipient` (phone, when shared), `recipientUserId` and `recipientParentUserId`.
+To reply, send to the BSUID: `POST /v1/messages` accepts it in `to`.
 
----
+### 4.3 Media
 
-### 4.2 Inbound Image / Media Message
 ```json
-{
+"message": {
   "id": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg...",
-  "timestamp": 1729620000000,
-  "phoneNumberId": "100609346426000",
-  "displayPhoneNumber": "15550293848",
-  "type": "message",
-  "message": {
-    "id": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg...",
-    "from": "573001234567",
-    "senderName": "Jane Doe",
-    "timestamp": 1729620000000,
-    "kind": "image",
-    "mediaId": "987654321098765",
-    "mediaMime": "image/jpeg",
-    "mediaSha256": "3a5b...",
-    "caption": "Here is the photo of the damaged package"
-  }
+  "from": "573001234567",
+  "timestamp": 1762615800000,
+  "kind": "image",
+  "mediaId": "987654321098765",
+  "mediaMime": "image/jpeg",
+  "caption": "Photo of the damaged package"
 }
 ```
-*For audio/voice, video, and documents, `kind` will be `"audio"`, `"video"`, or `"document"`. Documents also populate the `filename` property.*
 
----
+### 4.4 Reply button and list row
 
-### 4.3 Inbound Interactive Button Reply
-When a customer taps a quick-reply button:
 ```json
-{
+"message": {
   "id": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg...",
-  "timestamp": 1729620000000,
-  "phoneNumberId": "100609346426000",
-  "displayPhoneNumber": "15550293848",
-  "type": "message",
-  "message": {
-    "id": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg...",
-    "from": "573001234567",
-    "timestamp": 1729620000000,
-    "kind": "interactive",
-    "interactiveReply": {
-      "type": "button_reply",
-      "id": "btn_confirm_order",
-      "title": "Confirm Order"
-    }
-  }
+  "from": "573001234567",
+  "timestamp": 1762615800000,
+  "kind": "interactive",
+  "interactiveReply": { "type": "button", "id": "confirm", "title": "Confirm" }
 }
 ```
 
----
+A list row has `"type": "list"` with the row's `id` and `title`.
 
-### 4.4 Inbound Interactive List Selection
-When a customer selects an option from a dropdown list menu:
-```json
-{
-  "id": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg...",
-  "timestamp": 1729620000000,
-  "phoneNumberId": "100609346426000",
-  "displayPhoneNumber": "15550293848",
-  "type": "message",
-  "message": {
-    "id": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg...",
-    "from": "573001234567",
-    "timestamp": 1729620000000,
-    "kind": "interactive",
-    "interactiveReply": {
-      "type": "list_reply",
-      "id": "item_plan_pro",
-      "title": "Pro Tier Plan",
-      "description": "Unlimited conversations and analytics"
-    }
-  }
-}
-```
+### 4.5 Flow answer
 
-**Flow answers (`nfm_reply`).** When a customer submits a WhatsApp Flow, `interactiveReply` has `"type": "nfm_reply"`, the Flow `name` and `body`, and the parsed answer in `responseJson`. If Meta's `response_json` cannot be read as a JSON object, `responseJson` is absent and `"responseJsonError": true` says so, so an unreadable answer is never mistaken for an empty one:
+`interactiveReply` has `"type": "nfm_reply"`, the Flow `name` and `body`, and the parsed answer in `responseJson`. If
+Meta's `response_json` is not a JSON object, `responseJson` is absent and `"responseJsonError": true` says so, so an
+unreadable answer is never mistaken for an empty one.
 
 ```json
 "interactiveReply": {
   "type": "nfm_reply",
   "name": "flow",
   "body": "Sent",
-  "responseJsonError": true
+  "responseJson": { "flow_token": "booking-42", "date": "2026-11-20" }
 }
 ```
 
----
+### 4.6 Reaction
 
-### 4.5 Inbound Reaction Message
 ```json
-{
+"message": {
   "id": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg...",
-  "timestamp": 1729620000000,
-  "phoneNumberId": "100609346426000",
-  "displayPhoneNumber": "15550293848",
-  "type": "message",
-  "message": {
-    "id": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg...",
-    "from": "573001234567",
-    "timestamp": 1729620000000,
-    "kind": "reaction",
-    "reaction": {
-      "targetMessageId": "wamid.ORIGINAL_MESSAGE_ID",
-      "emoji": "❤️"
-    }
-  }
+  "from": "573001234567",
+  "timestamp": 1762615800000,
+  "kind": "reaction",
+  "reaction": { "targetMessageId": "wamid.ORIGINAL...", "emoji": "❤️" }
 }
 ```
 
----
+### 4.7 Echo
 
-### 4.6 Outbound Mobile Echo (`type: "echo"`)
-Triggered when an agent replies directly using the official WhatsApp Business mobile application:
+Sent when someone replies from the WhatsApp Business app on a number that also uses the Cloud API. Subscribe to the
+`smb_message_echoes` field to receive it. The customer is in `recipient` (phone, when shared), `recipientUserId` and
+`recipientParentUserId`.
+
 ```json
 {
   "id": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg...",
-  "timestamp": 1729620000000,
+  "timestamp": 1762615800000,
   "phoneNumberId": "100609346426000",
   "displayPhoneNumber": "15550293848",
   "type": "echo",
@@ -304,23 +312,23 @@ Triggered when an agent replies directly using the official WhatsApp Business mo
     "id": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg...",
     "from": "15550293848",
     "recipient": "573001234567",
-    "timestamp": 1729620000000,
+    "timestamp": 1762615800000,
     "kind": "text",
-    "text": "Hello, I am replying from the phone.",
+    "text": "Replying from the phone.",
     "isEcho": true
   }
 }
 ```
 
----
+### 4.8 Status
 
-### 4.7 Delivery Status Receipt (`type: "status"`)
-Fired as messages progress through delivery states (`sent`, `delivered`, `read`, or `failed`):
+One event per status change: `sent`, `delivered`, `read` or `failed`. The recipient is in `recipient` (phone, when
+shared), `recipientUserId` and `recipientParentUserId`. `category` is Meta's pricing category.
 
 ```json
 {
   "id": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg..._delivered",
-  "timestamp": 1729620005000,
+  "timestamp": 1762615805000,
   "phoneNumberId": "100609346426000",
   "displayPhoneNumber": "15550293848",
   "type": "status",
@@ -328,27 +336,21 @@ Fired as messages progress through delivery states (`sent`, `delivered`, `read`,
     "id": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg...",
     "recipient": "573001234567",
     "status": "delivered",
-    "timestamp": 1729620005000,
+    "timestamp": 1762615805000,
     "category": "service"
   }
 }
 ```
 
-#### Failure Status Example:
+A failure carries Meta's first error:
+
 ```json
-{
-  "id": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg..._failed",
-  "timestamp": 1729620005000,
-  "phoneNumberId": "100609346426000",
-  "displayPhoneNumber": "15550293848",
-  "type": "status",
-  "status": {
-    "id": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg...",
-    "recipient": "573001234567",
-    "status": "failed",
-    "timestamp": 1729620005000,
-    "errorCode": 131026,
-    "errorMessage": "Message undeliverable: User not registered on WhatsApp"
-  }
+"status": {
+  "id": "wamid.HBgLNTczMDAxMjM0NTY3FQIAEhgg...",
+  "recipient": "573001234567",
+  "status": "failed",
+  "timestamp": 1762615805000,
+  "errorCode": 131026,
+  "errorMessage": "Message undeliverable"
 }
 ```
