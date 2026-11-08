@@ -19,12 +19,12 @@ Business terms do not allow a general-purpose AI assistant as the main function 
 | :--- | :--- |
 | Connect your line | `POST /v1/onboarding/connect` exchanges the Embedded Signup code, stores the line's token, subscribes the WABA to your app's webhook and registers the number. A system user token in `META_SYSTEM_USER_TOKEN` works too |
 | Deploy your agents on your line | Point `SUBSCRIBER_WEBHOOK_URL` at your agent. It receives each message as a signed webhook and replies with `POST /v1/messages` |
-| That's it. | Failed deliveries are retried. In the default `sync` mode the gateway answers Meta `503` and Meta retries for up to 7 days; in `async` mode the gateway makes up to 3 attempts itself |
+| That's it. | Failed deliveries are retried, and on the hosted account a person can reply from the Inbox. In the default `sync` mode the gateway answers Meta `503` and Meta retries for up to 7 days; in `async` mode the gateway makes up to 3 attempts itself |
 
 The core does not host or run agents: an agent is any HTTPS service that accepts the signed webhook and calls the API.
 Everything else belongs to the hosted account, Watahub Enterprise Edition. There, tokens stay in custody, numbers
 connect through a hosted Embedded Signup page or a setup link, and logs are kept for 7 days. Signed developer webhooks
-and the `/mcp` endpoint also live there, and a person can take over a conversation from the Inbox. See
+and the `/mcp` endpoint also live there, and a person can reply from the Inbox. See
 [Core and Enterprise Edition](#core-and-enterprise-edition).
 
 One [Hono](https://hono.dev) app. It runs on Cloudflare Workers or Node.js 20+, and the same code is an importable
