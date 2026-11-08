@@ -5,9 +5,24 @@
 
 # Watahub
 
-A self-hosted gateway between your backend and Meta's WhatsApp Cloud API. It sends messages, moves media, lists
-templates and connects phone lines through Embedded Signup. It also takes Meta's webhooks, verifies them and forwards
-them to your backend as normalized events, signed with your own secret.
+**The hub for your WhatsApp agents.**
+
+1. Connect your line
+2. Deploy your agents on your line
+3. That's it.
+
+This repository is the open-source engine of that hub: a self-hosted gateway between Meta's WhatsApp Cloud API and the
+agents you run. Watahub is for agents that work for a business, such as support, sales or bookings. Meta's WhatsApp
+Business terms do not allow a general-purpose AI assistant as the main function of an integration.
+
+| Step | With the core |
+| :--- | :--- |
+| Connect your line | `POST /v1/onboarding/connect` finishes Embedded Signup and keeps the line's token. Or set `META_SYSTEM_USER_TOKEN` |
+| Deploy your agents on your line | Point `SUBSCRIBER_WEBHOOK_URL` at your agent. It receives every message as a signed event and replies with `POST /v1/messages` |
+
+The core does not host or run agents: an agent is any HTTPS service that accepts the signed event and calls the API.
+The hosted pieces of the hub (token custody, the hosted Embedded Signup page, the Inbox, signed developer webhooks and
+the `/mcp` endpoint) are in Watahub Enterprise Edition; see [Core and Enterprise Edition](#core-and-enterprise-edition).
 
 One [Hono](https://hono.dev) app. It runs on Cloudflare Workers or Node.js 20+, and the same code is an importable
 TypeScript library. MIT licensed, by [Hub Ventures](https://github.com/Hub-Ventures).
@@ -16,25 +31,30 @@ TypeScript library. MIT licensed, by [Hub Ventures](https://github.com/Hub-Ventu
 
 ```mermaid
 flowchart LR
-  backend["Your backend"] -->|"/v1 and /v24.0, WATAHUB_API_KEY"| gateway["Watahub"]
-  gateway -->|"Graph API, META_API_VERSION"| metaGraph["Meta Graph API"]
-  meta["Meta webhooks"] -->|"POST /webhook, X-Hub-Signature-256"| gateway
-  gateway -->|"normalized events, x-watahub-signature"| subscriber["SUBSCRIBER_WEBHOOK_URL"]
+  whatsapp["WhatsApp (Meta Cloud API)"] -->|"POST /webhook, X-Hub-Signature-256"| gateway["Watahub"]
+  gateway -->|"normalized event, x-watahub-signature"| agent["Your agent at SUBSCRIBER_WEBHOOK_URL"]
+  agent -->|"POST /v1/messages, WATAHUB_API_KEY"| gateway
+  gateway -->|"Graph API, META_API_VERSION"| whatsapp
 ```
 
-## What it does
+## What it gives an agent
 
-- **Sends** messages through one body shape. Kinds: `text`, `template`, `image`, `audio`, `video`, `document`,
+- **Every inbound message as one flat event.** Text, media, reply-button and list choices, Flow answers, reactions,
+  locations, contacts, orders and click-to-WhatsApp ad referrals, plus delivery statuses and echoes from the WhatsApp
+  Business app. Meta's signature is checked over the raw body, stale and repeated deliveries are dropped, and each
+  forward carries a stable delivery ID and your HMAC signature.
+- **Replies through one API.** `POST /v1/messages` sends `text`, `template`, `image`, `audio`, `video`, `document`,
   `sticker`, `location`, `contacts`, `reaction` and `interactive` (buttons, lists, Flows, CTA URL, location request,
-  product, product list, order details). The recipient is a phone number or a business-scoped user ID (BSUID).
-- **Moves media.** Uploads stream to Meta without being buffered, up to 100 MB. Downloads come back through the
-  gateway, so callers never hold a Meta token.
-- **Lists templates** one page at a time with Meta's `after` cursor.
-- **Connects phone lines.** One call exchanges the Embedded Signup code, stores the business token, subscribes the WABA
-  and registers the number. The token is never returned.
-- **Forwards webhooks.** Meta's signature is checked over the raw body, stale and repeated deliveries are dropped, and
-  each forward carries a stable delivery ID and your HMAC signature.
-- **Proxies three Graph routes** (`/v24.0/...`), so an existing Graph client can point at the gateway instead of Meta.
+  product, product list, order details). `replyToMessageId` quotes the message being answered. The recipient is a
+  phone number or a business-scoped user ID (BSUID). Outside the 24-hour customer service window, Meta accepts only
+  templates.
+- **Media in both directions.** Inbound files (voice notes, images, documents) download through the gateway, so the
+  agent never holds a Meta token. Uploads stream to Meta without being buffered, up to 100 MB.
+- **Templates**, listed one page at a time with Meta's `after` cursor.
+- **Line onboarding.** One call exchanges the Embedded Signup code, stores the business token, subscribes the WABA and
+  registers the number. The token is never returned.
+- **A Graph passthrough** for three routes (`/v24.0/...`), so an existing Graph client can point at the gateway. It
+  forwards any body Meta accepts on `/{phone-number-id}/messages` unchanged, for example marking a message as read.
 
 It fails closed. A missing or weak secret makes the matching routes answer `503` instead of running unauthenticated.
 
@@ -59,8 +79,8 @@ Fill in `.env`. Generate `WATAHUB_API_KEY` and, later, `SUBSCRIBER_WEBHOOK_SECRE
 | `WATAHUB_API_KEY` | 32+ characters; every `/v1` and `/v24.0` call must carry it |
 | `META_SYSTEM_USER_TOKEN` | A system user token with `whatsapp_business_messaging` and `whatsapp_business_management`, unless you connect lines through `POST /v1/onboarding/connect` |
 
-To receive messages, also set `SUBSCRIBER_WEBHOOK_URL` and `SUBSCRIBER_WEBHOOK_SECRET` (32+ characters). Every
-variable is listed under [Configuration](#configuration).
+To receive messages, also set `SUBSCRIBER_WEBHOOK_URL` (your agent's HTTPS endpoint) and `SUBSCRIBER_WEBHOOK_SECRET`
+(32+ characters). Every variable is listed under [Configuration](#configuration).
 
 The gateway reads `process.env` and does not load `.env` by itself, so start it with Node's `--env-file` (Node 20.6
 or later):
@@ -164,7 +184,7 @@ For every `POST /webhook`, the gateway:
 
 | Mode | When Meta gets its answer | On failure |
 | :--- | :--- | :--- |
-| `sync` (default) | After your backend answers. One attempt, 3 s timeout | `503`, so Meta retries the same body. A final `4xx` from your backend (not 408, 425 or 429) is acknowledged with `200` and the event stays only in the gateway log |
+| `sync` (default) | After your agent answers. One attempt, 3 s timeout | `503`, so Meta retries the same body. A final `4xx` from your agent (not 408, 425 or 429) is acknowledged with `200` and the event stays only in the gateway log |
 | `async` | At once | Up to 3 attempts in the background (5 s each, 1 s and 2 s apart); a final `4xx` stops at the first. Meta is not asked to retry, so a failed event stays only in the gateway log |
 
 Each forward carries:
@@ -245,9 +265,9 @@ change to EE's contract.
 | Authorization | Anyone with the API key reaches every line | Every phone, WABA and media ID is checked against the tenant |
 | Webhook delivery | One signed POST per Meta delivery, `sync` or `async` | Durable outbox with retries, per-phone destinations and developer webhooks (`X-Webhook-Signature`, `X-Idempotency-Key`) |
 | Onboarding | `/v1/onboarding/*` | Core `connect` for phones an administrator assigned, a hosted connect page and setup links; core `exchange` and `override-callback` are closed |
-| Interface | HTTP API and library | Superadmin console and an installable account panel with inbox, logs and Web Push |
+| Interface | HTTP API and library | Superadmin console and an installable account panel with the Inbox, logs and Web Push |
 | Billing | None | Prepaid credit; a paused account cannot send or connect numbers |
-| Tooling | | CLI and MCP endpoint |
+| Tooling | | CLI and the `/mcp` endpoint |
 
 ## Documentation
 
