@@ -89,6 +89,12 @@ export interface SendMessageResponse {
 /** A message template exactly as Graph returns it (`id`, `name`, `status`, `language`, `components`...) */
 export type MetaMessageTemplate = Record<string, unknown>
 
+/** One page of a WABA's templates. `paging.after` is set only when Meta has another page. */
+export interface MetaTemplatePage {
+  data: MetaMessageTemplate[]
+  paging: { after?: string }
+}
+
 export interface ContactAddress {
   street?: string
   city?: string

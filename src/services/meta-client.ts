@@ -6,7 +6,7 @@ import { DEFAULT_META_API_VERSION, META_GRAPH_BASE_URL } from '../config.js'
 import { WatahubApiError, isRateLimit, isTransient, metaErrorCode } from './errors.js'
 import { backoffDelayMs, sleep, type RetryPolicy, type Sleep } from './retry.js'
 import { isRecord } from '../utils/guards.js'
-import type { MetaMessageTemplate, SendMessagePayload, SendMessageResponse } from '../types/gateway.js'
+import type { MetaTemplatePage, SendMessagePayload, SendMessageResponse } from '../types/gateway.js'
 
 export type { RetryPolicy } from './retry.js'
 export { backoffDelayMs } from './retry.js'
@@ -28,7 +28,7 @@ export interface MetaClientConfig {
  */
 export interface MetaGraphClient {
   sendMessage(phoneNumberId: string, payload: SendMessagePayload): Promise<SendMessageResponse>
-  listTemplates(wabaId: string): Promise<MetaMessageTemplate[]>
+  listTemplates(wabaId: string, after?: string): Promise<MetaTemplatePage>
   exchangeCodeForToken(code: string, clientId: string, clientSecret: string): Promise<{ accessToken: string }>
   subscribeAppToWaba(wabaId: string, subscribedFields?: readonly string[], overrideToken?: string): Promise<boolean>
   registerPhone(phoneNumberId: string, pin: string, overrideToken?: string): Promise<boolean>
@@ -119,11 +119,15 @@ export class MetaClient implements MetaGraphClient {
   }
 
   /**
-   * List approved message templates from WABA
+   * One page of the WABA's message templates. Pass the previous page's `paging.after` to get the next one.
    */
-  async listTemplates(wabaId: string, overrideToken?: string): Promise<MetaMessageTemplate[]> {
-    const { data } = ensureOk(await this.get(`${wabaId}/message_templates`, overrideToken))
-    return Array.isArray(data.data) ? data.data.filter(isRecord) : []
+  async listTemplates(wabaId: string, after?: string, overrideToken?: string): Promise<MetaTemplatePage> {
+    const query = after ? `?${new URLSearchParams({ after }).toString()}` : ''
+    const { data } = ensureOk(await this.get(`${wabaId}/message_templates${query}`, overrideToken))
+    return {
+      data: Array.isArray(data.data) ? data.data.filter(isRecord) : [],
+      paging: { after: nextPageCursor(data.paging) },
+    }
   }
 
   /**
@@ -313,6 +317,16 @@ export class MetaClient implements MetaGraphClient {
 function ensureOk(res: GraphResponse): GraphResponse {
   if (!res.ok) throw new WatahubApiError(res.data, res.status)
   return res
+}
+
+/**
+ * Meta keeps `cursors.after` on the last page too; only `next` says another page exists.
+ * `next` itself is never returned: it is a Graph URL, not one of ours.
+ */
+function nextPageCursor(paging: unknown): string | undefined {
+  if (!isRecord(paging) || typeof paging.next !== 'string' || !isRecord(paging.cursors)) return undefined
+  const { after } = paging.cursors
+  return typeof after === 'string' && after ? after : undefined
 }
 
 /** Meta `/messages` request body. */

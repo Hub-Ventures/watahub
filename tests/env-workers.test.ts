@@ -20,7 +20,7 @@ function setup() {
   const errors: string[] = []
   const logger: Logger = { info: () => undefined, error: (message) => errors.push(message) }
   const client = {
-    listTemplates: () => Promise.resolve([]),
+    listTemplates: () => Promise.resolve({ data: [], paging: {} }),
   } as unknown as MetaGraphClient
   const app = createApp({
     logger,

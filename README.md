@@ -136,7 +136,7 @@ Expected response:
 {
   "status": "ok",
   "service": "watahub",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "timestamp": 1729620000000
 }
 ```
@@ -298,7 +298,7 @@ pnpm run deploy
 | `GET` | `/v1/media/:mediaId` | Resolves media ID to temporary CDN download URL |
 | `POST` | `/v1/media` | Uploads media file (`multipart/form-data`) streaming to Meta |
 | `POST` | `/v1/media/:phoneNumberId` | Uploads media scoped to a specific phone number |
-| `GET` | `/v1/templates/:wabaId` | Lists approved HSM templates from Meta Graph API |
+| `GET` | `/v1/templates/:wabaId` | Lists a WABA's message templates from Meta Graph API, one page per call (`?after=`) |
 | `POST` | `/v1/onboarding/connect` | Connects one phone line (exchange, store, subscribe, register). Does not return the token |
 | `GET` | `/v1/onboarding/launch` | Public Embedded Signup parameters for `FB.login` (`appId`, `configurationId`, `apiVersion`) |
 | `POST` | `/v1/onboarding/exchange` | Low-level code exchange. Returns the token. Prefer connect |
@@ -322,7 +322,7 @@ pnpm run deploy
 
 ## 🚦 Project Status
 
-Watahub is currently in active development (**v0.1.0**).
+Watahub is currently in active development (**v0.2.0**).
 
 The core WhatsApp bridge functionality (message dispatch, streaming media uploads, HMAC verification, replay protection, rate limiting, and library exports) is production-ready and fully tested with 100% passing automated tests across Node.js and Cloudflare Workers.
 

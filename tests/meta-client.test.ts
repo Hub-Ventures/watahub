@@ -65,7 +65,7 @@ describe('MetaClient resilience', () => {
     const client = new MetaClient({ accessToken: 't', retry: FAST_RETRY })
 
     const templates = await client.listTemplates('456')
-    expect(templates).toEqual([{ name: 'welcome' }])
+    expect(templates.data).toEqual([{ name: 'welcome' }])
     expect(fetchSpy).toHaveBeenCalledTimes(3)
   })
 
@@ -402,17 +402,40 @@ describe('MetaClient requests and bodies', () => {
   })
 
   describe('listTemplates', () => {
-    it('GETs templates and returns data array', async () => {
+    it('GETs one page and returns its templates', async () => {
       const spy = mockFetch(okJson({ data: [{ name: 't1' }] }))
-      expect(await client.listTemplates('WABA')).toEqual([{ name: 't1' }])
+      expect(await client.listTemplates('WABA')).toEqual({ data: [{ name: 't1' }], paging: {} })
       const [url, init] = spy.mock.calls[0] as [string, RequestInit]
       expect(url).toBe('https://graph.facebook.com/v24.0/WABA/message_templates')
       expect(init.method).toBeUndefined()
     })
 
-    it('returns [] when data is missing and throws on errors', async () => {
+    it('returns the after cursor only while Meta reports a next page', async () => {
+      const next = 'https://graph.facebook.com/v24.0/WABA/message_templates?access_token=T&after=A1'
+      const spy = mockFetch(
+        okJson({ data: [{ name: 't1' }], paging: { cursors: { before: 'B1', after: 'A1' }, next } }),
+        okJson({ data: [{ name: 't2' }], paging: { cursors: { before: 'B2', after: 'A2' } } }),
+        okJson({ data: [], paging: { next } }),
+        okJson({ data: [], paging: { cursors: { after: '' }, next } })
+      )
+      expect(await client.listTemplates('WABA')).toEqual({ data: [{ name: 't1' }], paging: { after: 'A1' } })
+      expect(await client.listTemplates('WABA', 'A1')).toEqual({ data: [{ name: 't2' }], paging: {} })
+      expect(await client.listTemplates('WABA')).toEqual({ data: [], paging: {} })
+      expect(await client.listTemplates('WABA')).toEqual({ data: [], paging: {} })
+      expect(spy.mock.calls[1]?.[0]).toBe('https://graph.facebook.com/v24.0/WABA/message_templates?after=A1')
+    })
+
+    it('sends the cursor URL-encoded as a query value', async () => {
+      const spy = mockFetch(okJson({ data: [] }))
+      await client.listTemplates('WABA', 'QVFI+a/b==')
+      expect(spy.mock.calls[0]?.[0]).toBe(
+        'https://graph.facebook.com/v24.0/WABA/message_templates?after=QVFI%2Ba%2Fb%3D%3D'
+      )
+    })
+
+    it('returns no templates when data is missing and throws on errors', async () => {
       mockFetch(okJson({}), okJson(metaError(190), 401))
-      expect(await client.listTemplates('WABA')).toEqual([])
+      expect(await client.listTemplates('WABA')).toEqual({ data: [], paging: {} })
       await expect(client.listTemplates('WABA')).rejects.toBeInstanceOf(WatahubApiError)
     })
   })

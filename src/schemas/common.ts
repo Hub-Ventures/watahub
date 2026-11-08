@@ -11,6 +11,19 @@ export function isGraphId(value: string): boolean {
   return GraphIdSchema.safeParse(value).success
 }
 
+/**
+ * Graph paging cursors are opaque base64 strings. A cursor only ever travels URL-encoded as a query value,
+ * never as a path segment; the shape and bound keep anything else out of the Graph URL.
+ */
+export const PageCursorSchema = z
+  .string()
+  .max(1024)
+  .regex(/^[A-Za-z0-9+/=_-]+$/, 'Must be a paging cursor from a previous response')
+
+export function isPageCursor(value: string): boolean {
+  return PageCursorSchema.safeParse(value).success
+}
+
 const BLOCKED_HOST_SUFFIXES = ['.localhost', '.local', '.internal', '.home.arpa']
 
 function ipv4Octets(host: string): number[] | undefined {
