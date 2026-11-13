@@ -229,6 +229,33 @@ describe('createApp dependency injection', () => {
     expect(lines.error.some((line) => line.startsWith('[watahub-error] TypeError'))).toBe(true)
   })
 
+  it('falls back to the default for every port passed as undefined', async () => {
+    globalFetch.mockResolvedValue(jsonResponse({ messages: [{ id: 'wamid.DEFAULT' }] }))
+    vi.spyOn(console, 'log').mockImplementation(() => undefined)
+    const app = createApp({
+      createMetaClient: undefined,
+      fetch: undefined,
+      now: undefined,
+      logger: undefined,
+      replayStore: undefined,
+      apiKeyLimiter: undefined,
+      verifyTokenLimiter: undefined,
+      createRequestLimiter: undefined,
+      lineStore: undefined,
+    })
+
+    const res = await app.request(
+      '/v1/messages',
+      postJson({ phoneNumberId: '123', to: '15551234567', kind: 'text', text: { body: 'hi' } }, auth)
+    )
+    expect(res.status).toBe(200)
+    // The default factory and transport ran: the send reached the global fetch
+    expect(globalFetch).toHaveBeenCalledTimes(1)
+
+    const denied = await app.request('/v1/messages', postJson({}, { 'x-api-key': 'wrong' }))
+    expect(denied.status).toBe(401)
+  })
+
   it('rejects the webhook handshake when no verify token is configured', async () => {
     delete process.env.META_WEBHOOK_VERIFY_TOKEN
     const app = createApp({ logger: memoryLogger().logger })
