@@ -241,8 +241,8 @@ const app = createApp({ lineStore: new DistributedLineStore(myKeyValueStore) })
 
 `createApp` takes the collaborators it should use instead of the defaults. They are the Meta client factory, `fetch`,
 the clock, the logger, and the replay, rate-limit and line stores. The package also exports the pieces on their own:
-`MetaClient`, `normalizeMetaWebhook`, `verifyMetaSignature`, `signSubscriberPayload`, `deliverToSubscriber`,
-`isStale`, `DeliveryIdCache`, the `Distributed*Store` adapters and every request and event type. See
+`MetaClient`, `normalizeMetaWebhook`, `verifyMetaSignature`, `signSubscriberPayload`, `verifySubscriberSignature`, `deliverToSubscriber`, `isStale`,
+`DeliveryIdCache`, the `Distributed*Store` adapters and every request and event type. See
 [Extensions and Enterprise Edition](docs/MULTI_TENANCY_AND_EXTENSIONS.md).
 
 > [!WARNING]
