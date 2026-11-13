@@ -84,18 +84,21 @@ export interface GatewayDeps {
 }
 
 export function createDefaultDeps(overrides: Partial<GatewayDeps> = {}): GatewayDeps {
+  // A key passed as `undefined` asks for the default, so a conditional override cannot leave a port unset
+  const given: Partial<GatewayDeps> = Object.fromEntries(
+    Object.entries(overrides).filter(([, value]) => value !== undefined)
+  )
   // The global fetch is resolved on every call so runtime polyfills and test spies apply
-  const fetchFn = overrides.fetch ?? ((input, init) => fetch(input, init))
+  const fetchFn = given.fetch ?? ((input, init) => fetch(input, init))
   return {
     createMetaClient: (config) => new MetaClient({ fetch: fetchFn, ...config }),
     fetch: fetchFn,
     now: systemClock,
     logger: consoleLogger,
-    replayStore: overrides.replayStore ?? webhookDeliveryIds,
-    apiKeyLimiter: overrides.apiKeyLimiter ?? apiKeyFailures,
-    verifyTokenLimiter: overrides.verifyTokenLimiter ?? verifyTokenFailures,
-    ...overrides,
-    // After the spread so a partial override cannot leave the port unset
-    lineStore: overrides.lineStore ?? new MemoryLineStore(),
+    replayStore: webhookDeliveryIds,
+    apiKeyLimiter: apiKeyFailures,
+    verifyTokenLimiter: verifyTokenFailures,
+    lineStore: given.lineStore ?? new MemoryLineStore(),
+    ...given,
   }
 }
