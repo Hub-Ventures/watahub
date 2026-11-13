@@ -46,7 +46,7 @@ Any field of `GatewayDeps` replaces the default:
 | App | `createApp`, `app` (default export), `createDefaultDeps`, `requireApiKey`, `resolveMetaAccessToken`, `BODY_LIMITS` |
 | Meta | `MetaClient`, `MetaClientConfig`, `MetaGraphClient` |
 | Webhooks | `verifyMetaSignature`, `normalizeMetaWebhook`, `extractPhoneNumberId`, `hasWebhookChanges`, `isStale`, `DEFAULT_WEBHOOK_MAX_AGE_SECONDS`, `DeliveryIdCache` |
-| Delivery | `deliverToSubscriber`, `DEFAULT_DELIVERY_POLICY`, `signSubscriberPayload` and the `Delivery*` types |
+| Delivery | `deliverToSubscriber`, `DEFAULT_DELIVERY_POLICY`, `signSubscriberPayload`, `verifySubscriberSignature` and the `Delivery*` types |
 | Stores | `MemoryLineStore`, `DistributedLineStore`, `DistributedReplayStore`, `DistributedRateLimitStore` and the `LineStore`, `ReplayStore`, `RateLimitStore`, `StoredLine`, `KeyValueStore` types |
 | Utilities | `timingSafeEqual`, `sha256Hex`, `redactSecrets` |
 | Types | Every type in `src/types/gateway.ts` (requests, normalized events, `SubscriberPayload`) and `src/types/meta.ts` (Meta's wire format) |

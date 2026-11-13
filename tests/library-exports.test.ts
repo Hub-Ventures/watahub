@@ -37,3 +37,16 @@ describe('replay pieces exported from the package index', () => {
     expect(cache.has('delivery-1', nowMs + 6 * 24 * 3600 * 1000)).toBe(true)
   })
 })
+
+/**
+ * A subscriber written in TypeScript verifies deliveries with the package
+ * instead of copying HMAC code.
+ */
+describe('subscriber signature pieces exported from the package index', () => {
+  it('verifies with verifySubscriberSignature what signSubscriberPayload signed', async () => {
+    const body = JSON.stringify({ events: [] })
+    const header = await watahub.signSubscriberPayload(body, 'subscriber-secret')
+    expect(await watahub.verifySubscriberSignature(body, header, 'subscriber-secret')).toBe(true)
+    expect(await watahub.verifySubscriberSignature(body, header, 'another-secret')).toBe(false)
+  })
+})
