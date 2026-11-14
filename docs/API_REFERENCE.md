@@ -41,7 +41,9 @@ Calls without a phone number ID skip step 2: those media GETs without that heade
 `GET /v24.0/:mediaId`, `GET /v1/templates` and `POST /v1/onboarding/subscribe`.
 
 With no token, the call answers `500` with
-`{ "error": "Missing Meta access token. Set META_SYSTEM_USER_TOKEN, pass X-Meta-Access-Token header, or X-Phone-Number-Id for a connected line." }`.
+`{ "error": "Missing Meta access token. Set META_SYSTEM_USER_TOKEN or pass X-Meta-Access-Token header." }`.
+On routes that can use a connected line (the ones that name a phone number ID above), the message also
+mentions `X-Phone-Number-Id`.
 
 ### 1.4 Error shapes
 

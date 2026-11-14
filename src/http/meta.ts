@@ -5,13 +5,27 @@ import type { MetaGraphClient } from '../services/meta-client.js'
 import { resolveMetaAccessToken } from './auth.js'
 import type { Outcome } from './outcome.js'
 
+/** Base 500 when a Meta token is missing. Used by routes that cannot use a line store. */
 export const MISSING_META_TOKEN =
+  'Missing Meta access token. Set META_SYSTEM_USER_TOKEN or pass X-Meta-Access-Token header.'
+
+/** Same as MISSING_META_TOKEN, plus the line hint for routes that accept a phone number ID. */
+export const MISSING_META_TOKEN_FOR_LINE =
   'Missing Meta access token. Set META_SYSTEM_USER_TOKEN, pass X-Meta-Access-Token header, or X-Phone-Number-Id for a connected line.'
 
 /** Success from metaClientFor: client plus the token it was built with (one store read). */
 export interface MetaClientHandle {
   client: MetaGraphClient
   accessToken: string
+}
+
+export interface MetaClientForOptions {
+  /**
+   * When true, the missing-token message mentions X-Phone-Number-Id.
+   * Defaults to true when `phoneNumberId` is passed; set explicitly on routes
+   * that accept an optional line id (media GETs) even when it is absent.
+   */
+  acceptsLine?: boolean
 }
 
 /**
@@ -24,11 +38,14 @@ export interface MetaClientHandle {
 export async function metaClientFor(
   c: Context,
   deps: GatewayDeps,
-  phoneNumberId?: string
+  phoneNumberId?: string,
+  options: MetaClientForOptions = {}
 ): Promise<Outcome<MetaClientHandle>> {
   const accessToken = await resolveMetaAccessToken(c, { phoneNumberId, lineStore: deps.lineStore })
   if (!accessToken) {
-    return { ok: false, response: c.json({ error: MISSING_META_TOKEN }, 500) }
+    const acceptsLine = options.acceptsLine ?? phoneNumberId !== undefined
+    const error = acceptsLine ? MISSING_META_TOKEN_FOR_LINE : MISSING_META_TOKEN
+    return { ok: false, response: c.json({ error }, 500) }
   }
   return {
     ok: true,

@@ -65,6 +65,8 @@ describe('Media Routes: GET /v1/media/:mediaId and POST /v1/media', () => {
       expect(res.status).toBe(500)
       const body = (await res.json()) as Record<string, unknown>
       expect(body.error).toContain('Missing Meta access token')
+      // Media GETs accept an optional line id, so the hint is present even without one
+      expect(body.error).toContain('X-Phone-Number-Id')
     })
 
     it('surfaces Meta API errors', async () => {
