@@ -103,7 +103,8 @@ TypeScript, with the package (Node 20+, Workers, Bun):
 ```ts
 import { verifySubscriberSignature } from 'watahub'
 
-// rawBody is the request text before JSON.parse; a missing or malformed header answers false
+// rawBody is the request body before JSON.parse (string or Uint8Array/Buffer);
+// a missing or malformed header answers false
 const valid = await verifySubscriberSignature(rawBody, request.headers.get('x-watahub-signature'), secret)
 ```
 
@@ -112,7 +113,11 @@ TypeScript (Node), without the package:
 ```ts
 import crypto from 'node:crypto'
 
-export function verifyWatahubSignature(rawBody: string, signatureHeader: string, secret: string): boolean {
+export function verifyWatahubSignature(
+  rawBody: string | Uint8Array,
+  signatureHeader: string,
+  secret: string
+): boolean {
   if (!signatureHeader || !signatureHeader.startsWith('sha256=')) return false
   const provided = Buffer.from(signatureHeader.slice('sha256='.length).trim(), 'hex')
   const expected = crypto.createHmac('sha256', secret).update(rawBody).digest()
