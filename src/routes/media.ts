@@ -2,7 +2,6 @@ import type { Context } from 'hono'
 import { Hono } from 'hono'
 import { getConfig } from '../config.js'
 import type { GatewayDeps } from '../deps.js'
-import { resolveMetaAccessToken } from '../http/auth.js'
 import { validationError } from '../http/body.js'
 import { errorResponse } from '../http/errors.js'
 import { metaClientFor } from '../http/meta.js'
@@ -45,11 +44,10 @@ export function createMediaRouter(deps: GatewayDeps): Hono {
 
     const meta = await metaClientFor(c, deps, phoneNumberId)
     if (!meta.ok) return meta.response
-    // Same resolution as metaClientFor so the CDN fetch uses the line token too.
-    const accessToken = (await resolveMetaAccessToken(c, { phoneNumberId, lineStore: deps.lineStore })) ?? ''
+    const { client, accessToken } = meta.value
 
     try {
-      const url = await meta.value.getMediaUrl(mediaId)
+      const url = await client.getMediaUrl(mediaId)
       // The token only ever goes to an https URL that Meta itself returned
       if (!url.startsWith('https://')) {
         deps.logger.error(`[watahub] Meta returned a non-https URL for media ${mediaId}; not downloading`)
@@ -95,7 +93,7 @@ export function createMediaRouter(deps: GatewayDeps): Hono {
     if (!meta.ok) return meta.response
 
     try {
-      const url = await meta.value.getMediaUrl(mediaId)
+      const url = await meta.value.client.getMediaUrl(mediaId)
       if (c.req.query('redirect') === 'true') {
         return c.redirect(url, 302)
       }
@@ -140,7 +138,7 @@ export function createMediaRouter(deps: GatewayDeps): Hono {
     if (!meta.ok) return meta.response
 
     try {
-      const res = await meta.value.uploadMedia(phoneNumberId, c.req.raw.body as BodyInit, contentType)
+      const res = await meta.value.client.uploadMedia(phoneNumberId, c.req.raw.body as BodyInit, contentType)
       return c.json(res, 200)
     } catch (err: unknown) {
       return errorResponse(c, err, deps.logger)

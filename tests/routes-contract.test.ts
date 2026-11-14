@@ -85,7 +85,8 @@ describe('HTTP route contracts', () => {
       const res = await app.request('/v1/messages', authed(postJson(valid)))
       expect(res.status).toBe(500)
       expect(await json(res)).toEqual({
-        error: 'Missing Meta access token. Set META_SYSTEM_USER_TOKEN or pass X-Meta-Access-Token header.',
+        error:
+          'Missing Meta access token. Set META_SYSTEM_USER_TOKEN, pass X-Meta-Access-Token header, or X-Phone-Number-Id for a connected line.',
       })
     })
 
@@ -1137,7 +1138,8 @@ describe('HTTP route contracts', () => {
       expect(res.status).toBe(500)
       // Same message on every route that needs a Meta token
       expect(await json(res)).toEqual({
-        error: 'Missing Meta access token. Set META_SYSTEM_USER_TOKEN or pass X-Meta-Access-Token header.',
+        error:
+          'Missing Meta access token. Set META_SYSTEM_USER_TOKEN, pass X-Meta-Access-Token header, or X-Phone-Number-Id for a connected line.',
       })
     })
 

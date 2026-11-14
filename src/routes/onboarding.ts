@@ -113,7 +113,7 @@ export function createOnboardingRouter(deps: GatewayDeps): Hono {
     const { wabaId, subscribedFields } = body.value
 
     try {
-      const success = await meta.value.subscribeAppToWaba(wabaId, subscribedFields)
+      const success = await meta.value.client.subscribeAppToWaba(wabaId, subscribedFields)
       return c.json({ success, wabaId }, 200)
     } catch (err: unknown) {
       return errorResponse(c, err, deps.logger)
@@ -133,7 +133,7 @@ export function createOnboardingRouter(deps: GatewayDeps): Hono {
     if (!meta.ok) return meta.response
 
     try {
-      const success = await meta.value.overridePhoneNumberCallback(phoneNumberId, callbackUrl, verifyToken)
+      const success = await meta.value.client.overridePhoneNumberCallback(phoneNumberId, callbackUrl, verifyToken)
       return c.json({ success, phoneNumberId }, 200)
     } catch (err: unknown) {
       return errorResponse(c, err, deps.logger)

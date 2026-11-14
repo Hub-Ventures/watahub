@@ -164,6 +164,18 @@ describe('Media Routes: GET /v1/media/:mediaId and POST /v1/media', () => {
         error: expect.stringContaining('Missing Meta access token'),
       })
     })
+
+    it('falls back to META_SYSTEM_USER_TOKEN when the phone number ID is not in the store', async () => {
+      const fetchSpy = mockFetch(jsonResponse({ url: 'https://cdn.example.com/sys.jpg' }))
+      const gateway = createApp({ lineStore: new MemoryLineStore() })
+
+      const res = await gateway.request('/v1/media/123456789', {
+        headers: { ...auth, 'X-Phone-Number-Id': LINE_PHONE },
+      })
+      expect(res.status).toBe(200)
+      const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+      expect((init.headers as Record<string, string>).Authorization).toBe('Bearer test-meta-token')
+    })
   })
 
   describe('GET /v1/media/:mediaId/content', () => {

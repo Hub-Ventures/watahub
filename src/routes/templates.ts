@@ -34,7 +34,7 @@ export function createTemplatesRouter(deps: GatewayDeps): Hono {
     if (!meta.ok) return meta.response
 
     try {
-      return c.json(await meta.value.listTemplates(wabaId, after), 200)
+      return c.json(await meta.value.client.listTemplates(wabaId, after), 200)
     } catch (err: unknown) {
       return errorResponse(c, err, deps.logger)
     }
