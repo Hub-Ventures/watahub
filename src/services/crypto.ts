@@ -15,24 +15,37 @@ function importHmacKey(secret: string, usage: 'sign' | 'verify'): Promise<Crypto
 }
 
 /**
- * Verifies Meta's X-Hub-Signature-256 header.
- * Meta computes: sha256=HMAC_SHA256(rawBody, appSecret)
+ * Verifies a sha256=<hex> HMAC-SHA256 header over a raw body.
+ * Shared by Meta inbound verification and subscriber delivery verification so
+ * neither public function depends on the other.
  */
-export async function verifyMetaSignature(
-  rawBody: string,
+async function verifySha256HmacSignature(
+  rawBody: string | Uint8Array,
   signatureHeader: string | null | undefined,
-  appSecret: string
+  secret: string
 ): Promise<boolean> {
-  if (!signatureHeader || !appSecret) return false
+  if (!signatureHeader || !secret) return false
   if (!signatureHeader.startsWith(SIGNATURE_PREFIX)) return false
 
   const expectedSigHex = signatureHeader.slice(SIGNATURE_PREFIX.length).trim()
   // Reject anything that is not a full digest before touching crypto
   if (!SHA256_HEX.test(expectedSigHex)) return false
 
-  const cryptoKey = await importHmacKey(appSecret, 'verify')
+  const cryptoKey = await importHmacKey(secret, 'verify')
   // crypto.subtle.verify compares in constant time
-  return crypto.subtle.verify('HMAC', cryptoKey, hexToBytes(expectedSigHex), encoder.encode(rawBody))
+  return crypto.subtle.verify('HMAC', cryptoKey, hexToBytes(expectedSigHex), toVerifyBytes(rawBody))
+}
+
+/**
+ * Verifies Meta's X-Hub-Signature-256 header.
+ * Meta computes: sha256=HMAC_SHA256(rawBody, appSecret)
+ */
+export function verifyMetaSignature(
+  rawBody: string | Uint8Array,
+  signatureHeader: string | null | undefined,
+  appSecret: string
+): Promise<boolean> {
+  return verifySha256HmacSignature(rawBody, signatureHeader, appSecret)
 }
 
 /**
@@ -48,15 +61,14 @@ export async function signSubscriberPayload(payloadString: string, secret: strin
 /**
  * Verifies the x-watahub-signature header of a delivery, on the subscriber's side.
  * Counterpart of signSubscriberPayload: sha256=HMAC_SHA256(rawBody, SUBSCRIBER_WEBHOOK_SECRET).
- * Pass the body exactly as received; re-serialized JSON has a different digest.
+ * Pass the body exactly as received (string or raw bytes); re-serialized JSON has a different digest.
  */
 export function verifySubscriberSignature(
-  rawBody: string,
+  rawBody: string | Uint8Array,
   signatureHeader: string | null | undefined,
   secret: string
 ): Promise<boolean> {
-  // The gateway signs its deliveries with the scheme Meta uses for its own
-  return verifyMetaSignature(rawBody, signatureHeader, secret)
+  return verifySha256HmacSignature(rawBody, signatureHeader, secret)
 }
 
 /**
@@ -82,6 +94,14 @@ export async function sha256Hex(input: string): Promise<string> {
 
 async function sha256(input: string): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(input)))
+}
+
+/** crypto.subtle requires an ArrayBuffer-backed view, not SharedArrayBuffer. */
+function toVerifyBytes(rawBody: string | Uint8Array): Uint8Array<ArrayBuffer> {
+  if (typeof rawBody === 'string') return encoder.encode(rawBody)
+  const copy = new Uint8Array(rawBody.byteLength)
+  copy.set(rawBody)
+  return copy
 }
 
 /** Callers only pass strings that already matched SHA256_HEX */

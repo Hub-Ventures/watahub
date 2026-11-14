@@ -43,6 +43,14 @@ describe('Crypto Services', () => {
       expect(await verifySubscriberSignature(payload, upperCased, secret)).toBe(true)
     })
 
+    it('accepts the same body as Uint8Array or Buffer without a string conversion', async () => {
+      const header = await signSubscriberPayload(payload, secret)
+      const asBytes = new TextEncoder().encode(payload)
+      expect(await verifySubscriberSignature(asBytes, header, secret)).toBe(true)
+      expect(await verifySubscriberSignature(Buffer.from(payload, 'utf8'), header, secret)).toBe(true)
+      expect(await verifyMetaSignature(asBytes, header, secret)).toBe(true)
+    })
+
     it('rejects a wrong secret, a tampered body and a re-serialized body', async () => {
       const header = await signSubscriberPayload(payload, secret)
       expect(await verifySubscriberSignature(payload, header, 'wrong-secret')).toBe(false)
