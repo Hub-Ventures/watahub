@@ -11,7 +11,7 @@ export const MISSING_META_TOKEN =
 
 /** Same as MISSING_META_TOKEN, plus the line hint for routes that accept a phone number ID. */
 export const MISSING_META_TOKEN_FOR_LINE =
-  'Missing Meta access token. Set META_SYSTEM_USER_TOKEN, pass X-Meta-Access-Token header, or X-Phone-Number-Id for a connected line.'
+  'Missing Meta access token. Set META_SYSTEM_USER_TOKEN, pass X-Meta-Access-Token header, or name a line connected with POST /v1/onboarding/connect.'
 
 /** Success from metaClientFor: client plus the token it was built with (one store read). */
 export interface MetaClientHandle {
@@ -21,7 +21,7 @@ export interface MetaClientHandle {
 
 export interface MetaClientForOptions {
   /**
-   * When true, the missing-token message mentions X-Phone-Number-Id.
+   * When true, the missing-token message also points to a line connected with POST /v1/onboarding/connect.
    * Defaults to true when `phoneNumberId` is passed; set explicitly on routes
    * that accept an optional line id (media GETs) even when it is absent.
    */
