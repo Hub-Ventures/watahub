@@ -213,7 +213,9 @@ Content by `kind`:
 | `poll`, `poll_update` | `pollVote: { pollMessageId, selectedOptionIds, timestamp? }` |
 | Anything else | The common fields only; the full message is in `raw` |
 
-Download a `mediaId` with `GET /v1/media/:mediaId/content`.
+Download a `mediaId` with `GET /v1/media/:mediaId/content`. For a line connected through
+`POST /v1/onboarding/connect`, pass that event's `phoneNumberId` as `X-Phone-Number-Id` (or
+`?phone_number_id=`) so the gateway can use the stored business token.
 
 ### 4.2 Text
 

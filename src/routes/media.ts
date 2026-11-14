@@ -2,7 +2,6 @@ import type { Context } from 'hono'
 import { Hono } from 'hono'
 import { getConfig } from '../config.js'
 import type { GatewayDeps } from '../deps.js'
-import { resolveMetaAccessToken } from '../http/auth.js'
 import { validationError } from '../http/body.js'
 import { errorResponse } from '../http/errors.js'
 import { metaClientFor } from '../http/meta.js'
@@ -13,6 +12,15 @@ const MEDIA_DOWNLOAD_TIMEOUT_MS = 60_000
 
 // Only these headers describe the bytes; encoding and length are recomputed by the runtime
 const FORWARDED_MEDIA_HEADERS = ['content-type', 'content-disposition'] as const
+
+/**
+ * Optional line for media GETs. A media id is not a phone id, so callers that
+ * connected a line pass it via header or query; without it, behavior stays on
+ * X-Meta-Access-Token then META_SYSTEM_USER_TOKEN (no default phone env).
+ */
+function optionalMediaPhoneNumberId(c: Context): string | undefined {
+  return c.req.header('x-phone-number-id') || c.req.query('phone_number_id') || undefined
+}
 
 export function createMediaRouter(deps: GatewayDeps): Hono {
   const router = new Hono()
@@ -29,13 +37,17 @@ export function createMediaRouter(deps: GatewayDeps): Hono {
       return validationError(c, { mediaId: ['Must be a numeric Meta Graph ID'] })
     }
 
-    const meta = await metaClientFor(c, deps)
+    const phoneNumberId = optionalMediaPhoneNumberId(c)
+    if (phoneNumberId !== undefined && !isGraphId(phoneNumberId)) {
+      return validationError(c, { phoneNumberId: ['Must be a numeric Meta Graph ID'] })
+    }
+
+    const meta = await metaClientFor(c, deps, phoneNumberId, { acceptsLine: true })
     if (!meta.ok) return meta.response
-    // A media id is not a phone id, so this stays on the header, then the system token.
-    const accessToken = (await resolveMetaAccessToken(c)) ?? ''
+    const { client, accessToken } = meta.value
 
     try {
-      const url = await meta.value.getMediaUrl(mediaId)
+      const url = await client.getMediaUrl(mediaId)
       // The token only ever goes to an https URL that Meta itself returned
       if (!url.startsWith('https://')) {
         deps.logger.error(`[watahub] Meta returned a non-https URL for media ${mediaId}; not downloading`)
@@ -72,11 +84,16 @@ export function createMediaRouter(deps: GatewayDeps): Hono {
       return validationError(c, { mediaId: ['Must be a numeric Meta Graph ID'] })
     }
 
-    const meta = await metaClientFor(c, deps)
+    const phoneNumberId = optionalMediaPhoneNumberId(c)
+    if (phoneNumberId !== undefined && !isGraphId(phoneNumberId)) {
+      return validationError(c, { phoneNumberId: ['Must be a numeric Meta Graph ID'] })
+    }
+
+    const meta = await metaClientFor(c, deps, phoneNumberId, { acceptsLine: true })
     if (!meta.ok) return meta.response
 
     try {
-      const url = await meta.value.getMediaUrl(mediaId)
+      const url = await meta.value.client.getMediaUrl(mediaId)
       if (c.req.query('redirect') === 'true') {
         return c.redirect(url, 302)
       }
@@ -117,11 +134,11 @@ export function createMediaRouter(deps: GatewayDeps): Hono {
       return c.json({ error: 'Content-Type must be multipart/form-data' }, 400)
     }
 
-    const meta = await metaClientFor(c, deps, phoneNumberId)
+    const meta = await metaClientFor(c, deps, phoneNumberId, { acceptsLine: true })
     if (!meta.ok) return meta.response
 
     try {
-      const res = await meta.value.uploadMedia(phoneNumberId, c.req.raw.body as BodyInit, contentType)
+      const res = await meta.value.client.uploadMedia(phoneNumberId, c.req.raw.body as BodyInit, contentType)
       return c.json(res, 200)
     } catch (err: unknown) {
       return errorResponse(c, err, deps.logger)

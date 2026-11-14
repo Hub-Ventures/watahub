@@ -1,9 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import app from '../src/index.js'
+import app, { createApp, MemoryLineStore } from '../src/index.js'
 import { jsonResponse, mockFetch } from './helpers/fetch-mock.js'
 
 const KEY = 'wh_secret_key_0123456789abcdef0123456789'
 const auth = { 'X-API-Key': KEY }
+const LINE_PHONE = '100609346426000'
+const LINE_TOKEN = 'LINE_BIZ_TOKEN'
+
+function gatewayWithLine() {
+  const store = new MemoryLineStore()
+  store.put({ phoneNumberId: LINE_PHONE, wabaId: '222', accessToken: LINE_TOKEN })
+  return createApp({ lineStore: store })
+}
 
 describe('Media Routes: GET /v1/media/:mediaId and POST /v1/media', () => {
   const originalEnv = process.env
@@ -57,6 +65,8 @@ describe('Media Routes: GET /v1/media/:mediaId and POST /v1/media', () => {
       expect(res.status).toBe(500)
       const body = (await res.json()) as Record<string, unknown>
       expect(body.error).toContain('Missing Meta access token')
+      // Media GETs accept an optional line id, so the hint is present even without one
+      expect(body.error).toContain('POST /v1/onboarding/connect')
     })
 
     it('surfaces Meta API errors', async () => {
@@ -91,6 +101,82 @@ describe('Media Routes: GET /v1/media/:mediaId and POST /v1/media', () => {
       expect(res.status).toBe(200)
       const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
       expect((init.headers as Record<string, string>).Authorization).toBe('Bearer MEDIA_GET_TOKEN')
+    })
+
+    it('uses the stored connect token when X-Phone-Number-Id names the line', async () => {
+      delete process.env.META_SYSTEM_USER_TOKEN
+      const fetchSpy = mockFetch(jsonResponse({ url: 'https://cdn.example.com/line.jpg' }))
+      const gateway = gatewayWithLine()
+
+      const res = await gateway.request('/v1/media/123456789', {
+        headers: { ...auth, 'X-Phone-Number-Id': LINE_PHONE },
+      })
+      expect(res.status).toBe(200)
+      const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+      expect((init.headers as Record<string, string>).Authorization).toBe(`Bearer ${LINE_TOKEN}`)
+    })
+
+    it('accepts ?phone_number_id= for the line token, and header wins over query', async () => {
+      delete process.env.META_SYSTEM_USER_TOKEN
+      const store = new MemoryLineStore()
+      store.put({ phoneNumberId: LINE_PHONE, wabaId: '222', accessToken: LINE_TOKEN })
+      store.put({ phoneNumberId: '999888777666', wabaId: '222', accessToken: 'OTHER_LINE' })
+      const gateway = createApp({ lineStore: store })
+      const fetchSpy = mockFetch(
+        jsonResponse({ url: 'https://cdn.example.com/q.jpg' }),
+        jsonResponse({ url: 'https://cdn.example.com/h.jpg' })
+      )
+
+      const viaQuery = await gateway.request(`/v1/media/123456789?phone_number_id=${LINE_PHONE}`, {
+        headers: auth,
+      })
+      expect(viaQuery.status).toBe(200)
+      expect(
+        ((fetchSpy.mock.calls[0] as [string, RequestInit])[1].headers as Record<string, string>).Authorization
+      ).toBe(`Bearer ${LINE_TOKEN}`)
+
+      const headerWins = await gateway.request(`/v1/media/123456789?phone_number_id=999888777666`, {
+        headers: { ...auth, 'X-Phone-Number-Id': LINE_PHONE },
+      })
+      expect(headerWins.status).toBe(200)
+      expect(
+        ((fetchSpy.mock.calls[1] as [string, RequestInit])[1].headers as Record<string, string>).Authorization
+      ).toBe(`Bearer ${LINE_TOKEN}`)
+    })
+
+    it('rejects a non-numeric X-Phone-Number-Id with 422 and does not call Meta', async () => {
+      const fetchSpy = mockFetch(jsonResponse({ url: 'https://cdn.example.com/x' }))
+      const res = await app.request('/v1/media/123456789', {
+        headers: { ...auth, 'X-Phone-Number-Id': 'not-a-graph-id' },
+      })
+      expect(res.status).toBe(422)
+      expect(await res.json()).toMatchObject({
+        error: 'Validation failed',
+        details: { phoneNumberId: ['Must be a numeric Meta Graph ID'] },
+      })
+      expect(fetchSpy).not.toHaveBeenCalled()
+    })
+
+    it('still skips the line store when no phone number ID is supplied', async () => {
+      delete process.env.META_SYSTEM_USER_TOKEN
+      const gateway = gatewayWithLine()
+      const res = await gateway.request('/v1/media/123456789', { headers: auth })
+      expect(res.status).toBe(500)
+      expect((await res.json()) as Record<string, unknown>).toMatchObject({
+        error: expect.stringContaining('Missing Meta access token'),
+      })
+    })
+
+    it('falls back to META_SYSTEM_USER_TOKEN when the phone number ID is not in the store', async () => {
+      const fetchSpy = mockFetch(jsonResponse({ url: 'https://cdn.example.com/sys.jpg' }))
+      const gateway = createApp({ lineStore: new MemoryLineStore() })
+
+      const res = await gateway.request('/v1/media/123456789', {
+        headers: { ...auth, 'X-Phone-Number-Id': LINE_PHONE },
+      })
+      expect(res.status).toBe(200)
+      const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+      expect((init.headers as Record<string, string>).Authorization).toBe('Bearer test-meta-token')
     })
   })
 
@@ -129,6 +215,30 @@ describe('Media Routes: GET /v1/media/:mediaId and POST /v1/media', () => {
       expect(new Headers((spy.mock.calls[1] as [string, RequestInit])[1].headers).get('authorization')).toBe(
         'Bearer OVERRIDE'
       )
+    })
+
+    it('uses the stored connect token for both Graph lookup and CDN download', async () => {
+      delete process.env.META_SYSTEM_USER_TOKEN
+      const spy = mockFetch(lookup(), new Response('LINE-BYTES', { status: 200 }))
+      const gateway = gatewayWithLine()
+
+      const res = await gateway.request('/v1/media/123456789/content', {
+        headers: { ...auth, 'X-Phone-Number-Id': LINE_PHONE },
+      })
+      expect(res.status).toBe(200)
+      expect(await res.text()).toBe('LINE-BYTES')
+
+      const [, graphInit] = spy.mock.calls[0] as [string, RequestInit]
+      const [, cdnInit] = spy.mock.calls[1] as [string, RequestInit]
+      expect(new Headers(graphInit.headers).get('authorization')).toBe(`Bearer ${LINE_TOKEN}`)
+      expect(new Headers(cdnInit.headers).get('authorization')).toBe(`Bearer ${LINE_TOKEN}`)
+    })
+
+    it('rejects a non-numeric phone_number_id on /content with 422', async () => {
+      const spy = mockFetch(lookup())
+      const res = await app.request('/v1/media/123456789/content?phone_number_id=bad', { headers: auth })
+      expect(res.status).toBe(422)
+      expect(spy).not.toHaveBeenCalled()
     })
 
     it('answers 502 when the CDN rejects the download', async () => {

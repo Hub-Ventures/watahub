@@ -40,7 +40,7 @@ export function createMessagesRouter(deps: GatewayDeps): Hono {
     if (!meta.ok) return meta.response
 
     try {
-      return c.json(await meta.value.sendMessage(phoneNumberId, payload), 200)
+      return c.json(await meta.value.client.sendMessage(phoneNumberId, payload), 200)
     } catch (err: unknown) {
       return errorResponse(c, err, deps.logger, { includeType: true, messageSend: true })
     }
