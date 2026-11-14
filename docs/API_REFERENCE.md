@@ -29,13 +29,15 @@ X-API-Key: <WATAHUB_API_KEY>
 
 Calls that name a phone number ID resolve the Meta token in this order. They are `POST /v1/messages`,
 `POST /v1/media`, `POST /v1/media/:phoneNumberId`, `POST /v1/onboarding/override-callback`,
-`POST /v24.0/:phoneNumberId/messages` and `POST /v24.0/:phoneNumberId/media`.
+`POST /v24.0/:phoneNumberId/messages`, `POST /v24.0/:phoneNumberId/media`, and
+`GET /v1/media/:mediaId` / `GET /v1/media/:mediaId/content` when they carry `X-Phone-Number-Id` or
+`?phone_number_id=`.
 
 1. The `X-Meta-Access-Token` header.
 2. The business token that `POST /v1/onboarding/connect` stored for that phone number ID.
 3. `META_SYSTEM_USER_TOKEN`.
 
-Calls without a phone number ID skip step 2: `GET /v1/media/:mediaId`, `GET /v1/media/:mediaId/content`,
+Calls without a phone number ID skip step 2: those media GETs without that header or query,
 `GET /v24.0/:mediaId`, `GET /v1/templates` and `POST /v1/onboarding/subscribe`.
 
 With no token, the call answers `500` with
@@ -310,6 +312,11 @@ curl -X POST http://localhost:3000/v1/media/100609346426000 \
 
 Resolves a media ID to Meta's temporary CDN URL.
 
+Optional line for a connected number: `X-Phone-Number-Id` or `?phone_number_id=` (header wins). When present and
+valid, the Meta token follows §1.3 including the stored connect token. Without it, behavior is unchanged (header token,
+then `META_SYSTEM_USER_TOKEN`). A non-numeric value answers `422`. Does not fall back to
+`META_DEFAULT_PHONE_NUMBER_ID`.
+
 ```json
 {
   "mediaId": "987654321098765",
@@ -323,10 +330,11 @@ client that follows the redirect without it gets `401`; use the next route to do
 ### `GET /v1/media/:mediaId/content`
 
 Downloads the file through the gateway: it resolves the URL, fetches it with the Meta token and streams the bytes back
-with Meta's `Content-Type` and `Content-Disposition`. The caller never holds the Meta token.
+with Meta's `Content-Type` and `Content-Disposition`. The caller never holds the Meta token. Same optional
+`X-Phone-Number-Id` / `?phone_number_id=` as the lookup above; the CDN request uses the same resolved token.
 
 - `200`: the bytes.
-- `422`: `mediaId` is not numeric.
+- `422`: `mediaId` or the optional phone number ID is not numeric.
 - `502`: Meta's CDN answered with an error, or Meta returned a URL that is not `https`.
 
 ## 6. Templates

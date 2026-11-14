@@ -14,6 +14,15 @@ const MEDIA_DOWNLOAD_TIMEOUT_MS = 60_000
 // Only these headers describe the bytes; encoding and length are recomputed by the runtime
 const FORWARDED_MEDIA_HEADERS = ['content-type', 'content-disposition'] as const
 
+/**
+ * Optional line for media GETs. A media id is not a phone id, so callers that
+ * connected a line pass it via header or query; without it, behavior stays on
+ * X-Meta-Access-Token then META_SYSTEM_USER_TOKEN (no default phone env).
+ */
+function optionalMediaPhoneNumberId(c: Context): string | undefined {
+  return c.req.header('x-phone-number-id') || c.req.query('phone_number_id') || undefined
+}
+
 export function createMediaRouter(deps: GatewayDeps): Hono {
   const router = new Hono()
 
@@ -29,10 +38,15 @@ export function createMediaRouter(deps: GatewayDeps): Hono {
       return validationError(c, { mediaId: ['Must be a numeric Meta Graph ID'] })
     }
 
-    const meta = await metaClientFor(c, deps)
+    const phoneNumberId = optionalMediaPhoneNumberId(c)
+    if (phoneNumberId !== undefined && !isGraphId(phoneNumberId)) {
+      return validationError(c, { phoneNumberId: ['Must be a numeric Meta Graph ID'] })
+    }
+
+    const meta = await metaClientFor(c, deps, phoneNumberId)
     if (!meta.ok) return meta.response
-    // A media id is not a phone id, so this stays on the header, then the system token.
-    const accessToken = (await resolveMetaAccessToken(c)) ?? ''
+    // Same resolution as metaClientFor so the CDN fetch uses the line token too.
+    const accessToken = (await resolveMetaAccessToken(c, { phoneNumberId, lineStore: deps.lineStore })) ?? ''
 
     try {
       const url = await meta.value.getMediaUrl(mediaId)
@@ -72,7 +86,12 @@ export function createMediaRouter(deps: GatewayDeps): Hono {
       return validationError(c, { mediaId: ['Must be a numeric Meta Graph ID'] })
     }
 
-    const meta = await metaClientFor(c, deps)
+    const phoneNumberId = optionalMediaPhoneNumberId(c)
+    if (phoneNumberId !== undefined && !isGraphId(phoneNumberId)) {
+      return validationError(c, { phoneNumberId: ['Must be a numeric Meta Graph ID'] })
+    }
+
+    const meta = await metaClientFor(c, deps, phoneNumberId)
     if (!meta.ok) return meta.response
 
     try {
