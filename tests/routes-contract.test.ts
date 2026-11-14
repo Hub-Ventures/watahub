@@ -86,7 +86,7 @@ describe('HTTP route contracts', () => {
       expect(res.status).toBe(500)
       expect(await json(res)).toEqual({
         error:
-          'Missing Meta access token. Set META_SYSTEM_USER_TOKEN, pass X-Meta-Access-Token header, or X-Phone-Number-Id for a connected line.',
+          'Missing Meta access token. Set META_SYSTEM_USER_TOKEN, pass X-Meta-Access-Token header, or name a line connected with POST /v1/onboarding/connect.',
       })
     })
 
@@ -1136,7 +1136,7 @@ describe('HTTP route contracts', () => {
       delete process.env.META_SYSTEM_USER_TOKEN
       const res = await app.request('/v1/onboarding/subscribe', authed(postJson({ wabaId: '456' })))
       expect(res.status).toBe(500)
-      // Subscribe has no phone number ID, so the 500 does not suggest X-Phone-Number-Id
+      // Subscribe has no phone number ID, so the 500 does not suggest a connected line
       expect(await json(res)).toEqual({
         error: 'Missing Meta access token. Set META_SYSTEM_USER_TOKEN or pass X-Meta-Access-Token header.',
       })
