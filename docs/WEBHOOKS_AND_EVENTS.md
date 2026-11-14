@@ -98,7 +98,16 @@ on the delivery ID.
 > [!IMPORTANT]
 > Compute the HMAC over the raw body, before any JSON parsing. Re-serialized JSON changes the bytes and the digest.
 
-TypeScript (Node):
+TypeScript, with the package (Node 20+, Workers, Bun):
+
+```ts
+import { verifySubscriberSignature } from 'watahub'
+
+// rawBody is the request text before JSON.parse; a missing or malformed header answers false
+const valid = await verifySubscriberSignature(rawBody, request.headers.get('x-watahub-signature'), secret)
+```
+
+TypeScript (Node), without the package:
 
 ```ts
 import crypto from 'node:crypto'
@@ -151,8 +160,8 @@ func VerifyWatahubSignature(rawBody []byte, signatureHeader, secret string) bool
 }
 ```
 
-The library exports the signer the gateway uses, `signSubscriberPayload(body, secret)`, if you would rather compare
-against it in a TypeScript backend.
+The library also exports the signer the gateway uses, `signSubscriberPayload(body, secret)`, to build signed
+deliveries in your own tests.
 
 ## 4. Normalized events
 

@@ -27,7 +27,13 @@ export {
   DistributedReplayStore,
   type KeyValueStore,
 } from './services/store-adapters.js'
-export { verifyMetaSignature, signSubscriberPayload, timingSafeEqual, sha256Hex } from './services/crypto.js'
+export {
+  verifyMetaSignature,
+  signSubscriberPayload,
+  verifySubscriberSignature,
+  timingSafeEqual,
+  sha256Hex,
+} from './services/crypto.js'
 export {
   deliverToSubscriber,
   DEFAULT_DELIVERY_POLICY,

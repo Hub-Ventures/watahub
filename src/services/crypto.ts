@@ -46,6 +46,20 @@ export async function signSubscriberPayload(payloadString: string, secret: strin
 }
 
 /**
+ * Verifies the x-watahub-signature header of a delivery, on the subscriber's side.
+ * Counterpart of signSubscriberPayload: sha256=HMAC_SHA256(rawBody, SUBSCRIBER_WEBHOOK_SECRET).
+ * Pass the body exactly as received; re-serialized JSON has a different digest.
+ */
+export function verifySubscriberSignature(
+  rawBody: string,
+  signatureHeader: string | null | undefined,
+  secret: string
+): Promise<boolean> {
+  // The gateway signs its deliveries with the scheme Meta uses for its own
+  return verifyMetaSignature(rawBody, signatureHeader, secret)
+}
+
+/**
  * Constant-time string comparison for secrets (API keys, verify tokens).
  * Both inputs are hashed first so the comparison never short-circuits on
  * length or on the first differing character.
