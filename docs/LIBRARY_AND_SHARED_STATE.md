@@ -103,8 +103,9 @@ reads and writes are separate calls.
 ### Line tokens
 
 `POST /v1/onboarding/connect` writes the business token to the `LineStore`. With the default `MemoryLineStore`, the
-token disappears on restart and, on Workers, exists only in the isolate that handled the call. Pass a
-`DistributedLineStore` when tokens must outlive the instance.
+token disappears on restart. On Workers it would exist only in the isolate that handled the call, so `connect` answers
+`503` there instead; `src/worker.ts` stores lines in KV when `WATAHUB_KV` is bound. Pass a `DistributedLineStore` when
+tokens must outlive the instance.
 
 `LineStore.findByWaba?(wabaId)` returns the line last put for a WABA. `GET /v1/templates` and
 `POST /v1/onboarding/subscribe` use its token when the call sends no `X-Meta-Access-Token`. The method is optional: on
