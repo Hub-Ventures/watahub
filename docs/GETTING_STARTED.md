@@ -148,6 +148,9 @@ When someone writes to your number:
 4. By default (`WEBHOOK_DELIVERY_MODE=sync`) it answers Meta only after your backend answers: `200` when your backend
    accepts it, `503` when it fails or takes longer than 3 seconds, so Meta delivers it again.
 
+If your backend calls an LLM, answer `200` first and do that work in the background, as in
+[Answer fast, work in the background](WEBHOOKS_AND_EVENTS.md#answer-fast-work-in-the-background).
+
 Your backend receives:
 
 ```json

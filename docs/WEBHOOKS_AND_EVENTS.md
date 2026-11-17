@@ -57,13 +57,109 @@ process tracks the task and waits up to 15 seconds for it on `SIGTERM` or `SIGIN
 - Up to 3 attempts, 5 seconds each, waiting 1 and then 2 seconds between them. A final `4xx` stops after the first.
 - Meta already has its `200`, so it never retries. A delivery that fails is lost, except for the gateway log.
 
-Use `sync` unless your backend cannot answer within 3 seconds.
+Keep `sync`, and make your backend answer within 3 seconds. An agent that calls an LLM before it answers takes longer:
+the gateway answers `503`, Meta retries, and the agent gets the same event again. Answer `2xx` at once and do the work
+in the background, as in [Answer fast, work in the background](#answer-fast-work-in-the-background).
+
+`async` is not durable, and it does not fix a slow backend: it turns duplicates into losses. Nothing stores the event.
+If the last attempt fails, about 18 seconds after Meta's request, the event is gone and only the gateway log keeps its
+delivery ID. A gateway restart during the attempts loses it too.
 
 ### Deduplicate on your side
 
 The gateway remembers delivered IDs only inside one Node process or one Worker isolate. Another process or isolate can
 deliver the same body again. Your backend must deduplicate on `x-watahub-delivery-id`, and treat the event as received
 even when it already committed it but the gateway never saw the answer.
+
+### Answer fast, work in the background
+
+In `sync` mode Meta waits while your backend handles the event, and the gateway gives it one attempt of 3 seconds. An
+agent that calls an LLM before it answers runs past that. The gateway answers Meta `503`, Meta sends the same body
+again, and the agent handles the same message several times. The gateway logs each timeout with the fix:
+
+```text
+[watahub] Subscriber did not answer delivery <delivery id> within 3000 ms with WEBHOOK_DELIVERY_MODE=sync; responding 503 so Meta retries and sends the event again. Fix: answer 2xx at once and do the work in the background, see docs/WEBHOOKS_AND_EVENTS.md#answer-fast-work-in-the-background
+```
+
+Answer first, then do the slow work:
+
+1. Verify `x-watahub-signature` over the raw body ([§3](#3-verifying-the-signature)).
+2. Drop the event if you already saw its `x-watahub-delivery-id` or the event's `message.id` (the `wamid`). The second
+   check catches the same message inside a different Meta body.
+3. Record the event, hand the work to a queue or `waitUntil`, and answer `200` at once.
+4. Call the LLM and reply with `POST /v1/messages`.
+
+After your `200`, neither the gateway nor Meta sends the event again. Record it before you answer, so work that fails
+in the background can be retried from your record.
+
+**Cloudflare Workers.** `ctx.waitUntil` keeps the Worker running for up to 30 seconds after the response. For longer
+work, or work you want retried, send the event to a Cloudflare Queue instead.
+
+```ts
+import { verifySubscriberSignature, type SubscriberPayload, type WatahubNormalizedEvent } from 'watahub'
+
+interface Env {
+  SUBSCRIBER_WEBHOOK_SECRET: string
+  WATAHUB_URL: string // Your gateway, e.g. https://gateway.example.com
+  WATAHUB_API_KEY: string
+}
+
+// Your storage. claim() records the key and answers false if it was already there. Back it with a unique key in
+// your database or a Durable Object: KV is eventually consistent and can let a duplicate through.
+declare const store: {
+  seen(key: string): Promise<boolean>
+  claim(key: string, value?: unknown): Promise<boolean>
+}
+declare function askLlm(text: string): Promise<string>
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    // 1. Verify over the raw body, before JSON.parse
+    const rawBody = await request.text()
+    const signature = request.headers.get('x-watahub-signature')
+    if (!(await verifySubscriberSignature(rawBody, signature, env.SUBSCRIBER_WEBHOOK_SECRET))) {
+      return new Response('Invalid signature', { status: 401 })
+    }
+
+    // 2. A delivery you already handled
+    const deliveryId = request.headers.get('x-watahub-delivery-id') ?? ''
+    if (await store.seen(`delivery:${deliveryId}`)) return new Response(null, { status: 200 })
+
+    const { events } = JSON.parse(rawBody) as SubscriberPayload
+    for (const event of events) {
+      if (event.type !== 'message' || !event.message) continue
+      // 2. A message you already have, maybe inside a different Meta body; 3. otherwise recorded here
+      if (!(await store.claim(`message:${event.message.id}`, event))) continue
+      // 3. Hand off: runs after the response
+      ctx.waitUntil(reply(event, env))
+    }
+
+    // 3. Answer at once
+    await store.claim(`delivery:${deliveryId}`)
+    return new Response(null, { status: 200 })
+  },
+}
+
+// 4. Call the LLM, then reply through the gateway
+async function reply(event: WatahubNormalizedEvent, env: Env): Promise<void> {
+  const message = event.message!
+  const answer = await askLlm(message.text ?? '')
+  await fetch(`${env.WATAHUB_URL}/v1/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.WATAHUB_API_KEY}` },
+    body: JSON.stringify({
+      // A user who hides their number arrives with only a BSUID, which `to` accepts
+      to: message.from ?? message.fromUserId,
+      phoneNumberId: event.phoneNumberId,
+      kind: 'text',
+      text: { body: answer },
+    }),
+  })
+}
+```
+
+**Node.** Put the event on a queue (a jobs table, BullMQ, SQS) and answer `200`. Do not leave a promise running after
+the response: a restart or a crash loses it, and nobody sends the event again.
 
 ## 2. What your backend receives
 

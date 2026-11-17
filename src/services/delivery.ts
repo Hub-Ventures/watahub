@@ -46,6 +46,11 @@ export interface DeliveryResult {
   delivered: boolean
   attempts: number
   status?: number
+  /**
+   * `true` when the last attempt ended on the policy timeout (`TimeoutError` from `AbortSignal.timeout`).
+   * Absent after a network error or an HTTP status.
+   */
+  timedOut?: boolean
 }
 
 /** Collaborators, all optional: defaults are the global fetch, a real timer and the console. */
@@ -85,6 +90,7 @@ export async function deliverToSubscriber(
   }
 
   let lastStatus: number | undefined
+  let lastTimedOut = false
   for (let attempt = 1; attempt <= policy.maxAttempts; attempt++) {
     try {
       const res = await fetchFn(request.url, {
@@ -96,6 +102,7 @@ export async function deliverToSubscriber(
         signal: AbortSignal.timeout(policy.timeoutMs),
       })
       lastStatus = res.status
+      lastTimedOut = false
       // Release the connection; the subscriber's response body is not used
       await res.body?.cancel().catch(() => undefined)
 
@@ -106,6 +113,8 @@ export async function deliverToSubscriber(
       }
     } catch (err) {
       lastStatus = undefined
+      // AbortSignal.timeout rejects the fetch with a TimeoutError; a network failure is a TypeError
+      lastTimedOut = errorName(err) === 'TimeoutError'
       logger.error(`[watahub] Subscriber delivery ${request.deliveryId} attempt ${attempt} failed: ${errorName(err)}`)
     }
 
@@ -118,5 +127,7 @@ export async function deliverToSubscriber(
     `[watahub] Giving up on subscriber delivery ${request.deliveryId} after ${policy.maxAttempts} attempts` +
       (lastStatus ? ` (last HTTP ${lastStatus})` : '')
   )
-  return { delivered: false, attempts: policy.maxAttempts, status: lastStatus }
+  const result: DeliveryResult = { delivered: false, attempts: policy.maxAttempts, status: lastStatus }
+  if (lastTimedOut) result.timedOut = true
+  return result
 }
