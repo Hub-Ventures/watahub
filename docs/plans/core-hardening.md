@@ -1,7 +1,9 @@
 # Core hardening plan
 
-Status: approved 2026-11-17. The owner asked to run it in parallel sessions, one per finding. D1, D2 and D3 follow
-the recommendations below. Written 2026-11-17 after a review of the core at `61f1005`.
+Status: findings 1, 3, 4 and 5 implemented and merged into `claude/core-hardening-5dec65` on 2026-11-17 (see
+[Parallel work](#parallel-work)). Not pushed. Finding 2 is still in its own branch. The owner approved the plan on
+2026-11-17 and asked to run it in parallel sessions, one per finding. D1, D2 and D3 follow the recommendations below.
+Written 2026-11-17 after a review of the core at `61f1005`.
 
 Five findings. Finding 2 is in progress in a separate branch. This plan implements 1, 3, 4 and 5, one session and
 one commit per finding, with `pnpm check` green after each. The branches merge into `claude/core-hardening-5dec65`
@@ -354,12 +356,24 @@ Behavior only: rate-limit keys written by `DistributedRateLimitStore` live at le
 One session per finding, each in its own git worktree and branch, cut from the commit that adds this plan. Each
 session makes one commit on its own branch, runs `pnpm check` green, and does not push or open a PR.
 
-| Finding | Commit |
-| :--- | :--- |
-| 1 | `feat(workers): store line tokens in KV and fail closed on connect` |
-| 3 | `feat(webhook): name the fix when sync delivery times out` |
-| 4 | `feat(tokens): use stored line tokens for WABA routes and proxy media` |
-| 5 | `fix(stores): never ask a key-value store for a TTL below 60 s` |
+| Finding | Commit | Landed |
+| :--- | :--- | :--- |
+| 1 | `feat(workers): store line tokens in KV and fail closed on connect` | `aed6ad1` |
+| 3 | `feat(webhook): name the fix when sync delivery times out` | `01fa488` |
+| 4 | `feat(tokens): use stored line tokens for WABA routes and proxy media` | `60d2c3c` |
+| 5 | `fix(stores): never ask a key-value store for a TTL below 60 s` | `d59c1e2` |
+
+The four branches merged with no conflicts. After the merge, `pnpm check` passed with 504 tests, 99.75% statements,
+95.39% branches and 100% functions.
+
+Still open:
+
+- The owner creates the KV namespace (finding 1, "Manual steps"). Until then, `connect` answers `503` on
+  `api.watahub.dev`.
+- Finding 2 merges from its own branch. Its rebase touches `src/routes/webhook.ts` next to finding 3's log lines,
+  outside the env block.
+- `claude/oss-docs-no-ee` (a separate docs task, on top of finding 1) renames
+  `docs/MULTI_TENANCY_AND_EXTENSIONS.md`. It conflicts with the edits findings 4 and 5 made to that file.
 
 File ownership, so the merges stay clean. A session touches only its own files and sections. A file listed for two
 findings is split by section, and each stays inside its section.
