@@ -30,7 +30,7 @@ and the `/mcp` endpoint also live there, and a person can reply from the Inbox. 
 One [Hono](https://hono.dev) app. It runs on Cloudflare Workers or Node.js 20+, and the same code is an importable
 TypeScript library. MIT licensed, by [Hub Ventures](https://github.com/Hub-Ventures).
 
-**Current release:** `watahub@0.2.0` on npm (2026-11-08); `main` carries the same version.
+**Current release:** `watahub@0.2.1` on npm (2026-11-17); `main` carries the same version.
 
 ```mermaid
 flowchart LR
@@ -94,7 +94,7 @@ curl http://localhost:3000/health
 ```
 
 ```json
-{ "status": "ok", "service": "watahub", "version": "0.2.0", "timestamp": "2026-11-08T15:30:00.000Z" }
+{ "status": "ok", "service": "watahub", "version": "0.2.1", "timestamp": "2026-11-17T15:30:00.000Z" }
 ```
 
 Send a message:
@@ -197,7 +197,7 @@ Each forward carries:
 | `x-watahub-signature` | `sha256=` and the lowercase hex HMAC-SHA256 of the exact body, keyed with `SUBSCRIBER_WEBHOOK_SECRET` |
 | `x-watahub-delivery-id` | SHA-256 of Meta's raw body: the same on every retry and Meta redelivery |
 | `Idempotency-Key` | Same value as `x-watahub-delivery-id` |
-| `User-Agent` | `Watahub-Gateway/0.2.0` |
+| `User-Agent` | `Watahub-Gateway/0.2.1` |
 
 > [!IMPORTANT]
 > Deduplicate on `x-watahub-delivery-id`. The gateway remembers delivered IDs only inside one Node process or one

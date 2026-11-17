@@ -72,7 +72,7 @@ No middleman markup: Meta's conversation fees are paid to Meta directly.
 - Languages: English at `/`, Spanish at `/es/`, Portuguese at `/pt/`; each page links to the other two and declares
   `hreflang` (owner, 2026-11-08). With no scripts, there is no automatic language detection.
 - Production deploys only from `main` and only on the owner's instruction.
-- Version today: core 0.2.0.
+- Version today: core 0.2.1.
 
 ## Brand Commitments
 
