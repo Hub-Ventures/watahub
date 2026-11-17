@@ -376,6 +376,7 @@ findings is split by section, and each stays inside its section.
 | `docs/GETTING_STARTED.md` | 1: §8. 3: §7 |
 | `docs/API_REFERENCE.md` | 1: the `connect` section. 4: §1.3, templates, subscribe and the proxy table |
 | `docs/MULTI_TENANCY_AND_EXTENSIONS.md` | 1: "Cloudflare Workers with KV". 4: "Line tokens". 5: the adapter table |
+| `tests/routes-contract.test.ts` | 4: the expected `500` message in "subscribe validates and needs a token" only (changed on purpose: the WABA-route message now names `connect`). 3: the `async` give-up cases, if it needs them |
 | `tests/seams.test.ts` | Prefer new test files. If an existing case must change: 4 owns the `DistributedLineStore` cases, 5 the `DistributedReplayStore` and `DistributedRateLimitStore` cases |
 | New test files | Whoever creates them, named after the finding |
 | This plan | The coordinating session only |
