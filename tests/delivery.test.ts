@@ -420,7 +420,13 @@ describe('POST /webhook async delivery that fails for good', () => {
     expect(res.status).toBe(200)
 
     const gaveUp = () => errors.some((line) => line.includes(ONLY_IN_LOG))
-    for (let step = 0; step < 40 && !gaveUp(); step++) await vi.advanceTimersByTimeAsync(250)
+    // Signing the body runs on WebCrypto's thread pool, outside the fake clock, and can take a while on a slow
+    // runner: yield to the real event loop on every step and stop on a real deadline, not after a fixed step count
+    const deadline = Date.now() + 10_000
+    while (!gaveUp() && Date.now() < deadline) {
+      await vi.advanceTimersByTimeAsync(250)
+      await new Promise<void>((resolve) => setImmediate(resolve))
+    }
 
     expect(fetchFn).toHaveBeenCalledTimes(3)
     const lines = errors.filter((line) => line.includes(ONLY_IN_LOG))
