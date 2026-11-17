@@ -1,7 +1,6 @@
-# Extensions and Enterprise Edition
+# Library and shared state
 
-How to use the core as a library, how to share its state across processes or Worker isolates, and how Watahub
-Enterprise Edition builds on it.
+How to use the core as a library, and how to share its state across processes or Worker isolates.
 
 ## 1. The core as a library
 
@@ -47,7 +46,7 @@ Any field of `GatewayDeps` replaces the default:
 | Meta | `MetaClient`, `MetaClientConfig`, `MetaGraphClient` |
 | Webhooks | `verifyMetaSignature`, `normalizeMetaWebhook`, `extractPhoneNumberId`, `hasWebhookChanges`, `isStale`, `DEFAULT_WEBHOOK_MAX_AGE_SECONDS`, `DeliveryIdCache` |
 | Delivery | `deliverToSubscriber`, `DEFAULT_DELIVERY_POLICY`, `signSubscriberPayload`, `verifySubscriberSignature` and the `Delivery*` types |
-| Stores | `MemoryLineStore`, `DistributedLineStore`, `DistributedReplayStore`, `DistributedRateLimitStore` and the `LineStore`, `ReplayStore`, `RateLimitStore`, `StoredLine`, `KeyValueStore` types |
+| Stores | `MemoryLineStore`, `DistributedLineStore`, `DistributedReplayStore`, `DistributedRateLimitStore`, `cloudflareKvStore` and the `LineStore`, `ReplayStore`, `RateLimitStore`, `StoredLine`, `KeyValueStore`, `KvNamespaceLike` types |
 | Utilities | `timingSafeEqual`, `sha256Hex`, `redactSecrets` |
 | Types | Every type in `src/types/gateway.ts` (requests, normalized events, `SubscriberPayload`) and `src/types/meta.ts` (Meta's wire format) |
 
@@ -104,8 +103,9 @@ reads and writes are separate calls.
 ### Line tokens
 
 `POST /v1/onboarding/connect` writes the business token to the `LineStore`. With the default `MemoryLineStore`, the
-token disappears on restart and, on Workers, exists only in the isolate that handled the call. Pass a
-`DistributedLineStore` when tokens must outlive the instance.
+token disappears on restart. On Workers it would exist only in the isolate that handled the call, so `connect` answers
+`503` there instead; `src/worker.ts` stores lines in KV when `WATAHUB_KV` is bound. Pass a `DistributedLineStore` when
+tokens must outlive the instance.
 
 `LineStore.findByWaba?(wabaId)` returns the line last put for a WABA. `GET /v1/templates` and
 `POST /v1/onboarding/subscribe` use its token when the call sends no `X-Meta-Access-Token`. The method is optional: on
@@ -153,52 +153,6 @@ export default {
 ```
 
 KV is eventually consistent, so another location can miss a write for up to about 60 seconds. That is enough for line
-tokens and narrows duplicate deliveries, but your backend must still deduplicate on `x-watahub-delivery-id`. KV also allows about
-one write per second to the same key, which makes it a poor fit for rate limits. For those, use a store with atomic
-counters, or Cloudflare's own rate limiting rules in front of the Worker.
-
-## 3. Enterprise Edition
-
-Watahub Enterprise Edition (EE) is Hub Ventures' private, commercially licensed multi-tenant gateway. It runs on
-Cloudflare Workers with one SQLite Durable Object. It uses the core as a dependency and never patches or forks it:
-behavior changes only through what `createApp` accepts.
-
-```mermaid
-flowchart LR
-  tenant["Tenant API key"] --> guard["EE tenant guard"]
-  guard --> core["createApp(coreOverrides)"]
-  core --> metaGraph["Meta Graph API"]
-  meta["Meta webhooks"] --> eehook["EE /webhook"]
-  eehook --> outbox["Durable outbox"]
-  outbox --> receivers["Tenant endpoints"]
-```
-
-How EE uses the core:
-
-- It installs the published `watahub` package at an exact version.
-- Its tenant guard authenticates the tenant's API key and checks that every phone, WABA and media ID belongs to that
-  tenant. Only then does it forward the request to the core app, with an internal gateway key and the Meta app
-  credentials as bindings.
-- Through `coreOverrides` it injects its own `fetch` (an outbound allowlist), `createMetaClient`, a silent `logger` and
-  a `lineStore` backed by encrypted records. It turns off the core's per-isolate `RATE_LIMIT_PER_MINUTE`, because EE
-  rate-limits per tenant.
-- It rejects the operator fallbacks (`META_SYSTEM_USER_TOKEN`, `META_DEFAULT_PHONE_NUMBER_ID`,
-  `META_DEFAULT_WABA_ID`), so every call uses the tenant's own token.
-- It closes the core's `POST /v1/onboarding/exchange` and `POST /v1/onboarding/override-callback`.
-- It serves `/webhook` itself with the core's `verifyMetaSignature`, `isStale` and `normalizeMetaWebhook`, and writes
-  each delivery to a durable outbox in the same transaction as its replay receipt.
-
-What only EE has:
-
-| Area | Enterprise Edition |
-| :--- | :--- |
-| Tenancy | Accounts with their own API keys, phones, WABAs and customers |
-| Token custody | Meta tokens and subscriber secrets sealed in the Durable Object; tenants only hold revocable Watahub API keys |
-| Delivery | Durable outbox with retries from Durable Object alarms; per-phone destinations and developer webhooks (`X-Webhook-Signature`, `X-Idempotency-Key`) |
-| Onboarding | A hosted Embedded Signup page and setup links for customers |
-| Interfaces | Superadmin console; installable account panel with overview, inbox, numbers, webhooks, logs and API keys; Web Push for new inbox messages |
-| Billing | Prepaid credit; an account that needs payment is paused and cannot send or connect numbers |
-| Tooling | CLI and an MCP endpoint over the same API |
-
-Because EE builds on the exports and on `GatewayDeps`, a change to either is a change to EE's contract. Call it out in
-the pull request and in the release.
+tokens and narrows duplicate deliveries, but your backend must still deduplicate on `x-watahub-delivery-id`. KV also
+allows about one write per second to the same key, which makes it a poor fit for rate limits. For those, use a store
+with atomic counters, or Cloudflare's own rate limiting rules in front of the Worker.

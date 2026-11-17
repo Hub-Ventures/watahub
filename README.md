@@ -250,7 +250,7 @@ const app = createApp({ lineStore: new DistributedLineStore(myKeyValueStore) })
 the clock, the logger, and the replay, rate-limit and line stores. The package also exports the pieces on their own:
 `MetaClient`, `normalizeMetaWebhook`, `verifyMetaSignature`, `signSubscriberPayload`, `verifySubscriberSignature`, `deliverToSubscriber`, `isStale`,
 `DeliveryIdCache`, the `Distributed*Store` adapters and every request and event type. See
-[Extensions and Enterprise Edition](docs/MULTI_TENANCY_AND_EXTENSIONS.md).
+[Library and shared state](docs/LIBRARY_AND_SHARED_STATE.md).
 
 > [!WARNING]
 > The default stores live in memory, one per `createApp()`. On Workers, the stock `wrangler.jsonc` deploys
@@ -262,23 +262,8 @@ the clock, the logger, and the replay, rate-limit and line stores. The package a
 ## Core and Enterprise Edition
 
 This repository is the open core: one operator, one Meta app, one API key, one subscriber and any number of phone
-lines. Hub Ventures also builds **Watahub Enterprise Edition**, a private, commercially licensed multi-tenant gateway
-on Cloudflare Workers and a SQLite Durable Object. EE installs the published `watahub` package at an exact version and
-wraps it; it never patches or forks it. It mounts `createApp(coreOverrides)` behind its tenant guard, injecting its own
-`fetch`, Meta client, logger and line store. It runs its own `/webhook` with the core's `verifyMetaSignature`,
-`normalizeMetaWebhook` and `isStale`. A change to an exported function, type or `GatewayDeps` port is therefore a
-change to EE's contract.
-
-| | Core (this repository, MIT) | Enterprise Edition (private) |
-| :--- | :--- | :--- |
-| Accounts | One operator | Many tenants, each with its own API keys, phones and WABAs |
-| Meta tokens | Request header, line store or `META_SYSTEM_USER_TOKEN` | Custody: tokens stay sealed in the gateway; tenants hold only revocable Watahub API keys |
-| Authorization | Anyone with the API key reaches every line | Every phone, WABA and media ID is checked against the tenant |
-| Webhook delivery | One signed POST per Meta delivery, `sync` or `async` | Durable outbox with retries, per-phone destinations and developer webhooks (`X-Webhook-Signature`, `X-Idempotency-Key`) |
-| Onboarding | `/v1/onboarding/*` | Core `connect` for phones an administrator assigned, a hosted connect page and setup links; core `exchange` and `override-callback` are closed |
-| Interface | HTTP API and library | Superadmin console and an installable account panel with the Inbox, logs and Web Push |
-| Billing | None | Prepaid credit; a paused account cannot send or connect numbers |
-| Tooling | | CLI and the `/mcp` endpoint |
+lines. Watahub Enterprise Edition, the hosted multi-tenant account, is a separate commercial product by Hub Ventures:
+write to [hola@elhub.ventures](mailto:hola@elhub.ventures).
 
 ## Documentation
 
@@ -289,7 +274,7 @@ change to EE's contract.
 | [Webhooks and events](docs/WEBHOOKS_AND_EVENTS.md) | Delivery modes, headers, signature checks, event catalog |
 | [Architecture](docs/ARCHITECTURE.md) | Middleware order, ports, retries and error classification |
 | [Deployment](docs/DEPLOYMENT.md) | Cloudflare Workers, Node and Docker, reverse proxy, checklist |
-| [Extensions and Enterprise Edition](docs/MULTI_TENANCY_AND_EXTENSIONS.md) | Library use, shared stores, how EE wraps the core |
+| [Library and shared state](docs/LIBRARY_AND_SHARED_STATE.md) | Library use, exports, shared stores, Workers with KV |
 | [Contributing](CONTRIBUTING.md) | Setup, checks, code layout, conventions |
 
 ## Development

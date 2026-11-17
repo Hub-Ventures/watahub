@@ -54,7 +54,7 @@ No middleman markup: Meta's conversation fees are paid to Meta directly.
 - Self-host runtimes: Cloudflare Workers and Node (`pnpm run dev:node`). Bun and other runtimes are not tested (CI targets
   Node 20 and 22), so no surface claims them.
 - Docs live in the repository: `docs/GETTING_STARTED.md`, `docs/API_REFERENCE.md`, `docs/WEBHOOKS_AND_EVENTS.md`,
-  `docs/ARCHITECTURE.md`, `docs/MULTI_TENANCY_AND_EXTENSIONS.md`, `docs/DEPLOYMENT.md`.
+  `docs/ARCHITECTURE.md`, `docs/LIBRARY_AND_SHARED_STATE.md`, `docs/DEPLOYMENT.md`.
 - Sibling surfaces: the account panel `app.watahub.dev` and its hosted connect page (repo `watahub-ee`), and the
   superadmin console `cloud.watahub.dev`, which keeps its own look by the owner's decision.
 
