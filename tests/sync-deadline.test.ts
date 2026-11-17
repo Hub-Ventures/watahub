@@ -1,8 +1,12 @@
+import { readFileSync } from 'node:fs'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApp } from '../src/index.js'
-import { signSubscriberPayload } from '../src/services/crypto.js'
+import { sha256Hex, signSubscriberPayload } from '../src/services/crypto.js'
 import { DEFAULT_DELIVERY_POLICY, SYNC_DELIVERY_POLICY } from '../src/services/delivery.js'
 import { DeliveryIdCache } from '../src/services/replay.js'
+
+/** Where the sync timeout log sends the reader */
+const ANSWER_FAST_ANCHOR = 'docs/WEBHOOKS_AND_EVENTS.md#answer-fast-work-in-the-background'
 
 /**
  * Synchronous delivery runs inside Meta's request, so it gets one short attempt
@@ -74,7 +78,7 @@ describe('synchronous delivery deadline', () => {
     expect(DEFAULT_DELIVERY_POLICY).toMatchObject({ maxAttempts: 3, timeoutMs: 5_000 })
   })
 
-  it('answers 503 within the deadline when the subscriber does not answer, after a single attempt', async () => {
+  it('answers 503 within the deadline when the subscriber does not answer, after a single attempt, and logs the fix', async () => {
     // A subscriber that never answers: the request only ends when its signal aborts
     const fetchSpy = vi.fn(
       (_input: RequestInfo | URL, init?: RequestInit) =>
@@ -82,10 +86,16 @@ describe('synchronous delivery deadline', () => {
           init?.signal?.addEventListener('abort', () => reject(new DOMException('timed out', 'TimeoutError')))
         })
     )
-    const app = createApp({ fetch: fetchSpy as unknown as typeof fetch, replayStore: new DeliveryIdCache() })
+    const errors: string[] = []
+    const app = createApp({
+      fetch: fetchSpy as unknown as typeof fetch,
+      replayStore: new DeliveryIdCache(),
+      logger: { info: () => undefined, error: (message) => errors.push(message) },
+    })
+    const raw = body('slow')
 
     const started = Date.now()
-    const res = await post(app, body('slow'))
+    const res = await post(app, raw)
     const elapsed = Date.now() - started
 
     expect(res.status).toBe(503)
@@ -93,7 +103,30 @@ describe('synchronous delivery deadline', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1)
     expect(elapsed).toBeGreaterThanOrEqual(2_900)
     expect(elapsed).toBeLessThan(4_500)
+
+    // The failure line names the cause, the fix and where the pattern is documented
+    const failure = errors.at(-1)
+    expect(failure).toContain(await sha256Hex(raw))
+    expect(failure).toContain('did not answer')
+    expect(failure).toContain('within 3000 ms with WEBHOOK_DELIVERY_MODE=sync')
+    expect(failure).toContain('responding 503 so Meta retries')
+    expect(failure).toContain('answer 2xx at once and do the work in the background')
+    expect(failure).toContain(ANSWER_FAST_ANCHOR)
   }, 10_000)
+
+  it('points the timeout log at a heading that exists in the webhooks docs', () => {
+    const [file, anchor] = ANSWER_FAST_ANCHOR.split('#')
+    const markdown = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8')
+    // GitHub's anchor: lowercase, punctuation dropped, spaces to hyphens
+    const anchors = [...markdown.matchAll(/^#{1,6} (.+)$/gm)].map(([, heading]) =>
+      heading
+        .trim()
+        .toLowerCase()
+        .replace(/[^\w\- ]/g, '')
+        .replace(/ /g, '-')
+    )
+    expect(anchors).toContain(anchor)
+  })
 
   it.each([400, 403, 404, 422])(
     'acknowledges a final %i from the subscriber with 200, logs it and marks the body seen',
@@ -127,15 +160,27 @@ describe('synchronous delivery deadline', () => {
 
   it('does not retry a 5xx inside the request: one attempt, then 503 so Meta retries', async () => {
     const fetchSpy = vi.fn().mockResolvedValue(new Response('down', { status: 500 }))
-    const app = createApp({ fetch: fetchSpy as unknown as typeof fetch, replayStore: new DeliveryIdCache() })
+    const errors: string[] = []
+    const app = createApp({
+      fetch: fetchSpy as unknown as typeof fetch,
+      replayStore: new DeliveryIdCache(),
+      logger: { info: () => undefined, error: (message) => errors.push(message) },
+    })
+    const raw = body('down')
 
     const started = Date.now()
-    const res = await post(app, body('down'))
+    const res = await post(app, raw)
 
     expect(res.status).toBe(503)
     expect(await res.json()).toMatchObject({ attempts: 1, subscriberStatus: 500 })
     expect(fetchSpy).toHaveBeenCalledTimes(1)
     // No backoff waits (1 s + 2 s before)
     expect(Date.now() - started).toBeLessThan(500)
+
+    // A 5xx is not a timeout: the line stays as it was, without the background-work advice
+    expect(errors.at(-1)).toBe(
+      `[watahub] Delivery to subscriber failed for ${await sha256Hex(raw)} after 1 attempts; responding 503 so Meta retries`
+    )
+    expect(errors.some((line) => line.includes(ANSWER_FAST_ANCHOR))).toBe(false)
   })
 })

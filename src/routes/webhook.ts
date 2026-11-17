@@ -182,7 +182,14 @@ export function createWebhookRouter(deps: GatewayDeps): Hono {
           logger: deps.logger,
         })
           .then(async (result) => {
-            if (result.delivered) await deps.replayStore.remember(deliveryId, deps.now(), replayTtl)
+            if (result.delivered) {
+              await deps.replayStore.remember(deliveryId, deps.now(), replayTtl)
+            } else if (!isFinalRejection(result.status)) {
+              // Meta already has its 200: nothing will deliver this event again
+              deps.logger.error(
+                `[watahub] Delivery ${deliveryId} failed for good; WEBHOOK_DELIVERY_MODE=async does not ask Meta to retry, so the event is only in this log`
+              )
+            }
             return result.delivered
           })
           .catch((err: unknown) => {
@@ -216,9 +223,17 @@ export function createWebhookRouter(deps: GatewayDeps): Hono {
       }
 
       if (!result.delivered) {
-        deps.logger.error(
-          `[watahub] Delivery to subscriber failed for ${deliveryId} after ${result.attempts} attempts; responding 503 so Meta retries`
-        )
+        if (result.timedOut) {
+          // Usually an agent doing slow work (an LLM call) inside the webhook: each Meta retry repeats it
+          deps.logger.error(
+            `[watahub] Subscriber did not answer delivery ${deliveryId} within ${SYNC_DELIVERY_POLICY.timeoutMs} ms with WEBHOOK_DELIVERY_MODE=sync; responding 503 so Meta retries and sends the event again. ` +
+              'Fix: answer 2xx at once and do the work in the background, see docs/WEBHOOKS_AND_EVENTS.md#answer-fast-work-in-the-background'
+          )
+        } else {
+          deps.logger.error(
+            `[watahub] Delivery to subscriber failed for ${deliveryId} after ${result.attempts} attempts; responding 503 so Meta retries`
+          )
+        }
         const response = c.json(
           {
             error: 'Subscriber delivery failed',

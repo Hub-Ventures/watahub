@@ -190,6 +190,12 @@ For every `POST /webhook`, the gateway:
 | `sync` (default) | After your agent answers. One attempt, 3 s timeout | `503`, so Meta retries the same body. A final `4xx` from your agent (not 408, 425 or 429) is acknowledged with `200` and the event stays only in the gateway log |
 | `async` | At once | Up to 3 attempts in the background (5 s each, 1 s and 2 s apart); a final `4xx` stops at the first. Meta is not asked to retry, so a failed event stays only in the gateway log |
 
+An agent that calls an LLM before it answers takes more than 3 seconds, so in `sync` mode Meta retries and the agent
+gets the same event again. Keep `sync` and answer fast: verify the signature, drop duplicates, record the event, answer
+`200`, then call the LLM in the background and reply with `POST /v1/messages`. A `sync` timeout logs this fix. `async`
+is not the way out: it is not durable. See
+[Answer fast, work in the background](docs/WEBHOOKS_AND_EVENTS.md#answer-fast-work-in-the-background).
+
 Each forward carries:
 
 | Header | Value |
