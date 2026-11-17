@@ -23,7 +23,8 @@ the rest of the state, build your own entry with `createApp({ ... })` and the `D
 
 > [!WARNING]
 > The `wrangler.jsonc` in this repository deploys Hub Ventures' own instance: Worker `watahub` on the custom domain
-> `api.watahub.dev`. Before you deploy, change `name` and replace or remove `routes`.
+> `api.watahub.dev`, with its KV namespace. Before you deploy, change `name`, replace or remove `routes`, and replace
+> the `kv_namespaces` `id` with your own (step 2).
 
 1. Install dependencies and sign in to Cloudflare:
 
@@ -38,7 +39,7 @@ the rest of the state, build your own entry with `createApp({ ... })` and the `D
    pnpm exec wrangler kv namespace create WATAHUB_KV
    ```
 
-   Put the printed `id` in the `kv_namespaces` block of `wrangler.jsonc` and uncomment the block. `src/worker.ts`
+   Put the printed `id` in the `kv_namespaces` block of `wrangler.jsonc`, binding `WATAHUB_KV`. `src/worker.ts`
    stores the business token of each line connected with `POST /v1/onboarding/connect` there, so every isolate reads
    it. A new line can take up to about 60 s to be visible in other locations. Without the binding, the Worker logs an
    error that names `WATAHUB_KV`, and `connect` answers `503` before it calls Meta. The other routes still work.

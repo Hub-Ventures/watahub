@@ -370,8 +370,8 @@ The four branches merged with no conflicts. After the merge, `pnpm check` passed
 
 Still open:
 
-- The owner creates the KV namespace (finding 1, "Manual steps"). Until then, `connect` answers `503` on
-  `api.watahub.dev`.
+- Done after #74: the owner created the KV namespace (finding 1, "Manual steps"), and `wrangler.jsonc` binds it as
+  `WATAHUB_KV`. It takes effect on the next deploy.
 - Finding 2 landed on `main` in #71 and merged into this branch with no conflicts. In `src/routes/webhook.ts`, the
   only difference from `main` is finding 3's two log lines.
 - `claude/oss-docs-no-ee` (a separate docs task, on top of finding 1) renames
