@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import app, { createApp, MemoryLineStore, type LineStore } from '../src/index.js'
+import { Hono } from 'hono'
+import app, {
+  createApp,
+  createDefaultDeps,
+  MemoryLineStore,
+  resolveMetaAccessToken,
+  type LineStore,
+} from '../src/index.js'
+import type { MetaTokenSource } from '../src/http/auth.js'
+import { metaClientFor, MISSING_META_TOKEN } from '../src/http/meta.js'
 import { resetRateLimits } from '../src/http/rate-limit.js'
 import type { Logger } from '../src/logger.js'
 
@@ -151,6 +160,11 @@ describe('line connect token custody', () => {
 
   function graphOk(body: unknown, status = 200) {
     return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+  }
+
+  /** Authorization header of the nth stubbed fetch */
+  function authorization(fetchSpy: { mock: { calls: unknown[][] } }, call: number) {
+    return new Headers((fetchSpy.mock.calls[call][1] as RequestInit).headers).get('authorization')
   }
 
   beforeEach(() => {
@@ -359,10 +373,13 @@ describe('line connect token custody', () => {
     )
   })
 
-  it('does not use a line token for templates or subscribe, which have no phone id', async () => {
-    vi.spyOn(globalThis, 'fetch')
+  it('uses the WABA line token for templates and subscribe, with no system token', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(graphOk({ access_token: biz }))
       .mockResolvedValueOnce(graphOk({ success: true }))
+      .mockResolvedValueOnce(graphOk({ success: true }))
+      .mockResolvedValueOnce(graphOk({ data: [], paging: {} }))
       .mockResolvedValueOnce(graphOk({ success: true }))
     const gateway = createApp()
     await gateway.request('/v1/onboarding/connect', {
@@ -370,13 +387,169 @@ describe('line connect token custody', () => {
       headers: auth,
       body: JSON.stringify(connectBody),
     })
-    expect((await gateway.request(`/v1/templates/${wabaId}`, { headers: { 'X-API-Key': KEY } })).status).toBe(500)
+    const templates = await gateway.request(`/v1/templates/${wabaId}`, { headers: { 'X-API-Key': KEY } })
+    expect(templates.status).toBe(200)
+    expect(authorization(fetchSpy, 3)).toBe(`Bearer ${biz}`)
     const subscribe = await gateway.request('/v1/onboarding/subscribe', {
       method: 'POST',
       headers: auth,
       body: JSON.stringify({ wabaId }),
     })
+    expect(subscribe.status).toBe(200)
+    expect(authorization(fetchSpy, 4)).toBe(`Bearer ${biz}`)
+  })
+
+  it('prefers the WABA line token over META_SYSTEM_USER_TOKEN, and the header over both', async () => {
+    const store = new MemoryLineStore()
+    store.put({ phoneNumberId, wabaId, accessToken: biz })
+    process.env.META_SYSTEM_USER_TOKEN = 'SYS_LOSES'
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(() => Promise.resolve(graphOk({ data: [] })))
+    const gateway = createApp({ lineStore: store })
+    await gateway.request(`/v1/templates?wabaId=${wabaId}`, { headers: { 'X-API-Key': KEY } })
+    expect(authorization(fetchSpy, 0)).toBe(`Bearer ${biz}`)
+    await gateway.request(`/v1/templates/${wabaId}`, { headers: { 'X-API-Key': KEY, 'X-Meta-Access-Token': 'HDR' } })
+    expect(authorization(fetchSpy, 1)).toBe('Bearer HDR')
+  })
+
+  it('uses META_DEFAULT_WABA_ID to find the line when templates name no WABA', async () => {
+    const store = new MemoryLineStore()
+    store.put({ phoneNumberId, wabaId, accessToken: biz })
+    process.env.META_DEFAULT_WABA_ID = wabaId
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(graphOk({ data: [] }))
+    const res = await createApp({ lineStore: store }).request('/v1/templates', { headers: { 'X-API-Key': KEY } })
+    expect(res.status).toBe(200)
+    expect(authorization(fetchSpy, 0)).toBe(`Bearer ${biz}`)
+  })
+
+  it('answers 500 naming connect for a WABA with no connected line, without calling Meta', async () => {
+    const store = new MemoryLineStore()
+    store.put({ phoneNumberId, wabaId, accessToken: biz })
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const gateway = createApp({ lineStore: store })
+    const missing = {
+      error:
+        'Missing Meta access token. Set META_SYSTEM_USER_TOKEN, pass X-Meta-Access-Token header, or connect a line of this WABA with POST /v1/onboarding/connect.',
+    }
+    const templates = await gateway.request('/v1/templates/770000000000009', { headers: { 'X-API-Key': KEY } })
+    expect(templates.status).toBe(500)
+    expect(await templates.json()).toEqual(missing)
+    const subscribe = await gateway.request('/v1/onboarding/subscribe', {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ wabaId: '770000000000009' }),
+    })
     expect(subscribe.status).toBe(500)
+    expect(await subscribe.json()).toEqual(missing)
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('falls through to META_SYSTEM_USER_TOKEN on WABA routes when the store has no findByWaba (EE shape)', async () => {
+    const lines = new MemoryLineStore()
+    lines.put({ phoneNumberId, wabaId, accessToken: biz })
+    const lineStore: LineStore = { get: (id) => lines.get(id), put: (line) => lines.put(line) }
+    process.env.META_SYSTEM_USER_TOKEN = 'SYS_FOR_WABA'
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(graphOk({ data: [] }))
+      .mockResolvedValueOnce(graphOk({ success: true }))
+    const gateway = createApp({ lineStore })
+    expect((await gateway.request(`/v1/templates/${wabaId}`, { headers: { 'X-API-Key': KEY } })).status).toBe(200)
+    expect(authorization(fetchSpy, 0)).toBe('Bearer SYS_FOR_WABA')
+    const subscribe = await gateway.request('/v1/onboarding/subscribe', {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({ wabaId }),
+    })
+    expect(subscribe.status).toBe(200)
+    expect(authorization(fetchSpy, 1)).toBe('Bearer SYS_FOR_WABA')
+  })
+
+  describe('proxy media GET with a named line', () => {
+    const mediaId = '880000000000001'
+    const otherPhoneNumberId = '770000000000003'
+
+    function mediaStore() {
+      const store = new MemoryLineStore()
+      store.put({ phoneNumberId, wabaId, accessToken: biz })
+      store.put({ phoneNumberId: otherPhoneNumberId, wabaId, accessToken: 'OTHER_LINE_TOKEN' })
+      return store
+    }
+
+    function stubMediaLookups() {
+      return vi
+        .spyOn(globalThis, 'fetch')
+        .mockImplementation(() => Promise.resolve(graphOk({ url: 'https://cdn.example/a.jpg' })))
+    }
+
+    it('uses the line token named by X-Phone-Number-Id or ?phone_number_id=', async () => {
+      process.env.META_SYSTEM_USER_TOKEN = 'SYS_LOSES'
+      const fetchSpy = stubMediaLookups()
+      const gateway = createApp({ lineStore: mediaStore() })
+
+      const viaHeader = await gateway.request(`/v24.0/${mediaId}`, {
+        headers: { 'X-API-Key': KEY, 'X-Phone-Number-Id': phoneNumberId },
+      })
+      expect(viaHeader.status).toBe(200)
+      expect(authorization(fetchSpy, 0)).toBe(`Bearer ${biz}`)
+      expect(String(fetchSpy.mock.calls[0][0])).toBe(`https://graph.facebook.com/v24.0/${mediaId}`)
+
+      const viaQuery = await gateway.request(`/v24.0/${mediaId}?phone_number_id=${phoneNumberId}`, {
+        headers: { 'X-API-Key': KEY },
+      })
+      expect(viaQuery.status).toBe(200)
+      expect(authorization(fetchSpy, 1)).toBe(`Bearer ${biz}`)
+      expect(String(fetchSpy.mock.calls[1][0])).toBe(
+        `https://graph.facebook.com/v24.0/${mediaId}?phone_number_id=${phoneNumberId}`
+      )
+    })
+
+    it('lets the header line win over the query line, and X-Meta-Access-Token win over both', async () => {
+      const fetchSpy = stubMediaLookups()
+      const gateway = createApp({ lineStore: mediaStore() })
+      const path = `/v24.0/${mediaId}?phone_number_id=${otherPhoneNumberId}`
+
+      await gateway.request(path, { headers: { 'X-API-Key': KEY, 'X-Phone-Number-Id': phoneNumberId } })
+      expect(authorization(fetchSpy, 0)).toBe(`Bearer ${biz}`)
+
+      await gateway.request(path, {
+        headers: { 'X-API-Key': KEY, 'X-Phone-Number-Id': phoneNumberId, 'X-Meta-Access-Token': 'HEADER_WINS' },
+      })
+      expect(authorization(fetchSpy, 1)).toBe('Bearer HEADER_WINS')
+    })
+
+    it('never looks up a non-numeric line and still forwards the query to Graph', async () => {
+      const get = vi.fn(() => ({ phoneNumberId, wabaId, accessToken: biz }))
+      const lineStore: LineStore = { get, put: () => undefined }
+      process.env.META_SYSTEM_USER_TOKEN = 'SYS_FOR_MEDIA_GET'
+      const fetchSpy = stubMediaLookups()
+      const gateway = createApp({ lineStore })
+
+      const viaQuery = await gateway.request(`/v24.0/${mediaId}?phone_number_id=not-a-line`, {
+        headers: { 'X-API-Key': KEY },
+      })
+      expect(viaQuery.status).toBe(200)
+      expect(String(fetchSpy.mock.calls[0][0])).toBe(
+        `https://graph.facebook.com/v24.0/${mediaId}?phone_number_id=not-a-line`
+      )
+      expect(authorization(fetchSpy, 0)).toBe('Bearer SYS_FOR_MEDIA_GET')
+
+      await gateway.request(`/v24.0/${mediaId}`, { headers: { 'X-API-Key': KEY, 'X-Phone-Number-Id': '../me' } })
+      expect(authorization(fetchSpy, 1)).toBe('Bearer SYS_FOR_MEDIA_GET')
+      expect(get).not.toHaveBeenCalled()
+    })
+
+    it('does not look up a line for a GET outside the media path', async () => {
+      const get = vi.fn(() => ({ phoneNumberId, wabaId, accessToken: biz }))
+      process.env.META_SYSTEM_USER_TOKEN = 'SYS_FOR_MEDIA_GET'
+      const fetchSpy = vi.spyOn(globalThis, 'fetch')
+      const gateway = createApp({ lineStore: { get, put: () => undefined } })
+      const res = await gateway.request(`/v24.0/${mediaId}/owner`, {
+        headers: { 'X-API-Key': KEY, 'X-Phone-Number-Id': phoneNumberId },
+      })
+      expect(res.status).toBe(403)
+      expect(get).not.toHaveBeenCalled()
+      expect(fetchSpy).not.toHaveBeenCalled()
+    })
   })
 
   it('falls through an empty stored token to the system token', async () => {
@@ -407,5 +580,60 @@ describe('line connect token custody', () => {
     expect(text).not.toContain(APP_SECRET)
     expect(lines.error.join('\n')).not.toContain('not-a-number')
     expect(lines.error.join('\n')).not.toContain(APP_SECRET)
+  })
+})
+
+describe('Meta token resolution for library callers', () => {
+  const originalEnv = process.env
+  const sys = { META_SYSTEM_USER_TOKEN: 'SYS' }
+
+  beforeEach(() => {
+    process.env = { ...originalEnv }
+    delete process.env.META_SYSTEM_USER_TOKEN
+  })
+
+  afterEach(() => {
+    process.env = originalEnv
+  })
+
+  function lines() {
+    const store = new MemoryLineStore()
+    store.put({ phoneNumberId: '100', wabaId: '200', accessToken: 'BIZ_PHONE' })
+    store.put({ phoneNumberId: '101', wabaId: '200', accessToken: 'BIZ_WABA' })
+    return store
+  }
+
+  async function resolveWith(source: MetaTokenSource, headers: Record<string, string> = {}) {
+    const probe = new Hono().get('/', async (c) => c.json({ token: (await resolveMetaAccessToken(c, source)) ?? null }))
+    const res = await probe.request('/', { headers }, sys)
+    return ((await res.json()) as { token: string | null }).token
+  }
+
+  it('asks the WABA only when no phone number ID is named', async () => {
+    const lineStore = lines()
+    expect(await resolveWith({ phoneNumberId: '100', wabaId: '200', lineStore })).toBe('BIZ_PHONE')
+    // A phone number ID that misses falls through to the system token, not to the WABA's line
+    expect(await resolveWith({ phoneNumberId: '999', wabaId: '200', lineStore })).toBe('SYS')
+    expect(await resolveWith({ wabaId: '200', lineStore })).toBe('BIZ_WABA')
+    expect(await resolveWith({ wabaId: '200', lineStore }, { 'X-Meta-Access-Token': 'HDR' })).toBe('HDR')
+  })
+
+  it('keeps the system token without a store, a WABA or findByWaba', async () => {
+    const full = lines()
+    expect(await resolveWith({ wabaId: '200' })).toBe('SYS')
+    expect(await resolveWith({ lineStore: full })).toBe('SYS')
+    expect(await resolveWith({})).toBe('SYS')
+    const withoutWabaLookup: LineStore = { get: (id) => full.get(id), put: (line) => full.put(line) }
+    expect(await resolveWith({ wabaId: '200', lineStore: withoutWabaLookup })).toBe('SYS')
+  })
+
+  it('metaClientFor keeps the base 500 when the route names neither a line nor a WABA', async () => {
+    const probe = new Hono().get('/', async (c) => {
+      const meta = await metaClientFor(c, createDefaultDeps())
+      return meta.ok ? c.text('unexpected') : meta.response
+    })
+    const res = await probe.request('/')
+    expect(res.status).toBe(500)
+    expect(await res.json()).toEqual({ error: MISSING_META_TOKEN })
   })
 })

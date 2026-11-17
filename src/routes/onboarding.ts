@@ -108,9 +108,10 @@ export function createOnboardingRouter(deps: GatewayDeps): Hono {
     const body = await parseJsonBody(c, SubscribeWabaSchema)
     if (!body.ok) return body.response
 
-    const meta = await metaClientFor(c, deps)
-    if (!meta.ok) return meta.response
     const { wabaId, subscribedFields } = body.value
+    // The token of the line last connected for this WABA, when the store can find it
+    const meta = await metaClientFor(c, deps, undefined, { wabaId })
+    if (!meta.ok) return meta.response
 
     try {
       const success = await meta.value.client.subscribeAppToWaba(wabaId, subscribedFields)

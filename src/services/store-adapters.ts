@@ -1,4 +1,5 @@
 import type { LineStore, RateLimitStore, ReplayStore, StoredLine } from '../deps.js'
+import { isGraphId } from '../schemas/common.js'
 import { isRecord } from '../utils/guards.js'
 import { DEFAULT_REPLAY_TTL_SECONDS } from './replay.js'
 
@@ -92,6 +93,8 @@ export class DistributedRateLimitStore implements RateLimitStore {
 /**
  * LineStore adapter. No TTL: a business token stays until the line is connected again.
  * The value is the token, so callers must not log the raw KV payload.
+ * Two keys per line: `<prefix><phoneNumberId>` holds the line, and `<prefix>waba:<wabaId>` holds the phone number
+ * ID of the line last put for that WABA. The second key is a pointer, never a copy of the token.
  */
 export class DistributedLineStore implements LineStore {
   constructor(
@@ -111,7 +114,22 @@ export class DistributedLineStore implements LineStore {
       wabaId: line.wabaId,
       accessToken: line.accessToken,
     }
+    // The line first: a pointer must never name a line that was not written
     await this.kv.set(`${this.prefix}${line.phoneNumberId}`, JSON.stringify(stored))
+    await this.kv.set(this.wabaKey(line.wabaId), line.phoneNumberId)
+  }
+
+  async findByWaba(wabaId: string): Promise<StoredLine | undefined> {
+    const phoneNumberId = await this.kv.get(this.wabaKey(wabaId))
+    // Untrusted KV bytes become part of the next key, so only a phone number ID is followed
+    if (phoneNumberId === null || !isGraphId(phoneNumberId)) return undefined
+    const line = await this.get(phoneNumberId)
+    // The line was connected again under another WABA after this pointer was written
+    return line?.wabaId === wabaId ? line : undefined
+  }
+
+  private wabaKey(wabaId: string): string {
+    return `${this.prefix}waba:${wabaId}`
   }
 }
 
