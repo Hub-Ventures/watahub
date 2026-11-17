@@ -72,7 +72,7 @@ even when it already committed it but the gateway never saw the answer.
 ```http
 POST <SUBSCRIBER_WEBHOOK_URL>
 Content-Type: application/json
-User-Agent: Watahub-Gateway/0.2.0
+User-Agent: Watahub-Gateway/0.2.1
 x-watahub-signature: sha256=<lowercase hex>
 x-watahub-delivery-id: <sha256 of Meta's body>
 Idempotency-Key: <same as x-watahub-delivery-id>

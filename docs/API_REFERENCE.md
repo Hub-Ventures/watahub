@@ -1,6 +1,6 @@
 # API reference
 
-Every route the gateway serves in `watahub` 0.2.0, with its request, response and errors. Source of truth:
+Every route the gateway serves in `watahub` 0.2.1, with its request, response and errors. Source of truth:
 `src/routes/`, `src/schemas/` and `tests/routes-contract.test.ts`.
 
 ## 1. Conventions
@@ -121,7 +121,7 @@ No authentication.
 {
   "status": "ok",
   "service": "watahub",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "timestamp": "2026-11-08T15:30:00.000Z"
 }
 ```
