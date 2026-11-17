@@ -30,7 +30,8 @@ export function createTemplatesRouter(deps: GatewayDeps): Hono {
       return validationError(c, { after: ['Must be a paging cursor from a previous response'] })
     }
 
-    const meta = await metaClientFor(c, deps)
+    // The token of the line last connected for this WABA, when the store can find it
+    const meta = await metaClientFor(c, deps, undefined, { wabaId })
     if (!meta.ok) return meta.response
 
     try {

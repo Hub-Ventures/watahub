@@ -147,8 +147,9 @@ Any other `/v24.0` path answers `403`. Proxied calls go to the Graph version in 
 prefix says.
 
 **Meta token per call.** The gateway uses `X-Meta-Access-Token` when the caller sends it. If the call names a phone
-number ID, it next tries the token stored for that line by `connect`. The last fallback is `META_SYSTEM_USER_TOKEN`.
-With none of them, the call answers `500`.
+number ID, it next tries the token stored for that line by `connect`. If it names a WABA and no phone number ID
+(`GET /v1/templates`, `POST /v1/onboarding/subscribe`), it tries the token of the line last connected for that WABA.
+The last fallback is `META_SYSTEM_USER_TOKEN`. With none of them, the call answers `500`.
 
 ## Configuration
 

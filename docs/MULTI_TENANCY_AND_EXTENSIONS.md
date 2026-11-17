@@ -104,6 +104,17 @@ interface KeyValueStore {
 token disappears on restart and, on Workers, exists only in the isolate that handled the call. Pass a
 `DistributedLineStore` when tokens must outlive the instance.
 
+`LineStore.findByWaba?(wabaId)` returns the line last put for a WABA. `GET /v1/templates` and
+`POST /v1/onboarding/subscribe` use its token when the call sends no `X-Meta-Access-Token`. The method is optional: on
+a store without it, those two routes skip the store and use `META_SYSTEM_USER_TOKEN`. Both core stores implement it.
+
+- `MemoryLineStore` keeps a WABA index in memory.
+- `DistributedLineStore` writes a second key per line, `<prefix>waba:<wabaId>` (`watahub:line:waba:` by default). It
+  holds the phone number ID of that line, never the token. `put` writes the line first, then this pointer.
+
+A line put again under another WABA no longer answers for the old one: the lookup is a miss and the call falls through
+to `META_SYSTEM_USER_TOKEN`. A pointer or line that does not parse is a miss too.
+
 ### Cloudflare Workers with KV
 
 `src/worker.ts`, the stock Workers entry, already does this for line tokens. With a KV namespace bound as

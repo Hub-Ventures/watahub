@@ -13,6 +13,10 @@ export const MISSING_META_TOKEN =
 export const MISSING_META_TOKEN_FOR_LINE =
   'Missing Meta access token. Set META_SYSTEM_USER_TOKEN, pass X-Meta-Access-Token header, or name a line connected with POST /v1/onboarding/connect.'
 
+/** Same as MISSING_META_TOKEN, plus the connect hint for WABA routes (templates, subscribe). */
+export const MISSING_META_TOKEN_FOR_WABA =
+  'Missing Meta access token. Set META_SYSTEM_USER_TOKEN, pass X-Meta-Access-Token header, or connect a line of this WABA with POST /v1/onboarding/connect.'
+
 /** Success from metaClientFor: client plus the token it was built with (one store read). */
 export interface MetaClientHandle {
   client: MetaGraphClient
@@ -26,12 +30,18 @@ export interface MetaClientForOptions {
    * that accept an optional line id (media GETs) even when it is absent.
    */
   acceptsLine?: boolean
+  /**
+   * WABA routes (templates, subscribe) pass the WABA so the token of the line last connected for it can be used.
+   * Ignored for the lookup when `phoneNumberId` is passed. The missing-token message then names connect.
+   */
+  wabaId?: string
 }
 
 /**
  * Builds the Meta client for this request from the resolved access token and
  * API version. Answers 500 when no token is configured or supplied.
- * Pass `phoneNumberId` when the call targets a line so the stored business token can be used.
+ * Pass `phoneNumberId` when the call targets a line so the stored business token can be used,
+ * or `options.wabaId` when it targets a WABA.
  * The resolved token is returned with the client so callers (e.g. media CDN download)
  * do not resolve it a second time.
  */
@@ -41,11 +51,13 @@ export async function metaClientFor(
   phoneNumberId?: string,
   options: MetaClientForOptions = {}
 ): Promise<Outcome<MetaClientHandle>> {
-  const accessToken = await resolveMetaAccessToken(c, { phoneNumberId, lineStore: deps.lineStore })
+  const accessToken = await resolveMetaAccessToken(c, {
+    phoneNumberId,
+    wabaId: options.wabaId,
+    lineStore: deps.lineStore,
+  })
   if (!accessToken) {
-    const acceptsLine = options.acceptsLine ?? phoneNumberId !== undefined
-    const error = acceptsLine ? MISSING_META_TOKEN_FOR_LINE : MISSING_META_TOKEN
-    return { ok: false, response: c.json({ error }, 500) }
+    return { ok: false, response: c.json({ error: missingTokenMessage(phoneNumberId, options) }, 500) }
   }
   return {
     ok: true,
@@ -54,4 +66,10 @@ export async function metaClientFor(
       accessToken,
     },
   }
+}
+
+function missingTokenMessage(phoneNumberId: string | undefined, options: MetaClientForOptions): string {
+  if (options.acceptsLine ?? phoneNumberId !== undefined) return MISSING_META_TOKEN_FOR_LINE
+  if (options.wabaId !== undefined) return MISSING_META_TOKEN_FOR_WABA
+  return MISSING_META_TOKEN
 }

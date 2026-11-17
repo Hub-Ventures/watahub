@@ -1,10 +1,11 @@
-import { Hono } from 'hono'
+import { type Context, Hono } from 'hono'
 import { DEFAULT_META_API_VERSION, getConfig, META_GRAPH_BASE_URL } from '../config.js'
 import type { GatewayDeps } from '../deps.js'
 import { resolveMetaAccessToken } from '../http/auth.js'
 import { misconfiguredResponse } from '../http/env-guard.js'
 import { errorResponse } from '../http/errors.js'
 import { MISSING_META_TOKEN } from '../http/meta.js'
+import { isGraphId } from '../schemas/common.js'
 import { invalidEnvVars } from '../utils/env.js'
 
 // Upper bound for a single Graph call; media uploads can take a while on slow links
@@ -28,11 +29,16 @@ function isMessageSend(method: string, subPath: string): boolean {
   return method === 'POST' && /^\d+\/messages$/.test(subPath)
 }
 
-/** Phone id only on the allowlisted send and upload paths. GET /:id is a media id. */
-function proxyPhoneNumberId(method: string, subPath: string): string | undefined {
-  if (method !== 'POST') return undefined
-  const match = /^(\d+)\/(?:messages|media)$/.exec(subPath)
-  return match?.[1]
+/**
+ * Phone id for the line lookup. The send and upload paths carry it. GET /:id is a media id, so the line comes
+ * from X-Phone-Number-Id or ?phone_number_id= (header wins), as on /v1/media. Only a numeric value is looked up;
+ * the query value is forwarded to Graph either way.
+ */
+function proxyPhoneNumberId(c: Context, subPath: string): string | undefined {
+  if (c.req.method === 'POST') return /^(\d+)\/(?:messages|media)$/.exec(subPath)?.[1]
+  if (c.req.method !== 'GET' || !/^\d+$/.test(subPath)) return undefined
+  const named = c.req.header('x-phone-number-id') || c.req.query('phone_number_id')
+  return named !== undefined && isGraphId(named) ? named : undefined
 }
 
 /**
@@ -85,7 +91,7 @@ export function createProxyRouter(deps: GatewayDeps): Hono {
 
     const subPath = c.req.path.replace(/^\/v24\.0\/?/, '')
     const accessToken = await resolveMetaAccessToken(c, {
-      phoneNumberId: proxyPhoneNumberId(c.req.method, subPath),
+      phoneNumberId: proxyPhoneNumberId(c, subPath),
       lineStore: deps.lineStore,
     })
     if (!accessToken) {

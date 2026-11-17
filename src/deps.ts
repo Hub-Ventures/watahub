@@ -21,6 +21,11 @@ export interface StoredLine {
 export interface LineStore {
   get(phoneNumberId: string): Promise<StoredLine | undefined> | StoredLine | undefined
   put(line: StoredLine): Promise<void> | void
+  /**
+   * The line last put for this WABA, if it still belongs to it. WABA routes (templates, subscribe) use its token.
+   * Optional: without it, those routes skip the store and fall through to `META_SYSTEM_USER_TOKEN`.
+   */
+  findByWaba?(wabaId: string): Promise<StoredLine | undefined> | StoredLine | undefined
 }
 
 /**
@@ -29,6 +34,8 @@ export interface LineStore {
  */
 export class MemoryLineStore implements LineStore {
   private readonly lines = new Map<string, StoredLine>()
+  /** WABA ID to the phone number ID of the line last put for it */
+  private readonly lineByWaba = new Map<string, string>()
 
   get(phoneNumberId: string): StoredLine | undefined {
     return this.lines.get(phoneNumberId)
@@ -40,6 +47,15 @@ export class MemoryLineStore implements LineStore {
       wabaId: line.wabaId,
       accessToken: line.accessToken,
     })
+    this.lineByWaba.set(line.wabaId, line.phoneNumberId)
+  }
+
+  findByWaba(wabaId: string): StoredLine | undefined {
+    const phoneNumberId = this.lineByWaba.get(wabaId)
+    if (phoneNumberId === undefined) return undefined
+    const line = this.lines.get(phoneNumberId)
+    // The line was put again under another WABA after this one
+    return line?.wabaId === wabaId ? line : undefined
   }
 }
 
