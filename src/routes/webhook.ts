@@ -34,6 +34,11 @@ export function createWebhookRouter(deps: GatewayDeps): Hono {
    * GET /webhook
    */
   router.get('/webhook', async (c) => {
+    // Workers have no boot-time validation: a short or placeholder token answers 503
+    // instead of letting the handshake succeed with a guessable value
+    const invalidEnv = invalidEnvVars(c, ['META_WEBHOOK_VERIFY_TOKEN'])
+    if (invalidEnv.length > 0) return misconfiguredResponse(c, deps.logger, invalidEnv)
+
     const mode = c.req.query('hub.mode')
     const token = c.req.query('hub.verify_token')
     const challenge = c.req.query('hub.challenge')
@@ -60,8 +65,14 @@ export function createWebhookRouter(deps: GatewayDeps): Hono {
     const config = getConfig(c)
 
     // Workers have no boot-time validation: a bad value answers 503 (Meta retries)
-    // instead of silently falling back to sync delivery or the default window
-    const invalidEnv = invalidEnvVars(c, ['WEBHOOK_DELIVERY_MODE', 'META_WEBHOOK_MAX_AGE_SECONDS'])
+    // instead of silently falling back to sync delivery or the default window, or
+    // forwarding customer messages over plain http or signed with a weak secret
+    const invalidEnv = invalidEnvVars(c, [
+      'WEBHOOK_DELIVERY_MODE',
+      'META_WEBHOOK_MAX_AGE_SECONDS',
+      'SUBSCRIBER_WEBHOOK_URL',
+      'SUBSCRIBER_WEBHOOK_SECRET',
+    ])
     if (invalidEnv.length > 0) return misconfiguredResponse(c, deps.logger, invalidEnv)
 
     // Fail closed: without META_APP_SECRET there is no way to authenticate Meta,

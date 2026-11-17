@@ -8,8 +8,10 @@ normalized event. Source of truth: `src/routes/webhook.ts`, `src/services/delive
 
 For each `POST /webhook` from Meta:
 
-1. **Configuration.** An invalid `WEBHOOK_DELIVERY_MODE` or `META_WEBHOOK_MAX_AGE_SECONDS`, or a missing
-   `META_APP_SECRET`, answers `503` so Meta retries later.
+1. **Configuration.** An invalid `WEBHOOK_DELIVERY_MODE` or `META_WEBHOOK_MAX_AGE_SECONDS`, a `SUBSCRIBER_WEBHOOK_URL`
+   that is not `https` (`http://localhost` and `http://127.0.0.1` aside), a `SUBSCRIBER_WEBHOOK_SECRET` under 32
+   characters, or a missing `META_APP_SECRET`, answers `503` so Meta retries later. Workers check this on every
+   delivery; Node refuses to start instead.
 2. **Signature.** `X-Hub-Signature-256` must be `sha256=` plus 64 hex characters, matching the HMAC-SHA256 of the raw
    body keyed with `META_APP_SECRET`. Otherwise `401`.
 3. **Delivery ID.** The SHA-256 of the raw body. A Meta redelivery of the same body has the same ID.

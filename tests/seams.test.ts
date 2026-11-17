@@ -171,7 +171,7 @@ describe('createApp dependency injection', () => {
   it('stamps forwarded webhooks with the injected clock and fetch', async () => {
     process.env.META_APP_SECRET = 'APP'
     process.env.SUBSCRIBER_WEBHOOK_URL = 'https://subscriber.example/hook'
-    process.env.SUBSCRIBER_WEBHOOK_SECRET = 'SUB'
+    process.env.SUBSCRIBER_WEBHOOK_SECRET = 'subscriber-secret-0123456789abcdef'
     const transport = vi.fn<typeof fetch>().mockResolvedValue(new Response('ok'))
     const app = createApp({ fetch: transport, now: () => 42_000, logger: memoryLogger().logger })
     const raw = JSON.stringify({
@@ -418,7 +418,7 @@ describe('Pluggable state stores in createApp', () => {
       hit: vi.fn(),
       clear: vi.fn(),
     }
-    process.env.META_WEBHOOK_VERIFY_TOKEN = 'correct-token'
+    process.env.META_WEBHOOK_VERIFY_TOKEN = 'correct-token-0123456789'
     const app = createApp({ verifyTokenLimiter })
 
     const res = await app.request('/webhook?hub.mode=subscribe&hub.verify_token=wrong&hub.challenge=123')

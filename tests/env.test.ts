@@ -58,6 +58,12 @@ describe('validateEnv', () => {
     ).toEqual({ ok: true })
   })
 
+  it('reports a subscriber URL that is not a URL instead of throwing', () => {
+    const env = { ...validEnv, SUBSCRIBER_WEBHOOK_URL: 'not a url', SUBSCRIBER_WEBHOOK_SECRET: 's'.repeat(32) }
+    expect(() => validateEnv(env)).not.toThrow()
+    expect(errorsFor(env)).toEqual(['SUBSCRIBER_WEBHOOK_URL: Invalid url'])
+  })
+
   it('rejects malformed IDs and API versions', () => {
     expect(errorsFor({ ...validEnv, META_DEFAULT_WABA_ID: '../me' })).toHaveLength(1)
     expect(errorsFor({ ...validEnv, META_API_VERSION: 'latest' })).toHaveLength(1)
