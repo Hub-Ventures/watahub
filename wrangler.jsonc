@@ -9,14 +9,14 @@
   },
   "workers_dev": true,
   // Line tokens from POST /v1/onboarding/connect. Without this binding, connect answers 503 on Workers.
-  // Create the namespace with `pnpm exec wrangler kv namespace create WATAHUB_KV`, put the printed id
-  // below and uncomment the block. A placeholder id makes `wrangler deploy` fail.
-  // "kv_namespaces": [
-  //   {
-  //     "binding": "WATAHUB_KV",
-  //     "id": "<id printed by pnpm exec wrangler kv namespace create WATAHUB_KV>"
-  //   }
-  // ],
+  // This id is Hub Ventures' namespace: for your own deploy, create one with
+  // `pnpm exec wrangler kv namespace create WATAHUB_KV` and put its id here.
+  "kv_namespaces": [
+    {
+      "binding": "WATAHUB_KV",
+      "id": "3e7bbf20ad4a4942acb0dd80d27721fe"
+    }
+  ],
   "routes": [
     {
       "pattern": "api.watahub.dev",
