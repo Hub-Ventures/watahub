@@ -410,6 +410,9 @@ Finishes Embedded Signup for one phone line. The gateway:
 
 - `400` when `META_APP_ID` or `META_APP_SECRET` is missing (`exchange` too).
 - `422` when `pin` is not 6 digits, an ID is not numeric, or the body carries `appId` or `appSecret`.
+- `503` on Cloudflare Workers when the line store is the in-memory default: bind a KV namespace as `WATAHUB_KV` (the
+  stock `src/worker.ts` entry) or pass a `lineStore` to `createApp`. The gateway answers before it calls Meta, so the
+  code is not used. A `MemoryLineStore` passed on purpose still connects.
 - If a Graph step fails, the classified Meta error comes back with `"step": "exchange" | "subscribe" | "register"`.
   The token is never in it. After a failed subscribe or register, the stored token stays in place.
 

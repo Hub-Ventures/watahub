@@ -106,25 +106,23 @@ token disappears on restart and, on Workers, exists only in the isolate that han
 
 ### Cloudflare Workers with KV
 
-Cloudflare KV has `put` and `expirationTtl` instead of `set` and `ttlSeconds`, so it needs a small adapter. Build the
-app once per isolate, not once per request: `createApp` keeps state of its own (deliveries in flight, the default line
-store).
+`src/worker.ts`, the stock Workers entry, already does this for line tokens. With a KV namespace bound as
+`WATAHUB_KV`, it builds the app once per isolate with a `DistributedLineStore` over that namespace. Without the
+binding, it keeps the defaults and logs an error that names `WATAHUB_KV`.
+
+On Workers, `POST /v1/onboarding/connect` answers `503` when the line store is the default one `createApp` made: the
+token would live in one isolate only. It answers before it calls Meta, so the signup code is not used. A
+`MemoryLineStore` you pass on purpose is respected. On Node, the default store still connects.
+
+For your own entry, `cloudflareKvStore` adapts a KV namespace to `KeyValueStore`. `set` becomes `put`, a TTL is raised
+to at least 60 seconds (the KV minimum), and no TTL means no expiration. Build the app once per isolate, not once per
+request: `createApp` keeps state of its own (deliveries in flight, the default line store).
 
 ```ts
-import { createApp, DistributedLineStore, DistributedReplayStore, type KeyValueStore } from 'watahub'
+import { cloudflareKvStore, createApp, DistributedLineStore, DistributedReplayStore } from 'watahub'
 
 interface Env {
   WATAHUB_KV: KVNamespace
-}
-
-// KV rejects expirations shorter than 60 seconds
-function kvStore(namespace: KVNamespace): KeyValueStore {
-  return {
-    get: (key) => namespace.get(key),
-    set: (key, value, options) =>
-      namespace.put(key, value, options?.ttlSeconds ? { expirationTtl: Math.max(60, options.ttlSeconds) } : undefined),
-    delete: (key) => namespace.delete(key),
-  }
 }
 
 let app: ReturnType<typeof createApp> | undefined
@@ -132,16 +130,16 @@ let app: ReturnType<typeof createApp> | undefined
 export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext) {
     app ??= createApp({
-      lineStore: new DistributedLineStore(kvStore(env.WATAHUB_KV)),
-      replayStore: new DistributedReplayStore(kvStore(env.WATAHUB_KV)),
+      lineStore: new DistributedLineStore(cloudflareKvStore(env.WATAHUB_KV)),
+      replayStore: new DistributedReplayStore(cloudflareKvStore(env.WATAHUB_KV)),
     })
     return app.fetch(request, env, ctx)
   },
 }
 ```
 
-KV is eventually consistent, so another location can miss a write for a while. That is enough for line tokens and
-narrows duplicate deliveries, but your backend must still deduplicate on `x-watahub-delivery-id`. KV also allows about
+KV is eventually consistent, so another location can miss a write for up to about 60 seconds. That is enough for line
+tokens and narrows duplicate deliveries, but your backend must still deduplicate on `x-watahub-delivery-id`. KV also allows about
 one write per second to the same key, which makes it a poor fit for rate limits. For those, use a store with atomic
 counters, or Cloudflare's own rate limiting rules in front of the Worker.
 

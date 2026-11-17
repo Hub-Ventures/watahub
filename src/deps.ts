@@ -83,6 +83,20 @@ export interface GatewayDeps {
   lineStore: LineStore
 }
 
+// Line stores createDefaultDeps created itself, so a route can tell them from one the caller passed on purpose
+const defaultLineStores = new WeakSet<LineStore>()
+
+/** Internal, not exported by the package: true for the in-memory line store createDefaultDeps created. */
+export function isDefaultLineStore(store: LineStore): boolean {
+  return defaultLineStores.has(store)
+}
+
+function createDefaultLineStore(): LineStore {
+  const store = new MemoryLineStore()
+  defaultLineStores.add(store)
+  return store
+}
+
 export function createDefaultDeps(overrides: Partial<GatewayDeps> = {}): GatewayDeps {
   // A key passed as `undefined` asks for the default, so a conditional override cannot leave a port unset
   const given: Partial<GatewayDeps> = Object.fromEntries(
@@ -98,7 +112,7 @@ export function createDefaultDeps(overrides: Partial<GatewayDeps> = {}): Gateway
     replayStore: webhookDeliveryIds,
     apiKeyLimiter: apiKeyFailures,
     verifyTokenLimiter: verifyTokenFailures,
-    lineStore: given.lineStore ?? new MemoryLineStore(),
+    lineStore: given.lineStore ?? createDefaultLineStore(),
     ...given,
   }
 }
