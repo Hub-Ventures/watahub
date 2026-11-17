@@ -284,20 +284,27 @@ To reply, send to the BSUID: `POST /v1/messages` accepts it in `to`.
 }
 ```
 
-A list row has `"type": "list"` with the row's `id` and `title`.
+A list row has `"type": "list"` with the row's `id` and `title`, and its `description` when Meta sends one:
+
+```json
+"interactiveReply": { "type": "list", "id": "row_1", "title": "Combo", "description": "Burger + fries" }
+```
 
 ### 4.5 Flow answer
 
 `interactiveReply` has `"type": "nfm_reply"`, the Flow `name` and `body`, and the parsed answer in `responseJson`. If
 Meta's `response_json` is not a JSON object, `responseJson` is absent and `"responseJsonError": true` says so, so an
-unreadable answer is never mistaken for an empty one.
+unreadable answer is never mistaken for an empty one. Whenever Meta sends `response_json`, `responseJsonText` carries
+that string exactly as received, also when it could not be parsed, so a subscriber can forward Meta's own value instead
+of re-serializing `responseJson`.
 
 ```json
 "interactiveReply": {
   "type": "nfm_reply",
   "name": "flow",
   "body": "Sent",
-  "responseJson": { "flow_token": "booking-42", "date": "2026-11-20" }
+  "responseJson": { "flow_token": "booking-42", "date": "2026-11-20" },
+  "responseJsonText": "{\"flow_token\": \"booking-42\", \"date\": \"2026-11-20\"}"
 }
 ```
 

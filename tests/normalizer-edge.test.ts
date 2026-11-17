@@ -162,6 +162,7 @@ describe('normalizeMetaWebhook edge cases', () => {
       name: 'f',
       body: '',
       responseJson: {},
+      responseJsonText: '{}',
     })
     expect(
       normalizeOne({
@@ -173,6 +174,7 @@ describe('normalizeMetaWebhook edge cases', () => {
       name: 'n',
       body: 'b',
       responseJsonError: true,
+      responseJsonText: 'invalid-json',
     })
     expect(
       normalizeOne({
@@ -184,6 +186,7 @@ describe('normalizeMetaWebhook edge cases', () => {
       name: 'n',
       body: '',
       responseJsonError: true,
+      responseJsonText: '["not","an","object"]',
     })
     expect(
       normalizeOne({
@@ -236,6 +239,68 @@ describe('normalizeMetaWebhook edge cases', () => {
     expect(normalizeOne({ type: 'reaction', reaction: { message_id: 'wamid.t', emoji: '❤️' } })?.reaction).toEqual({
       targetMessageId: 'wamid.t',
       emoji: '❤️',
+    })
+  })
+
+  describe('interactive replies keep what Meta sent', () => {
+    const replyTo = (interactive: MetaInboundMessage['interactive']) =>
+      normalizeOne({ type: 'interactive', interactive })?.interactiveReply
+
+    // toStrictEqual, not toEqual: an optional field must be absent, not present as undefined
+    it('adds a list row description only when Meta sends one', () => {
+      expect(
+        replyTo({ type: 'list_reply', list_reply: { id: 'row_1', title: 'Combo', description: 'Burger + fries' } })
+      ).toStrictEqual({ id: 'row_1', title: 'Combo', type: 'list', description: 'Burger + fries' })
+      expect(replyTo({ type: 'list_reply', list_reply: { id: 'row_2', title: 'Soda' } })).toStrictEqual({
+        id: 'row_2',
+        title: 'Soda',
+        type: 'list',
+      })
+    })
+
+    it('keeps a parsed Flow answer as Meta wrote it, spacing included', () => {
+      const raw = '{\n  "flow_token" : "booking-42",\t"date":"2026-11-20" }'
+      const reply = replyTo({ type: 'nfm_reply', nfm_reply: { response_json: raw, body: 'Sent', name: 'flow' } })
+      expect(reply).toStrictEqual({
+        type: 'nfm_reply',
+        name: 'flow',
+        body: 'Sent',
+        responseJson: { flow_token: 'booking-42', date: '2026-11-20' },
+        responseJsonText: raw,
+      })
+      expect(reply?.responseJsonText).not.toBe(JSON.stringify(reply?.responseJson))
+    })
+
+    it('keeps the text of a Flow answer that is JSON but not an object', () => {
+      for (const raw of ['[1, 2]', '"done"', '42', 'null']) {
+        expect(replyTo({ type: 'nfm_reply', nfm_reply: { response_json: raw, body: '', name: 'flow' } })).toStrictEqual(
+          { type: 'nfm_reply', name: 'flow', body: '', responseJsonError: true, responseJsonText: raw }
+        )
+      }
+    })
+
+    it('keeps the text of a Flow answer that is not valid JSON', () => {
+      const raw = '{"flow_token": "booking-42", '
+      expect(replyTo({ type: 'nfm_reply', nfm_reply: { response_json: raw, body: '', name: 'flow' } })).toStrictEqual({
+        type: 'nfm_reply',
+        name: 'flow',
+        body: '',
+        responseJsonError: true,
+        responseJsonText: raw,
+      })
+    })
+
+    it('never puts a non-string response_json in responseJsonText', () => {
+      // Webhook bodies are untrusted: a malformed delivery may carry any JSON value here
+      const nfm_reply = { response_json: { flow_token: 'x' }, body: '', name: 'flow' } as unknown as NonNullable<
+        MetaInboundMessage['interactive']
+      >['nfm_reply']
+      expect(replyTo({ type: 'nfm_reply', nfm_reply })).toStrictEqual({
+        type: 'nfm_reply',
+        name: 'flow',
+        body: '',
+        responseJsonError: true,
+      })
     })
   })
 
