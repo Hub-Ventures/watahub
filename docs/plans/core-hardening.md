@@ -1,7 +1,8 @@
 # Core hardening plan
 
 Status: findings 1, 3, 4 and 5 implemented and merged into `claude/core-hardening-5dec65` on 2026-11-17 (see
-[Parallel work](#parallel-work)). Not pushed. Finding 2 is still in its own branch. The owner approved the plan on
+[Parallel work](#parallel-work)). Finding 2 landed on `main` in #71; `main` (with `0.2.1`) is merged into this branch.
+The owner approved the plan on
 2026-11-17 and asked to run it in parallel sessions, one per finding. D1, D2 and D3 follow the recommendations below.
 Written 2026-11-17 after a review of the core at `61f1005`.
 
@@ -364,14 +365,15 @@ session makes one commit on its own branch, runs `pnpm check` green, and does no
 | 5 | `fix(stores): never ask a key-value store for a TTL below 60 s` | `d59c1e2` |
 
 The four branches merged with no conflicts. After the merge, `pnpm check` passed with 504 tests, 99.75% statements,
-95.39% branches and 100% functions.
+95.39% branches and 100% functions. After `main` (`0.2.1`, with finding 2) was merged in, it passed with 517 tests,
+99.75% statements, 95.43% branches and 100% functions.
 
 Still open:
 
 - The owner creates the KV namespace (finding 1, "Manual steps"). Until then, `connect` answers `503` on
   `api.watahub.dev`.
-- Finding 2 merges from its own branch. Its rebase touches `src/routes/webhook.ts` next to finding 3's log lines,
-  outside the env block.
+- Finding 2 landed on `main` in #71 and merged into this branch with no conflicts. In `src/routes/webhook.ts`, the
+  only difference from `main` is finding 3's two log lines.
 - `claude/oss-docs-no-ee` (a separate docs task, on top of finding 1) renames
   `docs/MULTI_TENANCY_AND_EXTENSIONS.md`. It conflicts with the edits findings 4 and 5 made to that file.
 
