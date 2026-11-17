@@ -17,7 +17,7 @@ runtimes that can serve a Hono `fetch` handler may work, but they are not tested
 Each Worker isolate or Node process deduplicates and rate-limits on its own. A Node process also keeps `connect`
 tokens on its own until it restarts. On Workers, `connect` answers `503` until `WATAHUB_KV` is bound (§2). To share
 the rest of the state, build your own entry with `createApp({ ... })` and the `Distributed*Store` adapters
-([Extensions](MULTI_TENANCY_AND_EXTENSIONS.md)).
+([Library and shared state](LIBRARY_AND_SHARED_STATE.md)).
 
 ## 2. Cloudflare Workers
 

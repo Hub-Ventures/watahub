@@ -75,10 +75,11 @@ deliberate security decision:
 
 If a refactor and a control disagree, the control wins.
 
-**The public API is a contract.** Watahub Enterprise Edition installs the published
-package and builds on `createApp`, the `GatewayDeps` ports and the exports in
-`src/index.ts`; it never patches the core. A change to any of them says so in the
-pull request.
+**The public API is a contract.** Library users install the published package and
+build on `createApp`, the `GatewayDeps` and `LineStore` ports and the exports in
+`src/index.ts`, without patching the core. A change to any of them stays backward
+compatible (new members are optional, and the defaults keep today's behavior) and
+says so in the pull request and in the release.
 
 **Dependencies are injected.** Anything that talks to the outside world or to
 time is a parameter: `createApp({ createMetaClient, fetch, now, logger })`,

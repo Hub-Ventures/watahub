@@ -193,8 +193,8 @@ line's business token and never returns it.
    the WABA to this app's webhook (`messages`) and registers the number.
 
 On Node the default line store is in memory, so tokens are lost on restart. Pass a shared store before you rely on
-it: see [Extensions](MULTI_TENANCY_AND_EXTENSIONS.md#line-tokens). On Workers, bind a KV namespace as `WATAHUB_KV`
-first ([Deployment](DEPLOYMENT.md#2-cloudflare-workers)). Without it, `connect` answers `503`.
+it: see [Library and shared state](LIBRARY_AND_SHARED_STATE.md#line-tokens). On Workers, bind a KV namespace as
+`WATAHUB_KV` first ([Deployment](DEPLOYMENT.md#2-cloudflare-workers)). Without it, `connect` answers `503`.
 
 ## 9. Check the code
 

@@ -194,8 +194,8 @@ interface MetaGraphClient {
 ```
 
 `DistributedReplayStore`, `DistributedRateLimitStore` and `DistributedLineStore` implement the first three over any
-`KeyValueStore`; see [Extensions](MULTI_TENANCY_AND_EXTENSIONS.md). Watahub Enterprise Edition replaces
-`createMetaClient`, `fetch`, `logger` and `lineStore` this way instead of changing the core.
+`KeyValueStore`; see [Library and shared state](LIBRARY_AND_SHARED_STATE.md). A wrapper replaces any port the same
+way, through `createApp`, instead of changing the core.
 
 ## 7. Error classification
 
