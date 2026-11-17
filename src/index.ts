@@ -27,6 +27,7 @@ export {
   DistributedReplayStore,
   type KeyValueStore,
 } from './services/store-adapters.js'
+export { cloudflareKvStore, type KvNamespaceLike } from './services/cloudflare-kv.js'
 export {
   verifyMetaSignature,
   signSubscriberPayload,

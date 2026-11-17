@@ -7,16 +7,17 @@ runtimes that can serve a Hono `fetch` handler may work, but they are not tested
 
 | | Cloudflare Workers | Node.js |
 | :--- | :--- | :--- |
-| Entry | `src/index.ts` (its default export, `createApp()` with defaults), set as `main` in `wrangler.jsonc` | `src/node.ts`, built to `dist/node.js` |
+| Entry | `src/worker.ts`, set as `main` in `wrangler.jsonc`. It builds the app once per isolate, with line tokens in the KV namespace bound as `WATAHUB_KV` | `src/node.ts`, built to `dist/node.js` |
 | Configuration | Bindings: `vars` and secrets | `process.env`; the gateway does not read `.env` files by itself |
 | Configuration check | Per request: each route answers `503` while a variable it reads is missing or malformed | At boot: the process exits with the names of the bad variables |
 | Client address for rate limits | `CF-Connecting-IP` | The TCP peer, or the last entry of `TRUSTED_CLIENT_IP_HEADER` behind a proxy |
 | `async` webhook delivery | `waitUntil` | Tracked in the process; drained for up to 15 s on `SIGTERM` or `SIGINT` |
-| Default state (delivered IDs, rate limits, line tokens) | In memory, per isolate | In memory, per process |
+| Default state (delivered IDs, rate limits, line tokens) | Line tokens in KV (`WATAHUB_KV`); delivered IDs and rate limits in memory, per isolate | In memory, per process |
 
-With the default in-memory state, each Worker isolate or Node process deduplicates, rate-limits and keeps `connect`
-tokens on its own. To share that state, build your own entry with `createApp({ ... })` and the `Distributed*Store`
-adapters ([Extensions](MULTI_TENANCY_AND_EXTENSIONS.md)).
+Each Worker isolate or Node process deduplicates and rate-limits on its own. A Node process also keeps `connect`
+tokens on its own until it restarts. On Workers, `connect` answers `503` until `WATAHUB_KV` is bound (§2). To share
+the rest of the state, build your own entry with `createApp({ ... })` and the `Distributed*Store` adapters
+([Extensions](MULTI_TENANCY_AND_EXTENSIONS.md)).
 
 ## 2. Cloudflare Workers
 
@@ -31,7 +32,18 @@ adapters ([Extensions](MULTI_TENANCY_AND_EXTENSIONS.md)).
    pnpm exec wrangler login
    ```
 
-2. Store the secrets. Never put them in `wrangler.jsonc`.
+2. Create the KV namespace for line tokens:
+
+   ```bash
+   pnpm exec wrangler kv namespace create WATAHUB_KV
+   ```
+
+   Put the printed `id` in the `kv_namespaces` block of `wrangler.jsonc` and uncomment the block. `src/worker.ts`
+   stores the business token of each line connected with `POST /v1/onboarding/connect` there, so every isolate reads
+   it. A new line can take up to about 60 s to be visible in other locations. Without the binding, the Worker logs an
+   error that names `WATAHUB_KV`, and `connect` answers `503` before it calls Meta. The other routes still work.
+
+3. Store the secrets. Never put them in `wrangler.jsonc`.
 
    ```bash
    pnpm exec wrangler secret put WATAHUB_API_KEY
@@ -41,17 +53,18 @@ adapters ([Extensions](MULTI_TENANCY_AND_EXTENSIONS.md)).
    pnpm exec wrangler secret put META_SYSTEM_USER_TOKEN
    ```
 
-   `META_SYSTEM_USER_TOKEN` is the token every call falls back to. The stock Worker keeps `connect` tokens only in the
-   isolate that stored them, so without your own line store you need it (or `X-Meta-Access-Token` on each call).
+   `META_SYSTEM_USER_TOKEN` is optional. A call uses it when neither `X-Meta-Access-Token` nor a connected line gives
+   a token.
 
-3. Put the non-secret values in `vars`:
+4. Put the non-secret values in `vars`:
 
    ```jsonc
    {
      "name": "my-watahub",
-     "main": "src/index.ts",
+     "main": "src/worker.ts",
      "compatibility_date": "2026-10-01",
      "compatibility_flags": ["nodejs_compat"],
+     "kv_namespaces": [{ "binding": "WATAHUB_KV", "id": "<id from step 2>" }],
      "vars": {
        "META_API_VERSION": "v24.0",
        "SUBSCRIBER_WEBHOOK_URL": "https://api.example.com/webhooks/whatsapp",
@@ -61,13 +74,13 @@ adapters ([Extensions](MULTI_TENANCY_AND_EXTENSIONS.md)).
    }
    ```
 
-4. Deploy:
+5. Deploy:
 
    ```bash
    pnpm run deploy   # wrangler deploy
    ```
 
-5. Point Meta's webhook at `https://<your worker host>/webhook` and check `GET /health`.
+6. Point Meta's webhook at `https://<your worker host>/webhook` and check `GET /health`.
 
 `pnpm dev:worker` runs the same Worker locally with `wrangler dev`, which reads local secrets from `.dev.vars`.
 
@@ -156,8 +169,7 @@ trusts its last entry.
       handshake fails.
 - [ ] `SUBSCRIBER_WEBHOOK_URL` is `https`.
 - [ ] Your backend verifies `x-watahub-signature` and deduplicates on `x-watahub-delivery-id`.
-- [ ] On Workers, the state you need across isolates (line tokens above all) uses a shared store, or you rely on
-      `META_SYSTEM_USER_TOKEN`.
+- [ ] On Workers, `WATAHUB_KV` is bound to a KV namespace. Without it, `POST /v1/onboarding/connect` answers `503`.
 - [ ] Behind a proxy, `TRUSTED_CLIENT_IP_HEADER` names a header the proxy sets, and the proxy allows 100 MB bodies.
 - [ ] `CORS_ALLOWED_ORIGINS` is empty unless a browser must call the API. The API key must never ship in browser code.
 - [ ] Monitoring calls `GET /health`.

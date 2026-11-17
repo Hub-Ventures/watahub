@@ -247,9 +247,10 @@ the clock, the logger, and the replay, rate-limit and line stores. The package a
 
 > [!WARNING]
 > The default stores live in memory, one per `createApp()`. On Workers, the stock `wrangler.jsonc` deploys
-> `createApp()` with those defaults. A token stored by `connect` then lives only in the isolate that handled the call,
-> and replay protection and rate limits are per isolate. Pass a `KeyValueStore` adapter for state that must outlive
-> the isolate.
+> `src/worker.ts`, which keeps line tokens in the KV namespace bound as `WATAHUB_KV`. Without that binding, and in any
+> app whose line store is the default one, `POST /v1/onboarding/connect` answers `503` on Workers instead of keeping a
+> token in one isolate. Replay protection and rate limits stay per isolate. Pass a `KeyValueStore` adapter for state
+> that must outlive the isolate; `cloudflareKvStore` wraps a KV namespace.
 
 ## Core and Enterprise Edition
 
