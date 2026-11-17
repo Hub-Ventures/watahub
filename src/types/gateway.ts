@@ -280,11 +280,15 @@ export interface NormalizedInteractiveReply {
   id?: string
   title?: string
   type: 'button' | 'list' | 'nfm_reply'
+  /** list only: the row's description, present only when Meta sent one */
+  description?: string
   name?: string
   body?: string
   responseJson?: Record<string, unknown>
   /** nfm_reply only: Meta sent a response_json that is not a JSON object, so responseJson is missing */
   responseJsonError?: true
+  /** nfm_reply only: Meta's response_json string exactly as received, also when it could not be parsed */
+  responseJsonText?: string
 }
 
 export interface NormalizedLocation {

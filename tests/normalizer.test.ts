@@ -391,6 +391,11 @@ describe('Meta Webhook Normalizer', () => {
   })
 
   it('normalizes inbound WhatsApp Flow completion (nfm_reply)', () => {
+    const responseJsonText = JSON.stringify({
+      flow_token: 'session_xyz123',
+      appointment_date: '2026-11-01',
+      service_id: 'dental_cleaning',
+    })
     const rawPayload: MetaWebhookPayload = {
       object: 'whatsapp_business_account',
       entry: [
@@ -416,11 +421,7 @@ describe('Meta Webhook Normalizer', () => {
                       nfm_reply: {
                         name: 'flow',
                         body: 'Sent',
-                        response_json: JSON.stringify({
-                          flow_token: 'session_xyz123',
-                          appointment_date: '2026-11-01',
-                          service_id: 'dental_cleaning',
-                        }),
+                        response_json: responseJsonText,
                       },
                     },
                   },
@@ -444,6 +445,7 @@ describe('Meta Webhook Normalizer', () => {
         appointment_date: '2026-11-01',
         service_id: 'dental_cleaning',
       },
+      responseJsonText,
     })
   })
 

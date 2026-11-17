@@ -1,6 +1,6 @@
 # API reference
 
-Every route the gateway serves in `watahub` 0.2.0, with its request, response and errors. Source of truth:
+Every route the gateway serves in `watahub` 0.2.1, with its request, response and errors. Source of truth:
 `src/routes/`, `src/schemas/` and `tests/routes-contract.test.ts`.
 
 ## 1. Conventions
@@ -129,7 +129,7 @@ No authentication.
 {
   "status": "ok",
   "service": "watahub",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "timestamp": "2026-11-08T15:30:00.000Z"
 }
 ```
@@ -148,6 +148,7 @@ Meta's subscription handshake.
 
 - `200` with `hub.challenge` as plain text.
 - `403` when the mode or token is wrong. From the 11th wrong attempt in a minute, one client gets `429`.
+- `503` when `META_WEBHOOK_VERIFY_TOKEN` is shorter than 16 characters or still the `.env.example` placeholder.
 
 ### `POST /webhook`
 
@@ -162,7 +163,7 @@ Receives Meta's deliveries. Requires `X-Hub-Signature-256: sha256=<64 hex>` over
 | `400` | `{ "error": "Invalid JSON payload" }` | Signed, but not JSON |
 | `401` | `{ "error": "Invalid HMAC signature" }` | Missing or wrong signature |
 | `503` | `{ "error": "Subscriber delivery failed", "deliveryId": "...", ... }` | `sync`: your backend failed or timed out; Meta retries |
-| `503` | `{ "error": "Gateway misconfigured: ..." }` | `META_APP_SECRET`, `SUBSCRIBER_WEBHOOK_URL` or `SUBSCRIBER_WEBHOOK_SECRET` missing, or an invalid `WEBHOOK_DELIVERY_MODE` / `META_WEBHOOK_MAX_AGE_SECONDS` |
+| `503` | `{ "error": "Gateway misconfigured: ..." }` | `META_APP_SECRET`, `SUBSCRIBER_WEBHOOK_URL` or `SUBSCRIBER_WEBHOOK_SECRET` missing; a `SUBSCRIBER_WEBHOOK_URL` that is not `https` (`http://localhost` and `http://127.0.0.1` aside); a `SUBSCRIBER_WEBHOOK_SECRET` under 32 characters; or an invalid `WEBHOOK_DELIVERY_MODE` / `META_WEBHOOK_MAX_AGE_SECONDS` |
 
 ## 4. Outbound messages
 

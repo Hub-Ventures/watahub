@@ -380,14 +380,18 @@ function toInteractiveReply(interactive: MetaInboundMessage['interactive']): Nor
     }
   }
   if (interactive?.type === 'list_reply') {
+    const description = interactive.list_reply?.description
     return {
       id: interactive.list_reply?.id || '',
       title: interactive.list_reply?.title || '',
       type: 'list',
+      ...(typeof description === 'string' ? { description } : {}),
     }
   }
   if (interactive?.type === 'nfm_reply') {
     const nfm = interactive.nfm_reply
+    // Kept verbatim so subscribers can forward Meta's own string instead of a re-serialized responseJson
+    const responseJsonText = nfm?.response_json
     let responseJson: Record<string, unknown> | undefined
     if (nfm?.response_json) {
       try {
@@ -407,6 +411,7 @@ function toInteractiveReply(interactive: MetaInboundMessage['interactive']): Nor
       body: nfm?.body || '',
       ...(responseJson ? { responseJson } : {}),
       ...(responseJsonError ? { responseJsonError: true as const } : {}),
+      ...(typeof responseJsonText === 'string' ? { responseJsonText } : {}),
     }
   }
   return undefined

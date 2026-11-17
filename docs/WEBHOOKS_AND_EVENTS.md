@@ -8,8 +8,10 @@ normalized event. Source of truth: `src/routes/webhook.ts`, `src/services/delive
 
 For each `POST /webhook` from Meta:
 
-1. **Configuration.** An invalid `WEBHOOK_DELIVERY_MODE` or `META_WEBHOOK_MAX_AGE_SECONDS`, or a missing
-   `META_APP_SECRET`, answers `503` so Meta retries later.
+1. **Configuration.** An invalid `WEBHOOK_DELIVERY_MODE` or `META_WEBHOOK_MAX_AGE_SECONDS`, a `SUBSCRIBER_WEBHOOK_URL`
+   that is not `https` (`http://localhost` and `http://127.0.0.1` aside), a `SUBSCRIBER_WEBHOOK_SECRET` under 32
+   characters, or a missing `META_APP_SECRET`, answers `503` so Meta retries later. Workers check this on every
+   delivery; Node refuses to start instead.
 2. **Signature.** `X-Hub-Signature-256` must be `sha256=` plus 64 hex characters, matching the HMAC-SHA256 of the raw
    body keyed with `META_APP_SECRET`. Otherwise `401`.
 3. **Delivery ID.** The SHA-256 of the raw body. A Meta redelivery of the same body has the same ID.
@@ -166,7 +168,7 @@ the response: a restart or a crash loses it, and nobody sends the event again.
 ```http
 POST <SUBSCRIBER_WEBHOOK_URL>
 Content-Type: application/json
-User-Agent: Watahub-Gateway/0.2.0
+User-Agent: Watahub-Gateway/0.2.1
 x-watahub-signature: sha256=<lowercase hex>
 x-watahub-delivery-id: <sha256 of Meta's body>
 Idempotency-Key: <same as x-watahub-delivery-id>
@@ -378,20 +380,27 @@ To reply, send to the BSUID: `POST /v1/messages` accepts it in `to`.
 }
 ```
 
-A list row has `"type": "list"` with the row's `id` and `title`.
+A list row has `"type": "list"` with the row's `id` and `title`, and its `description` when Meta sends one:
+
+```json
+"interactiveReply": { "type": "list", "id": "row_1", "title": "Combo", "description": "Burger + fries" }
+```
 
 ### 4.5 Flow answer
 
 `interactiveReply` has `"type": "nfm_reply"`, the Flow `name` and `body`, and the parsed answer in `responseJson`. If
 Meta's `response_json` is not a JSON object, `responseJson` is absent and `"responseJsonError": true` says so, so an
-unreadable answer is never mistaken for an empty one.
+unreadable answer is never mistaken for an empty one. Whenever Meta sends `response_json`, `responseJsonText` carries
+that string exactly as received, also when it could not be parsed, so a subscriber can forward Meta's own value instead
+of re-serializing `responseJson`.
 
 ```json
 "interactiveReply": {
   "type": "nfm_reply",
   "name": "flow",
   "body": "Sent",
-  "responseJson": { "flow_token": "booking-42", "date": "2026-11-20" }
+  "responseJson": { "flow_token": "booking-42", "date": "2026-11-20" },
+  "responseJsonText": "{\"flow_token\": \"booking-42\", \"date\": \"2026-11-20\"}"
 }
 ```
 

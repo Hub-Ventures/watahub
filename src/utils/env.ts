@@ -34,6 +34,21 @@ const numericId = z.string().regex(/^\d+$/, 'must be a numeric Meta Graph ID')
 const notPlaceholder = (value: string) => !PLACEHOLDER_VALUES.has(value)
 
 /**
+ * https, or plain http to localhost / 127.0.0.1 for development. A value that is not a
+ * URL passes here: `.url()` already reports it, and this check must not throw on it.
+ */
+function usesHttpsOrLocalhost(value: string): boolean {
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    return true
+  }
+  const isLocal = url.hostname === 'localhost' || url.hostname === '127.0.0.1'
+  return url.protocol === 'https:' || isLocal
+}
+
+/**
  * Production configuration contract. Secrets that gate authentication are
  * required: without them the gateway fails closed on the matching routes.
  */
@@ -57,7 +72,7 @@ const EnvObject = z.object({
     .string()
     .regex(/^v\d+\.\d+$/, 'must look like v24.0')
     .optional(),
-  SUBSCRIBER_WEBHOOK_URL: z.string().url().optional(),
+  SUBSCRIBER_WEBHOOK_URL: z.string().url().refine(usesHttpsOrLocalhost, 'must use https://').optional(),
   SUBSCRIBER_WEBHOOK_SECRET: z.string().min(32, 'must be at least 32 characters').optional(),
   WEBHOOK_DELIVERY_MODE: z.enum(['sync', 'async']).optional(),
   META_WEBHOOK_MAX_AGE_SECONDS: z
@@ -85,20 +100,15 @@ const EnvObject = z.object({
     .refine(notPlaceholder, 'still has the .env.example placeholder'),
 })
 
+// Rules that span two variables. Single-variable rules live in EnvObject so
+// invalidEnvVars can apply them per request on Workers.
 const EnvSchema = EnvObject.superRefine((env, ctx) => {
-  if (env.SUBSCRIBER_WEBHOOK_URL) {
-    const url = new URL(env.SUBSCRIBER_WEBHOOK_URL)
-    const isLocal = url.hostname === 'localhost' || url.hostname === '127.0.0.1'
-    if (url.protocol !== 'https:' && !isLocal) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['SUBSCRIBER_WEBHOOK_URL'], message: 'must use https://' })
-    }
-    if (!env.SUBSCRIBER_WEBHOOK_SECRET) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['SUBSCRIBER_WEBHOOK_SECRET'],
-        message: 'is required when SUBSCRIBER_WEBHOOK_URL is set',
-      })
-    }
+  if (env.SUBSCRIBER_WEBHOOK_URL && !env.SUBSCRIBER_WEBHOOK_SECRET) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['SUBSCRIBER_WEBHOOK_SECRET'],
+      message: 'is required when SUBSCRIBER_WEBHOOK_URL is set',
+    })
   }
 })
 
@@ -119,7 +129,11 @@ export function validateEnv(env: Record<string, string | undefined>): EnvValidat
   }
 }
 
-/** Optional variables with a format rule, read by a specific surface */
+/**
+ * Variables with a format or strength rule, read by a specific surface. A surface
+ * that lists one here answers 503 while its value breaks the rule; an unset value
+ * is left to the surface (most are optional, and a missing secret has its own 503).
+ */
 export type FormattedEnvVar =
   | 'RATE_LIMIT_PER_MINUTE'
   | 'TRUSTED_CLIENT_IP_HEADER'
@@ -127,6 +141,9 @@ export type FormattedEnvVar =
   | 'META_WEBHOOK_MAX_AGE_SECONDS'
   | 'META_API_VERSION'
   | 'CORS_ALLOWED_ORIGINS'
+  | 'SUBSCRIBER_WEBHOOK_URL'
+  | 'SUBSCRIBER_WEBHOOK_SECRET'
+  | 'META_WEBHOOK_VERIFY_TOKEN'
 
 /**
  * The listed variables whose current value breaks the rule validateEnv applies at

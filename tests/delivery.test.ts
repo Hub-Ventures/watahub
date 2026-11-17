@@ -185,7 +185,7 @@ describe('POST /webhook → subscriber forwarding', () => {
   })
 
   it('answers Meta 200 on Node (no ExecutionContext) and forwards with a body-derived delivery id', async () => {
-    process.env.SUBSCRIBER_WEBHOOK_SECRET = 'sub-secret'
+    process.env.SUBSCRIBER_WEBHOOK_SECRET = 'sub-secret-0123456789abcdef0123456789'
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'))
 
     const res = await deliver()
@@ -197,7 +197,7 @@ describe('POST /webhook → subscriber forwarding', () => {
   })
 
   it('a Meta redelivery of the same payload is acknowledged but forwarded only once', async () => {
-    process.env.SUBSCRIBER_WEBHOOK_SECRET = 'sub-secret'
+    process.env.SUBSCRIBER_WEBHOOK_SECRET = 'sub-secret-0123456789abcdef0123456789'
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'))
 
     await deliver()
@@ -222,7 +222,7 @@ describe('POST /webhook → subscriber forwarding', () => {
   })
 
   it('answers 503 (so Meta retries) when subscriber delivery fails in sync mode', async () => {
-    process.env.SUBSCRIBER_WEBHOOK_SECRET = 'sub-secret'
+    process.env.SUBSCRIBER_WEBHOOK_SECRET = 'sub-secret-0123456789abcdef0123456789'
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('server error', { status: 500 }))
 
     const res = await deliver()
@@ -233,7 +233,7 @@ describe('POST /webhook → subscriber forwarding', () => {
 
   it('supports WEBHOOK_DELIVERY_MODE=async and catches async dispatch errors', async () => {
     process.env.WEBHOOK_DELIVERY_MODE = 'async'
-    process.env.SUBSCRIBER_WEBHOOK_SECRET = 'sub-secret'
+    process.env.SUBSCRIBER_WEBHOOK_SECRET = 'sub-secret-0123456789abcdef0123456789'
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('connection reset'))
 
     const res = await deliver()
@@ -243,7 +243,7 @@ describe('POST /webhook → subscriber forwarding', () => {
   })
 
   it('forwards non-messages webhook changes (like history sync) with raw payload to subscriber', async () => {
-    process.env.SUBSCRIBER_WEBHOOK_SECRET = 'sub-secret'
+    process.env.SUBSCRIBER_WEBHOOK_SECRET = 'sub-secret-0123456789abcdef0123456789'
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'))
 
     const historyPayload = JSON.stringify({
@@ -282,7 +282,7 @@ describe('POST /webhook → subscriber forwarding', () => {
   })
 
   it('forwards smb_message_echoes webhook with normalized echo event', async () => {
-    process.env.SUBSCRIBER_WEBHOOK_SECRET = 'sub-secret'
+    process.env.SUBSCRIBER_WEBHOOK_SECRET = 'sub-secret-0123456789abcdef0123456789'
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'))
 
     const echoPayload = JSON.stringify({
