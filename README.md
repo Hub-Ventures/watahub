@@ -147,8 +147,9 @@ Any other `/v24.0` path answers `403`. Proxied calls go to the Graph version in 
 prefix says.
 
 **Meta token per call.** The gateway uses `X-Meta-Access-Token` when the caller sends it. If the call names a phone
-number ID, it next tries the token stored for that line by `connect`. The last fallback is `META_SYSTEM_USER_TOKEN`.
-With none of them, the call answers `500`.
+number ID, it next tries the token stored for that line by `connect`. If it names a WABA and no phone number ID
+(`GET /v1/templates`, `POST /v1/onboarding/subscribe`), it tries the token of the line last connected for that WABA.
+The last fallback is `META_SYSTEM_USER_TOKEN`. With none of them, the call answers `500`.
 
 ## Configuration
 
@@ -189,6 +190,12 @@ For every `POST /webhook`, the gateway:
 | :--- | :--- | :--- |
 | `sync` (default) | After your agent answers. One attempt, 3 s timeout | `503`, so Meta retries the same body. A final `4xx` from your agent (not 408, 425 or 429) is acknowledged with `200` and the event stays only in the gateway log |
 | `async` | At once | Up to 3 attempts in the background (5 s each, 1 s and 2 s apart); a final `4xx` stops at the first. Meta is not asked to retry, so a failed event stays only in the gateway log |
+
+An agent that calls an LLM before it answers takes more than 3 seconds, so in `sync` mode Meta retries and the agent
+gets the same event again. Keep `sync` and answer fast: verify the signature, drop duplicates, record the event, answer
+`200`, then call the LLM in the background and reply with `POST /v1/messages`. A `sync` timeout logs this fix. `async`
+is not the way out: it is not durable. See
+[Answer fast, work in the background](docs/WEBHOOKS_AND_EVENTS.md#answer-fast-work-in-the-background).
 
 Each forward carries:
 
@@ -247,9 +254,10 @@ the clock, the logger, and the replay, rate-limit and line stores. The package a
 
 > [!WARNING]
 > The default stores live in memory, one per `createApp()`. On Workers, the stock `wrangler.jsonc` deploys
-> `createApp()` with those defaults. A token stored by `connect` then lives only in the isolate that handled the call,
-> and replay protection and rate limits are per isolate. Pass a `KeyValueStore` adapter for state that must outlive
-> the isolate.
+> `src/worker.ts`, which keeps line tokens in the KV namespace bound as `WATAHUB_KV`. Without that binding, and in any
+> app whose line store is the default one, `POST /v1/onboarding/connect` answers `503` on Workers instead of keeping a
+> token in one isolate. Replay protection and rate limits stay per isolate. Pass a `KeyValueStore` adapter for state
+> that must outlive the isolate; `cloudflareKvStore` wraps a KV namespace.
 
 ## Core and Enterprise Edition
 

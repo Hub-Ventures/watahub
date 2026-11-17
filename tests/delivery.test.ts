@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import app from '../src/index.js'
+import app, { createApp } from '../src/index.js'
 import { deliverToSubscriber, type DeliveryPolicy } from '../src/services/delivery.js'
 import { sha256Hex, signSubscriberPayload } from '../src/services/crypto.js'
-import { webhookDeliveryIds } from '../src/services/replay.js'
+import { DeliveryIdCache, webhookDeliveryIds } from '../src/services/replay.js'
 
 const FAST: DeliveryPolicy = { maxAttempts: 3, baseDelayMs: 1, maxDelayMs: 2, timeoutMs: 50 }
 const request = { url: 'https://subscriber.example/hook', body: '{"a":1}', secret: 'sub-secret', deliveryId: 'abc123' }
@@ -58,6 +58,56 @@ describe('deliverToSubscriber', () => {
 
     expect((await deliverToSubscriber(request, FAST)).delivered).toBe(true)
     expect(fetchSpy).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('deliverToSubscriber timedOut', () => {
+  const ONE_SHORT: DeliveryPolicy = { maxAttempts: 1, baseDelayMs: 0, maxDelayMs: 0, timeoutMs: 20 }
+  const quiet = { info: () => undefined, error: () => undefined }
+
+  /** A subscriber that never answers: the request ends only when the policy signal aborts it, as fetch does */
+  const hang = (_input: RequestInfo | URL, init?: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(init.signal?.reason as DOMException))
+    })
+
+  it('is true when the attempt ends on the policy timeout', async () => {
+    const result = await deliverToSubscriber(request, ONE_SHORT, { fetch: hang, logger: quiet })
+    expect(result).toEqual({ delivered: false, attempts: 1, status: undefined, timedOut: true })
+  })
+
+  it('is absent after a network error', async () => {
+    const fetchFn = vi.fn().mockRejectedValue(new TypeError('fetch failed'))
+    const result = await deliverToSubscriber(request, ONE_SHORT, { fetch: fetchFn, logger: quiet })
+    expect(result.delivered).toBe(false)
+    expect(result).not.toHaveProperty('timedOut')
+  })
+
+  it.each([500, 503, 400, 307])('is absent after HTTP %i', async (status) => {
+    const fetchFn = vi.fn(() => Promise.resolve(new Response(null, { status })))
+    const result = await deliverToSubscriber(request, ONE_SHORT, { fetch: fetchFn, logger: quiet })
+    expect(result).toMatchObject({ delivered: false, status })
+    expect(result).not.toHaveProperty('timedOut')
+  })
+
+  it('describes the last attempt only', async () => {
+    const policy: DeliveryPolicy = { ...FAST, maxAttempts: 2, timeoutMs: 20 }
+
+    const timeoutThenStatus = vi
+      .fn()
+      .mockImplementationOnce(hang)
+      .mockResolvedValueOnce(new Response(null, { status: 502 }))
+    const answered = await deliverToSubscriber(request, policy, { fetch: timeoutThenStatus, logger: quiet })
+    expect(answered).toMatchObject({ delivered: false, attempts: 2, status: 502 })
+    expect(answered).not.toHaveProperty('timedOut')
+
+    const statusThenTimeout = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 502 }))
+      .mockImplementationOnce(hang)
+    const timedOut = await deliverToSubscriber(request, policy, { fetch: statusThenTimeout, logger: quiet })
+    expect(timedOut).toMatchObject({ delivered: false, attempts: 2, timedOut: true })
+    expect(timedOut.status).toBeUndefined()
   })
 })
 
@@ -285,5 +335,122 @@ describe('POST /webhook → subscriber forwarding', () => {
       kind: 'text',
       text: 'Hello from WhatsApp mobile app',
     })
+  })
+})
+
+describe('POST /webhook async delivery that fails for good', () => {
+  const originalEnv = process.env
+  const APP_SECRET = 'meta-app-secret'
+  const ONLY_IN_LOG = 'WEBHOOK_DELIVERY_MODE=async does not ask Meta to retry, so the event is only in this log'
+
+  function messageBody(text: string) {
+    return JSON.stringify({
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          id: '1',
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                messaging_product: 'whatsapp',
+                metadata: { display_phone_number: '1555', phone_number_id: '987' },
+                messages: [
+                  {
+                    from: '57300',
+                    id: `wamid.${text}`,
+                    timestamp: String(Math.floor(Date.now() / 1000)),
+                    type: 'text',
+                    text: { body: text },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    })
+  }
+
+  function appWith(fetchFn: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) {
+    const errors: string[] = []
+    const gateway = createApp({
+      fetch: fetchFn,
+      replayStore: new DeliveryIdCache(),
+      logger: { info: () => undefined, error: (message) => errors.push(message) },
+    })
+    return { gateway, errors }
+  }
+
+  async function post(gateway: ReturnType<typeof createApp>, raw: string) {
+    return gateway.request('/webhook', {
+      method: 'POST',
+      body: raw,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-hub-signature-256': await signSubscriberPayload(raw, APP_SECRET),
+      },
+    })
+  }
+
+  beforeEach(() => {
+    process.env = {
+      ...originalEnv,
+      META_APP_SECRET: APP_SECRET,
+      SUBSCRIBER_WEBHOOK_URL: 'https://subscriber.example/hook',
+      SUBSCRIBER_WEBHOOK_SECRET: 's'.repeat(32),
+      WEBHOOK_DELIVERY_MODE: 'async',
+    }
+  })
+
+  afterEach(() => {
+    process.env = originalEnv
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  it('logs that the event is only in the log after the last retry fails', async () => {
+    // The backoff between attempts (1 s, then 2 s) waits on setTimeout
+    vi.useFakeTimers({ toFake: ['setTimeout'] })
+    const fetchFn = vi.fn(() => Promise.resolve(new Response('down', { status: 500 })))
+    const { gateway, errors } = appWith(fetchFn)
+    const raw = messageBody('async-gives-up')
+
+    const res = await post(gateway, raw)
+    expect(res.status).toBe(200)
+
+    const gaveUp = () => errors.some((line) => line.includes(ONLY_IN_LOG))
+    for (let step = 0; step < 40 && !gaveUp(); step++) await vi.advanceTimersByTimeAsync(250)
+
+    expect(fetchFn).toHaveBeenCalledTimes(3)
+    const lines = errors.filter((line) => line.includes(ONLY_IN_LOG))
+    expect(lines).toEqual([`[watahub] Delivery ${await sha256Hex(raw)} failed for good; ${ONLY_IN_LOG}`])
+  })
+
+  it('logs it after a redirect, which is not the subscriber refusing the event', async () => {
+    const { gateway, errors } = appWith(() => Promise.resolve(new Response(null, { status: 307 })))
+
+    expect((await post(gateway, messageBody('async-redirect'))).status).toBe(200)
+    await vi.waitFor(() => expect(errors.some((line) => line.includes(ONLY_IN_LOG))).toBe(true))
+  })
+
+  it.each([400, 404, 422])('does not log it after a final %i: the subscriber refused the event', async (status) => {
+    const { gateway, errors } = appWith(() => Promise.resolve(new Response('no', { status })))
+
+    expect((await post(gateway, messageBody(`async-final-${status}`))).status).toBe(200)
+    await vi.waitFor(() => expect(errors.some((line) => line.includes(`HTTP ${status}`))).toBe(true))
+    // The give-up line would follow the rejection in the same background task
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(errors.some((line) => line.includes(ONLY_IN_LOG))).toBe(false)
+  })
+
+  it('does not log it when the delivery succeeds', async () => {
+    const fetchFn = vi.fn(() => Promise.resolve(new Response('ok', { status: 200 })))
+    const { gateway, errors } = appWith(fetchFn)
+
+    expect((await post(gateway, messageBody('async-ok'))).status).toBe(200)
+    await vi.waitFor(() => expect(fetchFn).toHaveBeenCalledTimes(1))
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(errors).toEqual([])
   })
 })

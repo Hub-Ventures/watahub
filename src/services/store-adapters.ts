@@ -1,9 +1,15 @@
 import type { LineStore, RateLimitStore, ReplayStore, StoredLine } from '../deps.js'
+import { isGraphId } from '../schemas/common.js'
 import { isRecord } from '../utils/guards.js'
 import { DEFAULT_REPLAY_TTL_SECONDS } from './replay.js'
 
+/** Cloudflare KV rejects an `expirationTtl` below this many seconds. */
+const MIN_KEY_VALUE_TTL_SECONDS = 60
+
 /**
  * Minimal Key-Value Store interface compatible with Cloudflare KV, Redis, etc.
+ *
+ * The gateway never asks for a TTL below 60 s, so a backend with that floor (Cloudflare KV) needs no clamp of its own.
  */
 export interface KeyValueStore {
   get(key: string): Promise<string | null>
@@ -13,6 +19,10 @@ export interface KeyValueStore {
 
 /**
  * ReplayStore adapter backed by a KeyValueStore (Cloudflare KV, Redis, etc.)
+ *
+ * `remember` reads, then writes. That is not atomic: two concurrent calls with the same ID can both pass. KV is also
+ * eventually consistent, so a write may not be visible elsewhere for a while. Replay protection is approximate.
+ * Subscribers must still deduplicate on `x-watahub-delivery-id`.
  */
 export class DistributedReplayStore implements ReplayStore {
   constructor(
@@ -41,6 +51,13 @@ export class DistributedReplayStore implements ReplayStore {
 
 /**
  * RateLimitStore adapter backed by a KeyValueStore (Cloudflare KV, Redis, etc.)
+ *
+ * `hit` reads, then writes. That is not atomic: two concurrent calls can both read the same count, so the limit is
+ * approximate. KV is also eventually consistent. For exact limits, put an atomic counter (a Durable Object or Redis
+ * `INCR`) behind a custom `RateLimitStore`.
+ *
+ * Keys live at least 60 s, even for a shorter window. The `resetAt` stored in the value decides the window, and
+ * `blockedFor` and `hit` both check it.
  */
 export class DistributedRateLimitStore implements RateLimitStore {
   constructor(
@@ -80,7 +97,7 @@ export class DistributedRateLimitStore implements RateLimitStore {
       }
     }
 
-    const ttlSeconds = Math.max(1, Math.ceil((resetAt - nowMs) / 1000))
+    const ttlSeconds = Math.max(MIN_KEY_VALUE_TTL_SECONDS, Math.ceil((resetAt - nowMs) / 1000))
     await this.kv.set(storageKey, JSON.stringify({ count, resetAt }), { ttlSeconds })
   }
 
@@ -92,6 +109,8 @@ export class DistributedRateLimitStore implements RateLimitStore {
 /**
  * LineStore adapter. No TTL: a business token stays until the line is connected again.
  * The value is the token, so callers must not log the raw KV payload.
+ * Two keys per line: `<prefix><phoneNumberId>` holds the line, and `<prefix>waba:<wabaId>` holds the phone number
+ * ID of the line last put for that WABA. The second key is a pointer, never a copy of the token.
  */
 export class DistributedLineStore implements LineStore {
   constructor(
@@ -111,7 +130,22 @@ export class DistributedLineStore implements LineStore {
       wabaId: line.wabaId,
       accessToken: line.accessToken,
     }
+    // The line first: a pointer must never name a line that was not written
     await this.kv.set(`${this.prefix}${line.phoneNumberId}`, JSON.stringify(stored))
+    await this.kv.set(this.wabaKey(line.wabaId), line.phoneNumberId)
+  }
+
+  async findByWaba(wabaId: string): Promise<StoredLine | undefined> {
+    const phoneNumberId = await this.kv.get(this.wabaKey(wabaId))
+    // Untrusted KV bytes become part of the next key, so only a phone number ID is followed
+    if (phoneNumberId === null || !isGraphId(phoneNumberId)) return undefined
+    const line = await this.get(phoneNumberId)
+    // The line was connected again under another WABA after this pointer was written
+    return line?.wabaId === wabaId ? line : undefined
+  }
+
+  private wabaKey(wabaId: string): string {
+    return `${this.prefix}waba:${wabaId}`
   }
 }
 

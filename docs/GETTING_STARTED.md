@@ -148,6 +148,9 @@ When someone writes to your number:
 4. By default (`WEBHOOK_DELIVERY_MODE=sync`) it answers Meta only after your backend answers: `200` when your backend
    accepts it, `503` when it fails or takes longer than 3 seconds, so Meta delivers it again.
 
+If your backend calls an LLM, answer `200` first and do that work in the background, as in
+[Answer fast, work in the background](WEBHOOKS_AND_EVENTS.md#answer-fast-work-in-the-background).
+
 Your backend receives:
 
 ```json
@@ -189,8 +192,9 @@ line's business token and never returns it.
 3. The gateway exchanges the code with its own app credentials, stores the token for that phone number ID, subscribes
    the WABA to this app's webhook (`messages`) and registers the number.
 
-The default line store is in memory. Tokens are lost on restart, and on Workers they live only in one isolate. Pass a
-shared store before you rely on it: see [Extensions](MULTI_TENANCY_AND_EXTENSIONS.md#line-tokens).
+On Node the default line store is in memory, so tokens are lost on restart. Pass a shared store before you rely on
+it: see [Extensions](MULTI_TENANCY_AND_EXTENSIONS.md#line-tokens). On Workers, bind a KV namespace as `WATAHUB_KV`
+first ([Deployment](DEPLOYMENT.md#2-cloudflare-workers)). Without it, `connect` answers `503`.
 
 ## 9. Check the code
 

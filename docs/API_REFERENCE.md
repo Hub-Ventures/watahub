@@ -27,23 +27,31 @@ X-API-Key: <WATAHUB_API_KEY>
 
 ### 1.3 Meta access token
 
-Calls that name a phone number ID resolve the Meta token in this order. They are `POST /v1/messages`,
-`POST /v1/media`, `POST /v1/media/:phoneNumberId`, `POST /v1/onboarding/override-callback`,
-`POST /v24.0/:phoneNumberId/messages`, `POST /v24.0/:phoneNumberId/media`, and
-`GET /v1/media/:mediaId` / `GET /v1/media/:mediaId/content` when they carry `X-Phone-Number-Id` or
-`?phone_number_id=`.
+Every call to Meta resolves the token in this order:
 
 1. The `X-Meta-Access-Token` header.
-2. The business token that `POST /v1/onboarding/connect` stored for that phone number ID.
+2. The business token that `POST /v1/onboarding/connect` stored for the line the call names.
 3. `META_SYSTEM_USER_TOKEN`.
 
-Calls without a phone number ID skip step 2: those media GETs without that header or query,
-`GET /v24.0/:mediaId`, `GET /v1/templates` and `POST /v1/onboarding/subscribe`.
+A call names a line in one of two ways:
+
+- **By phone number ID.** `POST /v1/messages`, `POST /v1/media`, `POST /v1/media/:phoneNumberId`,
+  `POST /v1/onboarding/override-callback`, `POST /v24.0/:phoneNumberId/messages` and
+  `POST /v24.0/:phoneNumberId/media` carry it. `GET /v1/media/:mediaId`, `GET /v1/media/:mediaId/content` and
+  `GET /v24.0/:mediaId` take it from `X-Phone-Number-Id` or `?phone_number_id=`; the header wins. On
+  `GET /v24.0/:mediaId`, a value that is not numeric is not looked up, and `?phone_number_id=` still goes to Graph.
+- **By WABA.** `GET /v1/templates` and `POST /v1/onboarding/subscribe` use the line last connected for that WABA.
+  The Embedded Signup token covers the WABA the customer granted, so any of its lines works. This needs a line store
+  with `findByWaba`. Both core stores have it; on a store without it, these calls skip step 2.
+
+The media GETs without that header or query skip step 2.
 
 With no token, the call answers `500` with
 `{ "error": "Missing Meta access token. Set META_SYSTEM_USER_TOKEN or pass X-Meta-Access-Token header." }`.
-The `/v1` routes in the first list above (the media GETs even without a phone number ID) answer instead with
+The `/v1` routes that name a line by phone number ID (the media GETs even without one) answer instead with
 `{ "error": "Missing Meta access token. Set META_SYSTEM_USER_TOKEN, pass X-Meta-Access-Token header, or name a line connected with POST /v1/onboarding/connect." }`.
+`GET /v1/templates` and `POST /v1/onboarding/subscribe` answer with
+`{ "error": "Missing Meta access token. Set META_SYSTEM_USER_TOKEN, pass X-Meta-Access-Token header, or connect a line of this WABA with POST /v1/onboarding/connect." }`.
 
 ### 1.4 Error shapes
 
@@ -344,7 +352,8 @@ with Meta's `Content-Type` and `Content-Disposition`. The caller never holds the
 
 ### `GET /v1/templates` and `GET /v1/templates/:wabaId`
 
-One page of a WABA's message templates, in Meta's page size.
+One page of a WABA's message templates, in Meta's page size. The Meta token is the header's, then the token of the
+line last connected for that WABA, then `META_SYSTEM_USER_TOKEN` (see [1.3](#13-meta-access-token)).
 
 | Parameter | Where | Description |
 | :--- | :--- | :--- |
@@ -411,6 +420,9 @@ Finishes Embedded Signup for one phone line. The gateway:
 
 - `400` when `META_APP_ID` or `META_APP_SECRET` is missing (`exchange` too).
 - `422` when `pin` is not 6 digits, an ID is not numeric, or the body carries `appId` or `appSecret`.
+- `503` on Cloudflare Workers when the line store is the in-memory default: bind a KV namespace as `WATAHUB_KV` (the
+  stock `src/worker.ts` entry) or pass a `lineStore` to `createApp`. The gateway answers before it calls Meta, so the
+  code is not used. A `MemoryLineStore` passed on purpose still connects.
 - If a Graph step fails, the classified Meta error comes back with `"step": "exchange" | "subscribe" | "register"`.
   The token is never in it. After a failed subscribe or register, the stored token stays in place.
 
@@ -430,8 +442,9 @@ Exchanges the code and **returns** the token. Prefer `connect`.
 
 ### `POST /v1/onboarding/subscribe`
 
-Subscribes this app to a WABA's webhooks with the header token or `META_SYSTEM_USER_TOKEN`. `connect` already does
-this with the line's own token.
+Subscribes this app to a WABA's webhooks. The Meta token is the header's, then the token of the line last connected
+for that WABA, then `META_SYSTEM_USER_TOKEN` (see [1.3](#13-meta-access-token)). `connect` already does this with the
+line's own token.
 
 ```json
 { "wabaId": "105555123456789", "subscribedFields": ["messages"] }
@@ -472,11 +485,11 @@ Three Graph routes, passed through with the Meta token resolved as in [1.3](#13-
 can use them by changing its base URL to the gateway and sending the gateway key in `X-API-Key`. A Meta token the
 client sends as `Authorization: Bearer` is not forwarded to Graph; pass it as `X-Meta-Access-Token` instead.
 
-| Method | Path | Query forwarded |
-| :--- | :--- | :--- |
-| `POST` | `/v24.0/:phoneNumberId/messages` | None |
-| `POST` | `/v24.0/:phoneNumberId/media` | None |
-| `GET` | `/v24.0/:mediaId` | `phone_number_id` |
+| Method | Path | Line for the stored token | Query forwarded |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/v24.0/:phoneNumberId/messages` | The path | None |
+| `POST` | `/v24.0/:phoneNumberId/media` | The path | None |
+| `GET` | `/v24.0/:mediaId` | `X-Phone-Number-Id` or `?phone_number_id=`, numeric only; the header wins | `phone_number_id` |
 
 - Any other method or path answers `403`. Other query parameters are dropped, because Graph would honor
   `method=`, `fields=` and `access_token=` and widen what the token can do.

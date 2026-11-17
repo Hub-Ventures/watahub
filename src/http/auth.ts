@@ -1,6 +1,6 @@
 import type { Context, MiddlewareHandler } from 'hono'
 import { getConfig } from '../config.js'
-import type { LineStore, RateLimitStore } from '../deps.js'
+import type { LineStore, RateLimitStore, StoredLine } from '../deps.js'
 import type { Logger } from '../logger.js'
 import { timingSafeEqual } from '../services/crypto.js'
 import { isStrongApiKey } from '../utils/env.js'
@@ -53,6 +53,11 @@ async function hasValidApiKey(c: Context, apiKey: string): Promise<boolean> {
 export interface MetaTokenSource {
   /** When set, the line store is consulted after the header and before the env token. */
   phoneNumberId?: string
+  /**
+   * WABA routes (templates, subscribe). Used only without `phoneNumberId`, and only when the store has
+   * `findByWaba`: the token of the line last connected for this WABA.
+   */
+  wabaId?: string
   lineStore?: LineStore
 }
 
@@ -60,16 +65,24 @@ export interface MetaTokenSource {
  * Resolves the Meta access token for the request:
  * 1. `X-Meta-Access-Token` (operators and enterprise wrappers inject this).
  * 2. The business token stored for `phoneNumberId`, when that line was connected.
- * 3. `META_SYSTEM_USER_TOKEN`, the old single-token path.
+ * 3. Without `phoneNumberId`: the business token of the line last connected for `wabaId`, when the store has
+ *    `findByWaba`.
+ * 4. `META_SYSTEM_USER_TOKEN`, the old single-token path.
  */
 export async function resolveMetaAccessToken(c: Context, source: MetaTokenSource = {}): Promise<string | undefined> {
   const headerToken = c.req.header('x-meta-access-token')
   if (headerToken) return headerToken
 
-  if (source.phoneNumberId && source.lineStore) {
-    const line = await source.lineStore.get(source.phoneNumberId)
-    if (line?.accessToken) return line.accessToken
-  }
+  const line = await storedLine(source)
+  if (line?.accessToken) return line.accessToken
 
   return getConfig(c).metaSystemUserToken
+}
+
+/** A phone number ID decides the line. The WABA is asked only when no phone number ID was named. */
+async function storedLine({ phoneNumberId, wabaId, lineStore }: MetaTokenSource): Promise<StoredLine | undefined> {
+  if (!lineStore) return undefined
+  if (phoneNumberId) return lineStore.get(phoneNumberId)
+  if (wabaId && lineStore.findByWaba) return lineStore.findByWaba(wabaId)
+  return undefined
 }

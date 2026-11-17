@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
+import { getRuntimeKey } from 'hono/adapter'
 import { getConfig } from '../config.js'
-import type { GatewayDeps } from '../deps.js'
+import { isDefaultLineStore, type GatewayDeps } from '../deps.js'
 import { parseJsonBody } from '../http/body.js'
 import { errorResponse } from '../http/errors.js'
 import { metaClientFor } from '../http/meta.js'
@@ -42,6 +43,21 @@ export function createOnboardingRouter(deps: GatewayDeps): Hono {
    * POST /v1/onboarding/connect
    */
   router.post('/v1/onboarding/connect', async (c) => {
+    // Workers isolates do not share memory: a token in the default store would be gone on the next
+    // request, so fail closed before the single-use code is spent. A store the caller passed is respected.
+    if (getRuntimeKey() === 'workerd' && isDefaultLineStore(deps.lineStore)) {
+      deps.logger.error(
+        '[watahub] Refusing connect on Workers: the line store is the in-memory default. Bind WATAHUB_KV or pass lineStore to createApp'
+      )
+      return c.json(
+        {
+          error:
+            'Gateway misconfigured: on Workers, line tokens need a shared store. Bind a KV namespace as WATAHUB_KV or pass a lineStore to createApp.',
+        },
+        503
+      )
+    }
+
     const body = await parseJsonBody(c, ConnectLineSchema)
     if (!body.ok) return body.response
 
@@ -108,9 +124,10 @@ export function createOnboardingRouter(deps: GatewayDeps): Hono {
     const body = await parseJsonBody(c, SubscribeWabaSchema)
     if (!body.ok) return body.response
 
-    const meta = await metaClientFor(c, deps)
-    if (!meta.ok) return meta.response
     const { wabaId, subscribedFields } = body.value
+    // The token of the line last connected for this WABA, when the store can find it
+    const meta = await metaClientFor(c, deps, undefined, { wabaId })
+    if (!meta.ok) return meta.response
 
     try {
       const success = await meta.value.client.subscribeAppToWaba(wabaId, subscribedFields)
