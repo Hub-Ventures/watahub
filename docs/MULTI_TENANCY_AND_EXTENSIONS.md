@@ -92,11 +92,14 @@ interface KeyValueStore {
 }
 ```
 
+The gateway never asks the store for a TTL below 60 s, the Cloudflare KV minimum. Every adapter here is approximate:
+reads and writes are separate calls.
+
 | Adapter | Key prefix | TTL | Notes |
 | :--- | :--- | :--- | :--- |
 | `DistributedReplayStore(kv, ttlSeconds?)` | `watahub:delivery:` | The longer of `ttlSeconds` (default 7 days plus 1 hour) and the webhook window plus 1 hour | The gateway always asks for at least the webhook window, so a shorter `ttlSeconds` has no effect |
-| `DistributedRateLimitStore(kv, limit, windowSeconds = 60)` | `watahub:ratelimit:` | Until the window ends | Read, then write: concurrent requests can both pass. Approximate |
-| `DistributedLineStore(kv)` | `watahub:line:` | None | The value is the business token in plain JSON. Encrypt or restrict the store, and never log its values |
+| `DistributedRateLimitStore(kv, limit, windowSeconds = 60)` | `watahub:ratelimit:` | The window, and at least 60 s | The value holds `resetAt`, which decides the window, so a key can outlive it by up to 60 s. Read, then write: concurrent requests can both pass, and KV is eventually consistent. Approximate. For exact limits, put an atomic counter (a Durable Object or Redis `INCR`) behind a custom `RateLimitStore` |
+| `DistributedLineStore(kv)` | `watahub:line:`, `watahub:line:waba:<wabaId>` | None | `watahub:line:<phoneNumberId>` holds the business token in plain JSON. Encrypt or restrict the store, and never log its values. `watahub:line:waba:<wabaId>` is a pointer: it holds the phone number ID, not the token |
 
 ### Line tokens
 
